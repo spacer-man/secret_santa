@@ -1,0 +1,22 @@
+[project]
+name = "secret-santa"
+version = "0.1.0"
+description = "Funny new year pet project"
+readme = "README.md"
+requires-python = ">=3.13.8"
+dependencies = [
+    "aiogram>=3.22.0",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.123.4",
+    "pydantic>=2.11.10",
+    "pydantic-settings>=2.12.0",
+    "pytz>=2025.2",
+    "pyyaml>=6.0.3",
+    "sqlalchemy>=2.0.44",
+    "sqlmodel>=0.0.27",
+]
+
+
+[tool.pyright]
+venv = ".venv"
+venvPath = "."

@@ -1,3 +1,4 @@
+import asyncio
 from uuid import UUID
 
 from aiogram import F
@@ -6,6 +7,7 @@ from aiogram.types import CallbackQuery
 from aiogram.types import Message
 
 from . import keyboards
+from . import messages
 from .keyboards import OptionPrefix
 from handlers import keyboards as common_keyboards
 from handlers.common.cancellable import CancellableScene
@@ -25,24 +27,33 @@ class WishesListScene(
         if not message:
             return None
 
+        user_wishes = await wish_service.my_wishes(
+                author_telegram_id=message.chat.id)
+
         if isinstance(message, Message):
             await message.delete()
+
+        if not user_wishes:
+            alert = await message.answer(text=messages.YOU_HAVE_NO_WISHES)
+            await self.wizard.back()
+            await asyncio.sleep(3)
+            await alert.delete()
+            return None
 
         await message.answer(
             text="*YOUR WISHES*",
             reply_markup=common_keyboards.BACK)
 
-        messages: list[int] = [
+        saved_messages: list[int] = [
                 (await message.answer(
                     text=wish.message,
                     reply_markup=keyboards.wish_item_options(
                         wish_id=wish.id))
                 ).message_id
-            for wish in await wish_service.my_wishes(
-                author_telegram_id=message.chat.id)
+            for wish in user_wishes
         ]
 
-        await self.wizard.update_data({MESSAGES_FSM_KEY: messages})
+        await self.wizard.update_data({MESSAGES_FSM_KEY: saved_messages})
 
     @on.callback_query(F.data.startswith(OptionPrefix.DELETE))
     async def delete_wish(self, call: CallbackQuery) -> None:

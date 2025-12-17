@@ -33,7 +33,7 @@ services:
     container_name: secret_santa_bot
     restart: always
     build:
-      context: ./
+      context: ./bot
       dockerfile: Dockerfile
     depends_on:
       state_storage:
@@ -47,7 +47,7 @@ services:
 
       BOT_TOKEN: ${BOT_TOKEN}
     volumes:
-      - ./logs:/app/logs
+      - ./bot/logs:/app/logs
     networks:
       - main_network
 
@@ -61,7 +61,7 @@ services:
     expose:
       - "6379"
     volumes:
-      - ./state_data:/data
+      - ./bot/state_data:/data
     command: >
       sh -c '
         mkdir -p /usr/local/etc/redis &&

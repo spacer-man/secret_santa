@@ -13,4 +13,8 @@ wheels/
 .env
 
 # Logs
-/logs
+**/logs
+
+# App data
+**/state_data
+**/db_data

@@ -4,7 +4,8 @@ import logging
 from aiogram import F
 from aiogram.enums import ParseMode
 from aiogram.fsm.scene import on
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery
+from aiogram.types import Message
 from aiogram.utils import markdown
 from pydantic import ValidationError
 

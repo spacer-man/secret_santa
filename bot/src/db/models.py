@@ -1,3 +1,4 @@
+import enum
 from datetime import datetime
 from datetime import timezone
 from uuid import UUID
@@ -5,6 +6,7 @@ from uuid_extensions.uuid7 import uuid7
 
 from sqlmodel import BigInteger
 from sqlmodel import Column
+from sqlmodel import Enum
 from sqlmodel import Field
 from sqlmodel import SQLModel
 from sqlmodel import TIMESTAMP
@@ -12,6 +14,12 @@ from sqlmodel import Uuid
 
 
 utc_now = lambda: datetime.now(timezone.utc)
+
+
+class MediaType(enum.StrEnum):
+    IMAGE = "image"
+    AUDIO = "audio"
+    VIDEO = "video"
 
 
 class User(SQLModel, table=True):
@@ -30,3 +38,10 @@ class Wish(SQLModel, table=True):
     timestamp: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(TIMESTAMP(timezone=True)))
+
+
+class Media(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
+    wish_id: UUID = Field(foreign_key="wish.id")
+    type: MediaType = Field(sa_column=Column(Enum(MediaType)))
+    data: bytes

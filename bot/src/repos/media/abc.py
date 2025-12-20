@@ -1,12 +1,16 @@
-from typing import Any
-from typing import Protocol
-from typing import Required
-from typing import Sequence
-from typing import TypedDict
-from typing import Unpack
+from typing import (
+    Any,
+    Generator,
+    Optional,
+    Protocol,
+    Required,
+    TypedDict,
+    Unpack,
+)
 from uuid import UUID
 
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import MediaType
 
@@ -25,9 +29,10 @@ class NewMediaArgs(TypedDict, total=False):
 
 
 class MediaRepository(Protocol):
+    def __init__(self, session: AsyncSession) -> None: ...
     async def get_many(
             self,
-            filter_by: dict[str, Any],
-            ) -> Sequence[MediaDTO]: ...
+            filter_by: Optional[dict[str, Any]] = None,
+            ) -> Generator[MediaDTO]: ...
     async def create(self, **kwargs: Unpack[NewMediaArgs]) -> UUID: ...
     async def delete(self, filter_by: dict[str, Any]) -> None: ...

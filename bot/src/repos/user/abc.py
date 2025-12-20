@@ -1,13 +1,16 @@
 from datetime import datetime
-from typing import Any
-from typing import Protocol
-from typing import Required
-from typing import TypedDict
-from typing import Unpack
+from typing import (
+    Any,
+    Optional,
+    Protocol,
+    Required,
+    TypedDict,
+    Unpack,
+)
 from uuid import UUID
 
-from pydantic import BaseModel
-from pydantic import Field
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class UserDTO(BaseModel):
@@ -23,5 +26,9 @@ class NewUserArgs(TypedDict, total=False):
 
 
 class UserRepository(Protocol):
-    async def get_one(self, filter_by: dict[str, Any]) -> UserDTO | None: ...
+    def __init__(self, session: AsyncSession) -> None: ...
+    async def get_one(
+            self,
+            filter_by: Optional[dict[str, Any]] = None,
+            ) -> UserDTO | None: ...
     async def create(self, **kwargs: Unpack[NewUserArgs]) -> UUID: ...

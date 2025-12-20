@@ -3,6 +3,7 @@ from typing import TypedDict
 from typing import Unpack
 from uuid import UUID
 
+from db import new_db_session
 from repos.user.abc import UserRepository
 
 
@@ -16,8 +17,16 @@ class NewUserArgs(TypedDict, total=False):
 
 
 class UserService(object):
-    def __init__(self, user_repo: UserRepository) -> None:
-        self.repo = user_repo
+    def __init__(self, user_repo_type: type[UserRepository]) -> None:
+        self.repo_type = user_repo_type
+
+    async def _is_user_registered(
+            self,
+            telegram_id: int,
+            repo: UserRepository,
+            ) -> bool:
+        return not not await repo.get_one(
+            filter_by={"telegram_id": telegram_id})
 
     async def is_registered(self, telegram_id: int) -> bool:
         """
@@ -25,8 +34,11 @@ class UserService(object):
 
         :return: :class:`bool`
         """
-        return not not await self.repo.get_one(
-            filter_by={"telegram_id": telegram_id})
+        async with new_db_session() as db_session:
+            repo = self.repo_type(session=db_session)
+            return await self._is_user_registered(
+                telegram_id=telegram_id,
+                repo=repo)
 
     async def register(self, **kwargs: Unpack[NewUserArgs]) -> UUID:
         """
@@ -35,10 +47,17 @@ class UserService(object):
 
         :return: :class:`UUID`
         """
-        telegram_id = kwargs["telegram_id"]
-        if await self.is_registered(telegram_id=telegram_id):
-            raise UserAlreadyRegisteredError(
-                "User with telegram_id=%d already registered" % telegram_id)
+        async with new_db_session() as db_session:
+            repo = self.repo_type(session=db_session)
 
-        user_id = await self.repo.create(**kwargs)
+            telegram_id = kwargs["telegram_id"]
+            if await self._is_user_registered(
+                    telegram_id=telegram_id,
+                    repo=repo):
+                raise UserAlreadyRegisteredError(
+                    "User with telegram_id=%d already registered" % telegram_id)
+
+            user_id = await repo.create(**kwargs)
+
+            await db_session.commit()
         return user_id

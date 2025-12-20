@@ -28,11 +28,10 @@ def clock_emoji(hour: int) -> str:
     """
     Returns a clock emoji representation based on the given hour and minute.
     
-    Args:
-    - hour (int): The hour (0-23).
+    :args:
+        hour: :class:`int`     # The hour (0-23).
     
-    Returns:
-    - str: The corresponding clock emoji.
+    :returns: :class:`str`  # The corresponding clock emoji.
     """
     assert 0 <= hour <= 23, f"Uncorrect hour: hour can't be {hour}"
 

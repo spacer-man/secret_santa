@@ -1,6 +1,9 @@
-from typing import Any
-from typing import Sequence
-from typing import Unpack
+from typing import (
+    Any,
+    Generator,
+    Optional,
+    Unpack,
+)
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,24 +20,25 @@ class SQLModelWishRepository(WishRepository):
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get_many(self, filter_by: dict[str, Any]) -> Sequence[WishDTO]:
+    async def get_many(
+            self,
+            filter_by: Optional[dict[str, Any]] = None,
+            ) -> Generator[WishDTO]:
         stmt = select(Wish)
         if filter_by:
             stmt = stmt.filter_by(**filter_by)
 
         query_result = await self.session.execute(stmt)
-        wishes = [
+        wishes = (
             WishDTO.model_validate(wish, from_attributes=True)
-            for wish in query_result.scalars().all()
-        ]
+            for wish in query_result.scalars()
+        )
 
         return wishes
 
     async def create(self, **kwargs: Unpack[NewWishArgs]) -> UUID:
         new_wish = Wish(**kwargs)
         self.session.add(new_wish)
-
-        await self.session.commit()
 
         return new_wish.id
 
@@ -44,6 +48,5 @@ class SQLModelWishRepository(WishRepository):
             stmt = stmt.filter_by(**filter_by)
 
         await self.session.execute(stmt)
-        await self.session.commit()
 
         return None

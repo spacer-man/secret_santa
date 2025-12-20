@@ -1,20 +1,34 @@
 from datetime import datetime
-from typing import Required
-from typing import Sequence
-from typing import TypedDict
-from typing import Unpack
+from typing import (
+    AsyncGenerator,
+    Generator,
+    Iterable,
+    NotRequired,
+    Required,
+    TypedDict,
+    Unpack,
+)
 from uuid import UUID
 
-from pydantic import BaseModel
-from pydantic import Field
+from pydantic import BaseModel, Field
 
+from db import new_db_session
+from db.models import MediaType
 from repos.user.abc import UserRepository
 from repos.wish.abc import WishRepository
+from repos.media.abc import MediaRepository
 
 
+# Exceptions
 class WishAuthorNotFoundError(Exception):
     pass
 
+
+# DTOs
+class MediaDTO(BaseModel):
+    id: UUID
+    data: bytes
+    type: MediaType
 
 class WishDTO(BaseModel):
     id: UUID
@@ -22,58 +36,137 @@ class WishDTO(BaseModel):
     author_telegram_id: int
     message: str = Field(min_length=8, max_length=4096)
     timestamp: datetime
+    media: Generator[MediaDTO]
 
+
+# Args
+class WishMediaData(TypedDict):
+    data: bytes
+    type: MediaType
 
 class NewWishArgs(TypedDict):
     author_telegram_id: Required[int]
     message: Required[str]
+    media: NotRequired[Iterable[WishMediaData]]
 
 
+# Service
 class WishService(object):
     def __init__(
             self,
-            user_repo: UserRepository,
-            wish_repo: WishRepository,
+            user_repo_type: type[UserRepository],
+            wish_repo_type: type[WishRepository],
+            media_repo_type: type[MediaRepository],
             ) -> None:
-        self.user_repo = user_repo
-        self.wish_repo = wish_repo
+        self.user_repo_type = user_repo_type
+        self.wish_repo_type = wish_repo_type
+        self.media_repo_type = media_repo_type
 
     async def new_wish(self, **kwargs: Unpack[NewWishArgs]) -> UUID:
-        author_telegram_id = kwargs["author_telegram_id"]
-        author = await self.user_repo.get_one(
-            filter_by={"telegram_id": author_telegram_id})
+        """
+        Create new wish.
+        Raise exception if specified user is uncorrect.
 
-        if not author:
-            raise WishAuthorNotFoundError(
-                "User with telegram_id=%d not found" % author_telegram_id)
+        :returns: :class:`UUID`     # Created wish id
+        """
+        async with new_db_session() as db_session:
+            user_repo = self.user_repo_type(session=db_session)
+            wish_repo = self.wish_repo_type(session=db_session)
+            media_repo = self.media_repo_type(session=db_session)
 
-        author_id = author.id
-        wish_id = await self.wish_repo.create(
-            author_id=author_id,
-            message=kwargs["message"])
+            author_telegram_id = kwargs["author_telegram_id"]
+            author = await user_repo.get_one(
+                filter_by={"telegram_id": author_telegram_id})
+            if not author:
+                raise WishAuthorNotFoundError(
+                    "User with telegram_id=%d not found" % author_telegram_id)
+
+            author_id = author.id
+            wish_id = await wish_repo.create(
+                author_id=author_id,
+                message=kwargs["message"])
+            if medias := kwargs.get("media"):
+                for media in medias:
+                    await media_repo.create(
+                        wish_id=wish_id,
+                        data=media["data"],
+                        type=media["type"])
+
+            await db_session.commit()
 
         return wish_id
 
-    async def my_wishes(self, author_telegram_id: int) -> Sequence[WishDTO]:
-        author = await self.user_repo.get_one(
-            filter_by={"telegram_id": author_telegram_id})
+    async def _wish_medias(
+            self,
+            wish_id: UUID,
+            media_repo: MediaRepository,
+            ) -> Generator[MediaDTO]:
+        """
+        Create wish medias generator.
+        """
+        return (
+            MediaDTO.model_validate(media, from_attributes=True)
+            for media in await media_repo.get_many(
+                filter_by={"wish_id": wish_id})
+        )
 
-        if not author:
-            raise WishAuthorNotFoundError(
-                "User with telegram_id=%d not found" % author_telegram_id)
-
-        author_id = author.id
-        wishes = [
-            WishDTO.model_validate(obj={
+    async def _wishes_generator(
+            self,
+            author_id: UUID,
+            author_telegram_id: int,
+            wish_repo: WishRepository,
+            media_repo: MediaRepository,
+            ) -> AsyncGenerator[WishDTO]:
+        """
+        Create wishes async generator.
+        """
+        for wish in await wish_repo.get_many(
+                filter_by={"author_id": author_id}):
+            yield WishDTO.model_validate(obj={
                 **wish.model_dump(),
                 "author_telegram_id": author_telegram_id,
+                "media": await self._wish_medias(
+                    wish_id=wish.id, media_repo=media_repo),
             })
-            for wish in await self.wish_repo.get_many(
-                filter_by={"author_id": author_id})
-        ]
+
+    async def my_wishes(self, author_telegram_id: int) -> AsyncGenerator[WishDTO]:
+        """
+        Get wishes :class:`Generator`.
+
+        :returns: :class:`Generator[WishDTO]`
+        """
+        async with new_db_session() as db_session:
+            user_repo = self.user_repo_type(session=db_session)
+            wish_repo = self.wish_repo_type(session=db_session)
+            media_repo = self.media_repo_type(session=db_session)
+            author = await user_repo.get_one(
+                filter_by={"telegram_id": author_telegram_id})
+
+            if not author:
+                raise WishAuthorNotFoundError(
+                    "User with telegram_id=%d not found" % author_telegram_id)
+
+            wishes = self._wishes_generator(
+                author_id=author.id,
+                author_telegram_id=author_telegram_id,
+                wish_repo=wish_repo,
+                media_repo=media_repo)
 
         return wishes
 
 
     async def delete(self, wish_id: UUID) -> None:
-        await self.wish_repo.delete(filter_by={"id": wish_id})
+        """
+        Remove wish by id.
+        If hasn't wish with specified id than pass.
+
+        :returns: :class:`None`
+        """
+        async with new_db_session() as db_session:
+            wish_repo = self.wish_repo_type(session=db_session)
+            media_repo = self.media_repo_type(session=db_session)
+
+            await media_repo.delete(filter_by={"wish_id": wish_id})
+            await wish_repo.delete(filter_by={"id": wish_id})
+
+            await db_session.commit()

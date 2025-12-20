@@ -1,14 +1,17 @@
 from datetime import datetime
-from typing import Any
-from typing import Protocol
-from typing import Required
-from typing import Sequence
-from typing import TypedDict
-from typing import Unpack
+from typing import (
+    Any,
+    Generator,
+    Optional,
+    Protocol,
+    Required,
+    TypedDict,
+    Unpack,
+)
 from uuid import UUID
 
-from pydantic import BaseModel
-from pydantic import Field
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class WishDTO(BaseModel):
@@ -24,9 +27,10 @@ class NewWishArgs(TypedDict, total=False):
 
 
 class WishRepository(Protocol):
+    def __init__(self, session: AsyncSession) -> None: ...
     async def get_many(
             self,
-            filter_by: dict[str, Any],
-            ) -> Sequence[WishDTO]: ...
+            filter_by: Optional[dict[str, Any]] = None,
+            ) -> Generator[WishDTO]: ...
     async def create(self, **kwargs: Unpack[NewWishArgs]) -> UUID: ...
     async def delete(self, filter_by: dict[str, Any]) -> None: ...

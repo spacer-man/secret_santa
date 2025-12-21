@@ -1,0 +1,105 @@
+/* You can add global styles to this file, and also import other style files */
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg-color: #0a0a11;
+  --light-color: #fff;
+  --dark-color: #1a1a21;
+  --border-color: #333;
+  --primary-color: #ff0060;
+  --primary-color-hovered: #cf0040;
+  --primary-color-active: #af0030;
+  --second-text-color: #aaa;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Arial, sans-serif;
+  text-align: center;
+  justify-content: center;
+  background: var(--bg-color);
+  color: var(--light-color);
+  display: flex;
+  flex-direction: column;
+  @media(min-width: 40rem) {
+    padding: 10rem 0;
+  }
+}
+
+
+
+.text-second {
+  color: var(--second-text-color);
+}
+
+
+.mt-2 {
+  margin-top: 2rem;
+}
+
+.btn {
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  font-size: 1.5rem;
+  padding: 1.3rem 1.5rem;
+  border: none;
+  border-radius: 1rem;
+  transition: all .3s;
+}
+.btn:hover {
+  transform: scale(1.03);
+}
+.btn:active {
+  transform: scale(.97);
+}
+
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.btn-primary {
+  color: var(--dark-color);
+  background-color: var(--primary-color);
+  position: relative;
+  z-index: 0;
+}
+.btn-primary::before{
+  content: '';
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-image: conic-gradient(from var(--angle), transparent, var(--primary-color), transparent, var(--primary-color), transparent);
+  padding: 3px;
+  border-radius: calc(1rem + 3px);
+  z-index: -1;
+  animation: 10s spin linear infinite;
+}
+.btn-primary::before {
+  filter: blur(1.5rem);
+}
+.btn-primary:hover {
+  color: var(--light-color);
+  background-color: var(--primary-color-hovered);
+}
+.btn-primary:active {
+  color: var(--light-color);
+  background-color: var(--primary-color-active);
+}
+
+
+@keyframes spin {
+  from {
+    --angle: 0deg;
+  }
+  to {
+    --angle: 360deg;
+  }
+}

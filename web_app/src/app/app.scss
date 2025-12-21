@@ -1,0 +1,29 @@
+.root {
+  border: 3px solid var(--border-color);
+  border-radius: 1.5rem;
+  width: min(40rem, 100vw);
+  margin: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.br {
+  background-color: var(--border-color);
+  height: 2px;
+  width: 80%;
+  margin: 1rem auto;
+}
+
+.wishes {
+  display: grid;
+  gap: 1rem;
+}
+
+p {
+  margin-top: .7rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  text-align: left;
+  padding-left: .5rem;
+}

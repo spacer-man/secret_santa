@@ -1,0 +1,23 @@
+.wish {
+  border: solid var(--border-color);
+  border-radius: .5rem;
+  padding: 1rem;
+  text-align: justify;
+}
+
+h2 {
+  margin: .1rem 0;
+  color: var(--primary-color);
+}
+
+.images {
+  display: flex;
+  gap: 1rem;
+  overflow: scroll;
+  max-width: min(35rem, calc(100vw - 5rem));
+  border-radius: .5rem;
+}
+
+p {
+  padding: 0 .5rem;
+}

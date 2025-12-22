@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from typing import (
     AsyncGenerator,
@@ -10,6 +11,7 @@ from typing import (
 )
 from uuid import UUID
 
+from aiogram.types import MessageEntity
 from pydantic import BaseModel, Field
 
 from db import new_db_session
@@ -34,7 +36,9 @@ class WishDTO(BaseModel):
     id: UUID
     author_id: UUID
     author_telegram_id: int
-    message: str = Field(min_length=8, max_length=4096)
+    text: str = Field(min_length=8, max_length=4096)
+    text_entities: list[MessageEntity] | None = Field(default=None)
+    effect_id: str | None = Field(default=None)
     timestamp: datetime
     media: Generator[MediaDTO]
 
@@ -46,7 +50,9 @@ class WishMediaData(TypedDict):
 
 class NewWishArgs(TypedDict):
     author_telegram_id: Required[int]
-    message: Required[str]
+    text: Required[str]
+    text_entities: NotRequired[list[MessageEntity] | None]
+    effect_id: NotRequired[str | None]
     media: NotRequired[Iterable[WishMediaData]]
 
 
@@ -82,16 +88,25 @@ class WishService(object):
                     "User with telegram_id=%d not found" % author_telegram_id)
 
             author_id = author.id
+            text_entities = kwargs.get("text_entities")
+            if text_entities is not None:
+                text_entities = json.dumps([
+                    entity.model_dump(mode="json")
+                    for entity in text_entities
+                ])
             wish_id = await wish_repo.create(
                 author_id=author_id,
-                message=kwargs["message"])
-            if medias := kwargs.get("media"):
-                for media in medias:
+                text_entities=text_entities,
+                effect_id=kwargs.get("effect_id"),
+                text=kwargs["text"])
+            await db_session.commit()
+
+            if media := kwargs.get("media"):
+                for media_item in media:
                     await media_repo.create(
                         wish_id=wish_id,
-                        data=media["data"],
-                        type=media["type"])
-
+                        data=media_item["data"],
+                        type=media_item["type"])
             await db_session.commit()
 
         return wish_id

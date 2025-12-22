@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import (
     Any,
     Generator,
+    NotRequired,
     Optional,
     Protocol,
     Required,
@@ -10,6 +11,7 @@ from typing import (
 )
 from uuid import UUID
 
+from aiogram.types import MessageEntity
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,12 +19,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class WishDTO(BaseModel):
     id: UUID
     author_id: UUID
-    message: str = Field(min_length=8, max_length=4096)
+    text: str = Field(min_length=8, max_length=4096)
+    text_entities: list[MessageEntity] | None = Field(default=None)
+    effect_id: str | None = Field(default=None)
     timestamp: datetime
 
 
 class NewWishArgs(TypedDict, total=False):
-    message: Required[str]
+    text: Required[str]
+    text_entities: NotRequired[str | None]
+    effect_id: NotRequired[str | None]
     author_id: Required[UUID]
 
 

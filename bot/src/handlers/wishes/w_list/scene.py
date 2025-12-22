@@ -2,12 +2,14 @@ import asyncio
 from uuid import UUID
 
 from aiogram import F
+from aiogram.enums import ChatAction
 from aiogram.fsm.scene import on
 from aiogram.types import CallbackQuery
 from aiogram.types import Message
 
 from . import keyboards
 from . import messages
+from . import utils
 from .keyboards import OptionPrefix
 from handlers import keyboards as common_keyboards
 from handlers.common.cancellable import CancellableScene
@@ -23,15 +25,13 @@ class WishesListScene(
     @on.callback_query.enter()
     async def show_wishes_list(self, call: CallbackQuery) -> None:
         await call.answer()
+        bot = call.bot
         message = call.message
-        if not message:
+        if not (isinstance(message, Message) and bot):
             return None
 
-        user_wishes = await wish_service.my_wishes(
-                author_telegram_id=message.chat.id)
-
-        if isinstance(message, Message):
-            await message.delete()
+        user_wishes = [wish async for wish in await wish_service.my_wishes(
+                author_telegram_id=message.chat.id)]
 
         if not user_wishes:
             alert = await message.answer(text=messages.YOU_HAVE_NO_WISHES)
@@ -40,18 +40,15 @@ class WishesListScene(
             await alert.delete()
             return None
 
+        await message.delete()
         await message.answer(
             text="*YOUR WISHES*",
             reply_markup=common_keyboards.BACK)
 
-        saved_messages: list[int] = [
-                (await message.answer(
-                    text=wish.message,
-                    reply_markup=keyboards.wish_item_options(
-                        wish_id=wish.id))
-                ).message_id
-            for wish in user_wishes
-        ]
+        saved_messages: list[int] = []
+        for wish in user_wishes:
+            msgs = await utils.send_wish(message=message, bot=bot, wish=wish)
+            saved_messages.extend(msg.message_id for msg in msgs)
 
         await self.wizard.update_data({MESSAGES_FSM_KEY: saved_messages})
 

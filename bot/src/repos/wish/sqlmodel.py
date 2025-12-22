@@ -1,3 +1,4 @@
+import json
 from typing import (
     Any,
     Generator,
@@ -30,7 +31,13 @@ class SQLModelWishRepository(WishRepository):
 
         query_result = await self.session.execute(stmt)
         wishes = (
-            WishDTO.model_validate(wish, from_attributes=True)
+            WishDTO.model_validate({
+                **wish.model_dump(),
+                "text_entities": (
+                    json.loads(wish.text_entities)
+                    if wish.text_entities else None
+                ),
+            })
             for wish in query_result.scalars()
         )
 

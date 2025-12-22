@@ -2,6 +2,7 @@ import enum
 from datetime import datetime
 from datetime import timezone
 from uuid import UUID
+
 from uuid_extensions.uuid7 import uuid7
 
 from sqlmodel import BigInteger
@@ -19,7 +20,9 @@ utc_now = lambda: datetime.now(timezone.utc)
 class MediaType(enum.StrEnum):
     IMAGE = "image"
     AUDIO = "audio"
+    VOICE = "voice"
     VIDEO = "video"
+    VIDEO_NOTE = "video_note"
 
 
 class User(SQLModel, table=True):
@@ -34,7 +37,9 @@ class User(SQLModel, table=True):
 class Wish(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
     author_id: UUID = Field(foreign_key="user.id")
-    message: str = Field(min_length=8, max_length=4096)
+    text: str = Field(min_length=8, max_length=4096)
+    text_entities: str | None = Field(default=None, max_length=4096 * 100)
+    effect_id: str | None = Field(default=None)
     timestamp: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(TIMESTAMP(timezone=True)))

@@ -9,6 +9,7 @@ from aiogram.fsm.storage.redis import RedisStorage
 
 import handlers
 from configs.bot import BotConfig
+from middlewares.media_group import MediaGroupMiddleware
 
 
 def setup_storage() -> BaseStorage | None:
@@ -31,5 +32,6 @@ def dispatcher() -> Dispatcher:
 
     registry = SceneRegistry(dp)
     registry.add(*handlers.all_scenes)
+    dp.message.middleware(MediaGroupMiddleware())
 
     return dp

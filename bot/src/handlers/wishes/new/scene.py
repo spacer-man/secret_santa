@@ -3,6 +3,7 @@ import logging
 from typing import Any
 
 from aiogram import F
+from aiogram.filters import CommandStart, invert_f
 from aiogram.fsm.scene import on
 from aiogram.types import CallbackQuery, Message
 from pydantic import ValidationError
@@ -103,7 +104,7 @@ class WishingScene(
         return None
 
     @on.message.enter()
-    @on.message()
+    @on.message(invert_f(CommandStart()))
     async def check_wish(
             self,
             message: Message,

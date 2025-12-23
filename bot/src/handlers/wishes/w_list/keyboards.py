@@ -16,7 +16,7 @@ class OptionPrefix(enum.StrEnum):
 def wish_item_options(wish_id: UUID | str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text=buttons.DELETE,
+            text=buttons.DELETE_WISH,
             callback_data=OptionPrefix.DELETE + str(wish_id))],
     ])
 
@@ -25,8 +25,8 @@ def confirm_delete_wish(wish_id: UUID | str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text=buttons.DELETE,
-            callback_data=OptionPrefix.CONFIRM + str(wish_id))],
-        [InlineKeyboardButton(
+            callback_data=OptionPrefix.CONFIRM + str(wish_id)),
+        InlineKeyboardButton(
             text=buttons.CANCEL,
             callback_data=OptionPrefix.CANCEL + str(wish_id))],
     ])

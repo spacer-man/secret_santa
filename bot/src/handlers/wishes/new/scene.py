@@ -24,6 +24,7 @@ from services.wish import WishMediaData
 log = logging.getLogger()
 
 
+HEADER_MESSAGE_DATAKEY = "header_message_id"
 NEW_WISH_DATAKEY = "new_wish"
 WISH_MESSAGES_DATAKEY = "wish_messages"
 WISH_CONFIRM_MESSAGE_DATAKEY = "wish_confirm_message"
@@ -42,11 +43,11 @@ class WishingScene(
             return None
 
         await message.delete()
-        if await self.wizard.get_value("header_message_id") is None:
-            header = await message.answer(
-                text=messages.ENTER_NEW_WISH,
-                reply_markup=common_keyboards.CANCEL)
-            await self.wizard.update_data(header_message_id=header.message_id)
+        header = await message.answer(
+            text=messages.ENTER_NEW_WISH,
+            reply_markup=common_keyboards.CANCEL)
+        await self.wizard.update_data({
+            HEADER_MESSAGE_DATAKEY: header.message_id})
 
     async def save_wish_messages(
             self,
@@ -60,20 +61,25 @@ class WishingScene(
             WISH_CONFIRM_MESSAGE_DATAKEY: confirm_message.message_id,
         })
 
-    async def clear_scene(self, message: Message) -> None:
-        message_ids: list[int] | None = await self.wizard.get_value(
-            key=WISH_MESSAGES_DATAKEY)
+    async def clear_scene(self, message: Message, full: bool = False) -> None:
+        message_ids: list[int] = await self.wizard.get_value(
+            key=WISH_MESSAGES_DATAKEY) or []
         confirm_message_id: int | None = await self.wizard.get_value(
             key=WISH_CONFIRM_MESSAGE_DATAKEY)
+        header_message_id = await self.wizard.get_value(HEADER_MESSAGE_DATAKEY)
         bot = message.bot
-
-        if not (confirm_message_id and message_ids and bot):
+        if not bot:
             return None
+
+        if confirm_message_id is not None:
+            message_ids.append(confirm_message_id)
+        if full and (header_message_id is not None):
+            message_ids.append(header_message_id)
 
         try:
             await bot.delete_messages(
                 chat_id=message.chat.id,
-                message_ids=message_ids + [confirm_message_id])
+                message_ids=message_ids)
         except Exception:
             return None
 
@@ -202,7 +208,7 @@ class WishingScene(
         # Delete previous message
         await message.delete()
         await self.clear_scene(message=message)
-        header_message_id = await self.wizard.get_value("header_message_id")
+        header_message_id = await self.wizard.get_value(HEADER_MESSAGE_DATAKEY)
         bot = message.bot
         if bot and header_message_id is not None:
             await bot.delete_message(
@@ -238,11 +244,11 @@ class WishingScene(
         await asyncio.sleep(3)
         await alert.delete()
 
-    @on.callback_query.exit()
-    async def callback_leave_from_scene(self, call: CallbackQuery) -> None:
+    @on.callback_query.leave()
+    async def callback_exit_from_scene(self, call: CallbackQuery) -> None:
         if isinstance(call.message, Message):
-            await self.clear_scene(message=call.message)
+            await self.clear_scene(message=call.message, full=True)
 
-    @on.message.exit()
-    async def leave_from_scene(self, message: Message) -> None:
-        await self.clear_scene(message=message)
+    @on.message.leave()
+    async def exit_from_scene(self, message: Message) -> None:
+        await self.clear_scene(message=message, full=True)

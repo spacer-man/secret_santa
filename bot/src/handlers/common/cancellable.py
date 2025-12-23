@@ -1,7 +1,7 @@
 from aiogram import F
-from aiogram.fsm.scene import on
-from aiogram.fsm.scene import Scene
-from aiogram.types import CallbackQuery
+from aiogram.filters import CommandStart
+from aiogram.fsm.scene import on, Scene
+from aiogram.types import CallbackQuery, Message
 
 from handlers import buttons
 
@@ -21,3 +21,7 @@ class CancellableScene(Scene):
     async def handle_cancel(self, call: CallbackQuery) -> None:
         await self.wizard.exit()
         await call.answer()
+
+    @on.message(CommandStart())
+    async def handle_start_command(self, _: Message) -> None:
+        await self.wizard.back()

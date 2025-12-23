@@ -1,8 +1,8 @@
 import asyncio
+import logging
 from uuid import UUID
 
 from aiogram import F
-from aiogram.enums import ChatAction
 from aiogram.fsm.scene import on
 from aiogram.types import CallbackQuery
 from aiogram.types import Message
@@ -14,8 +14,17 @@ from .keyboards import OptionPrefix
 from handlers import keyboards as common_keyboards
 from handlers.common.cancellable import CancellableScene
 from handlers.consts import Scenes
-from handlers.consts import MESSAGES_FSM_KEY
 from handlers.depends import wish_service
+
+
+HEADER_MESSAGE_DATAKEY = "header_message_id"
+SCENE_MESSAGES_DATAKEY = "scene_messages"
+
+
+type SavedMessages = dict[str, list[int]]   # dict[actions, msg_ids[]]
+
+
+log = logging.getLogger(__name__)
 
 
 class WishesListScene(
@@ -41,16 +50,22 @@ class WishesListScene(
             return None
 
         await message.delete()
-        await message.answer(
+        header = await message.answer(
             text="*YOUR WISHES*",
             reply_markup=common_keyboards.BACK)
 
-        saved_messages: list[int] = []
+        saved_messages: SavedMessages = {}
         for wish in user_wishes:
             msgs = await utils.send_wish(message=message, bot=bot, wish=wish)
-            saved_messages.extend(msg.message_id for msg in msgs)
+            action_msg = await message.answer(
+                text=messages.ACTIONS_MESSAGE,
+                reply_markup=keyboards.wish_item_options(wish_id=wish.id))
+            saved_messages[str(action_msg.message_id)] = [
+                msg.message_id for msg in msgs]
 
-        await self.wizard.update_data({MESSAGES_FSM_KEY: saved_messages})
+        await self.wizard.update_data({
+            SCENE_MESSAGES_DATAKEY: saved_messages,
+            HEADER_MESSAGE_DATAKEY: header.message_id})
 
     @on.callback_query(F.data.startswith(OptionPrefix.DELETE))
     async def delete_wish(self, call: CallbackQuery) -> None:
@@ -78,26 +93,57 @@ class WishesListScene(
 
     @on.callback_query(F.data.startswith(OptionPrefix.CONFIRM))
     async def confirm_delete_wish(self, call: CallbackQuery) -> None:
+        bot = call.bot
         message = call.message
         callback_data = call.data
-        if not isinstance(message, Message) or not callback_data:
+        if not (isinstance(message, Message) and callback_data and bot):
             return None
 
-        wish_id = UUID(callback_data[len(OptionPrefix.CONFIRM):])
+        saved_messages: SavedMessages | None = await self.wizard.get_value(
+            key=SCENE_MESSAGES_DATAKEY)
+        if not saved_messages:
+            return None
+
+        wish_message_ids = saved_messages.get(str(message.message_id))
+        if not wish_message_ids:
+            return None
+
+        try:
+            wish_id = UUID(callback_data[len(OptionPrefix.CONFIRM):])
+        except Exception:
+            return None
 
         await wish_service.delete(wish_id=wish_id)
         await message.delete()
-        wish_messages: list[int] | None = await self.wizard.get_value(
-            key=MESSAGES_FSM_KEY)
-        if wish_messages:
-            await self.wizard.update_data({MESSAGES_FSM_KEY: [
-                msg for msg in wish_messages if msg != message.message_id]})
+        await bot.delete_messages(
+            chat_id=message.chat.id,
+            message_ids=wish_message_ids)
+
+        remained_wishes = await wish_service.my_wishes(
+            author_telegram_id=message.chat.id)
+        if len([wish async for wish in remained_wishes]) == 0:
+            await self.full_clear_scene(call=call)
+            alert = await message.answer(text=messages.ALL_WISHES_WAS_DELETED)
+            await self.wizard.back()
+            await asyncio.sleep(3)
+            await alert.delete()
 
     @on.callback_query.leave()
-    async def clear_scene(self, call: CallbackQuery) -> None:
-        message_ids: list[int] | None = await self.wizard.get_value(
-            key=MESSAGES_FSM_KEY)
-        if call.bot and call.message and message_ids:
-            await call.bot.delete_messages(
-                chat_id=call.message.chat.id,
-                message_ids=message_ids)
+    async def full_clear_scene(self, call: CallbackQuery) -> None:
+        header_message_id: int | None = await self.wizard.get_value(
+            key=HEADER_MESSAGE_DATAKEY)
+        saved_messages: SavedMessages | None = await self.wizard.get_value(
+            key=SCENE_MESSAGES_DATAKEY)
+        if not (call.bot and call.message and saved_messages):
+            return None
+
+        all_message_ids: list[int] = []
+        for actions_message, message_ids in saved_messages.items():
+            all_message_ids.extend(message_ids)
+            all_message_ids.append(int(actions_message))
+        if header_message_id is not None:
+            all_message_ids.append(header_message_id)
+
+        await call.bot.delete_messages(
+            chat_id=call.message.chat.id,
+            message_ids=all_message_ids)

@@ -53,7 +53,7 @@ services:
 
   state_storage:
     image: redis:latest
-    container_name: secret_santa_state_storate
+    container_name: secret_santa_state_storage
     hostname: state_storage
     restart: always
     environment:

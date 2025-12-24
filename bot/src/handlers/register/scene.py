@@ -126,6 +126,10 @@ class ConfirmTimezoneScene(
             to_delete.append(await message.answer(text=msg))
             await asyncio.sleep(.5)
 
+        await message.answer(
+            text=messages.SHARE_REQUEST,
+            reply_markup=common_keyboards.HIDE)
+
         await self.wizard.exit()
 
         await asyncio.sleep(3)

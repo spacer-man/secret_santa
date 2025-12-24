@@ -28,7 +28,7 @@ class MediaType(enum.StrEnum):
 class User(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
     telegram_id: int = Field(unique=True, sa_type=BigInteger)
-    timezone: str = Field(max_length=32)
+    timezone: str = Field(max_length=8)
     registered_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(TIMESTAMP(timezone=True)))

@@ -30,6 +30,8 @@ def bot() -> Bot:
 def dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=setup_storage())
 
+    dp.include_router(handlers.main_router)
+
     registry = SceneRegistry(dp)
     registry.add(*handlers.all_scenes)
     dp.message.middleware(MediaGroupMiddleware())

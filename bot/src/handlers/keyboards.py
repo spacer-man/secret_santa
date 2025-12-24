@@ -5,15 +5,15 @@ from . import buttons
 
 
 CANCEL = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(
-        text=buttons.CANCEL,
-        callback_data=buttons.CANCEL)],
+    [InlineKeyboardButton(text=buttons.CANCEL, callback_data=buttons.CANCEL)],
 ])
 
 BACK = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(
-        text=buttons.BACK,
-        callback_data=buttons.BACK)],
+    [InlineKeyboardButton(text=buttons.BACK, callback_data=buttons.BACK)],
+])
+
+HIDE = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text=buttons.HIDE, callback_data=buttons.HIDE)]
 ])
 
 CONFIRM_OR_BACK = InlineKeyboardMarkup(inline_keyboard=[

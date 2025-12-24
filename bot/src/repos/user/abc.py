@@ -25,6 +25,11 @@ class NewUserArgs(TypedDict, total=False):
     telegram_id: Required[int]
 
 
+class EditUserArgs(TypedDict, total=False):
+    id: Required[UUID]
+    timezone: Required[str]
+
+
 class UserRepository(Protocol):
     def __init__(self, session: AsyncSession) -> None: ...
     async def get_one(
@@ -32,3 +37,4 @@ class UserRepository(Protocol):
             filter_by: Optional[dict[str, Any]] = None,
             ) -> UserDTO | None: ...
     async def create(self, **kwargs: Unpack[NewUserArgs]) -> UUID: ...
+    async def edit(self, **kwargs: Unpack[EditUserArgs]) -> None: ...

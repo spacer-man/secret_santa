@@ -5,13 +5,18 @@ from uuid import UUID
 
 from db import new_db_session
 from repos.user.abc import UserRepository
+from .exceptions import (
+    UserAlreadyRegisteredError,
+    UserIsNotRegisteredError
+)
 
 
-class UserAlreadyRegisteredError(Exception):
-    pass
+class NewUserArgs(TypedDict):
+    timezone: Required[str]
+    telegram_id: Required[int]
 
 
-class NewUserArgs(TypedDict, total=False):
+class EditUserTZArgs(TypedDict):
     timezone: Required[str]
     telegram_id: Required[int]
 
@@ -61,3 +66,29 @@ class UserService(object):
 
             await db_session.commit()
         return user_id
+
+    async def edit_user(
+            self,
+            **kwargs: Unpack[EditUserTZArgs],
+            ) -> None:
+        """
+        Edit user timezone if user was registered.
+        Else raise exception.
+
+        :return: :class:`None`
+        """
+        telegram_id = kwargs["telegram_id"]
+        timezone = kwargs["timezone"]
+
+        async with new_db_session() as db_session:
+            repo = self.repo_type(session=db_session)
+
+            if not (user := await repo.get_one(
+                filter_by={"telegram_id": telegram_id})):
+
+                raise UserIsNotRegisteredError(
+                    "User with telegram_id=%d already registered" % telegram_id)
+
+            await repo.edit(id=user.id, timezone=timezone)
+
+            await db_session.commit()

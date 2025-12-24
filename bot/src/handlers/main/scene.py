@@ -47,3 +47,7 @@ class MainScene(
     @on.callback_query(F.data == buttons.MY_WISHES)
     async def wishes_list(self, _) -> None:
         await self.wizard.goto(Scenes.WISHES_LIST)
+
+    @on.callback_query(F.data == buttons.EDIT_TIMEZONE)
+    async def edit_timezone(self, _) -> None:
+        await self.wizard.goto(Scenes.EDIT_TIMEZONE)

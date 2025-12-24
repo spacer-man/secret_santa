@@ -6,6 +6,9 @@ from handlers import buttons
 
 MAIN_MENU = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(
+        text=buttons.EDIT_TIMEZONE,
+        callback_data=buttons.EDIT_TIMEZONE)],
+    [InlineKeyboardButton(
         text=buttons.NEW_WISH,
         callback_data=buttons.NEW_WISH)],
     [InlineKeyboardButton(

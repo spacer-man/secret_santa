@@ -7,16 +7,15 @@ from aiogram.fsm.scene import Scene
 from aiogram.types import CallbackQuery
 from aiogram.types import Message
 
-from . import keyboards
 from . import messages
 from handlers import buttons
 from handlers import keyboards as common_keyboards
 from handlers.common.cancellable import CancellableScene
 from handlers.consts import Scenes
 from handlers.depends import user_service
-from handlers.register.utils import ALL_TIMEZONES
-from handlers.register.utils import clock_emoji
-from handlers.register.utils import tz_from_timeshift
+from handlers.utils.timezone import ALL_TIMEZONES
+from handlers.utils.timezone import clock_emoji
+from handlers.utils.timezone import tz_from_timeshift
 
 
 class RegistrationScene(
@@ -59,7 +58,7 @@ class RegistrationScene(
             ) -> None:
         await message.answer(
             text=messages.CHOOSE_TIMEZONE,
-            reply_markup=keyboards.TIMEZONE_MENU)
+            reply_markup=common_keyboards.TIMEZONE_MENU)
 
     @on.callback_query(F.data.in_(ALL_TIMEZONES))
     async def choose_timezone(self, _: CallbackQuery) -> None:

@@ -6,9 +6,9 @@ from typing import (
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
+from sqlmodel import select, update
 
-from .abc import NewUserArgs, UserDTO, UserRepository
+from .abc import EditUserArgs, NewUserArgs, UserDTO, UserRepository
 from db.models import User
 
 
@@ -35,3 +35,11 @@ class SQLModelUserRepository(UserRepository):
         self.session.add(new_user)
 
         return new_user.id
+
+    async def edit(self, **kwargs: Unpack[EditUserArgs]) -> None:
+        stmt = (
+            update(User)
+            .filter_by(id=kwargs["id"])
+            .values(timezone=kwargs["timezone"])
+        )
+        await self.session.execute(stmt)

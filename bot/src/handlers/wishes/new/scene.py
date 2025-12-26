@@ -11,14 +11,15 @@ from pydantic import ValidationError
 from . import keyboards
 from . import messages
 from . import utils
-from .types import NewWishData
+from .. import utils as wish_utils
+from ..types import NewWishData
 from db.models import MediaType
 from handlers import buttons
 from handlers import keyboards as common_keyboards
 from handlers.common.cancellable import CancellableScene
 from handlers.consts import Scenes
-from handlers.depends import wish_service
-from services.wish import WishMediaData
+from handlers.depends import notify_service, wish_service
+from services.wish import WishDTO, WishMediaData
 
 
 log = logging.getLogger()
@@ -88,10 +89,17 @@ class WishingScene(
             message: Message,
             wish: NewWishData,
             ) -> None:
+        bot = message.bot
+        if not bot:
+            return None
+
         await self.wizard.update_data({
             NEW_WISH_DATAKEY: wish.model_dump(mode="json")})
 
-        wish_messages = await utils.send_new_wish(message=message, wish=wish)
+        wish_messages = await wish_utils.send_wish(
+            chat_id=message.chat.id,
+            bot=bot,
+            wish=wish)
         confirm_message = await message.answer(
             text=messages.CONFIRM_NEW_WISH,
             reply_markup=keyboards.confirm_wish(has_media=bool(wish.media)))
@@ -219,18 +227,24 @@ class WishingScene(
 
             media: list[WishMediaData] = []
             if bot and wish.media:
-                media_ids = [media_item.file_id for media_item in wish.media]
+                media_ids = [media_item.data for media_item in wish.media]
                 async for file in utils.download_media(bot, media_ids):
                     media.append(WishMediaData(
                         data=file,
                         type=MediaType.IMAGE))
 
-            await wish_service.new_wish(
+            wish_id = await wish_service.new_wish(
                 author_telegram_id=wish.author_telegram_id,
                 text=wish.text,
                 text_entities=wish.text_entities,
                 effect_id=wish.effect_id,
                 media=media)
+            saved_wish = await wish_service.get_one(wish_id=wish_id)
+
+            if saved_wish:
+                await notify_service.new_wish_to_check(wish=saved_wish)
+            else:
+                log.warning("Failed to find new saved wish in DB to send on validation")
 
 
             alert = await message.answer(text=messages.THANKS_FOR_WISH)

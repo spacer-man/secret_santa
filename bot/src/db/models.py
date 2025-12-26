@@ -25,6 +25,12 @@ class MediaType(enum.StrEnum):
     VIDEO_NOTE = "video_note"
 
 
+class ValidStatus(enum.StrEnum):
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    ON_VALIDATION = "on_validation"
+
+
 class User(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
     telegram_id: int = Field(unique=True, sa_type=BigInteger)
@@ -43,6 +49,9 @@ class Wish(SQLModel, table=True):
     timestamp: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(TIMESTAMP(timezone=True)))
+    valid_status: ValidStatus = Field(
+        default=ValidStatus.ON_VALIDATION,
+        sa_column=Column(Enum(ValidStatus)))
 
 
 class Media(SQLModel, table=True):

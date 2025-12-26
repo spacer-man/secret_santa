@@ -31,6 +31,7 @@ def dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=setup_storage())
 
     dp.include_router(handlers.main_router)
+    dp.include_router(handlers.wish_validate_router)
 
     registry = SceneRegistry(dp)
     registry.add(*handlers.all_scenes)

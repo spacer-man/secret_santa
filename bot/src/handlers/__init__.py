@@ -3,6 +3,7 @@ from .main.router import main_router
 from .main.scene import MainScene
 from .register.scene import ConfirmTimezoneScene, RegistrationScene
 from .wishes import scenes as wishes_scenes
+from .wishes import wish_validate_router
 
 
 all_scenes = (
@@ -15,4 +16,4 @@ all_scenes = (
 )
 
 
-__all__ = ("all_scenes", "main_router")
+__all__ = ("all_scenes", "main_router", "wish_validate_router")

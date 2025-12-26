@@ -19,7 +19,7 @@ def media_by_data(data: bytes) -> InputFile:
 
 
 async def send_wish(
-        message: Message,
+        chat_id: int,
         bot: Bot,
         wish: WishDTO,
         ) -> list[Message]:
@@ -33,50 +33,64 @@ async def send_wish(
 
             for media_item in media:
                 await bot.send_chat_action(
-                    chat_id=message.chat.id,
+                    chat_id=chat_id,
                     action=ChatAction.UPLOAD_PHOTO)
+
+                if isinstance(media_item.data, bytes):
+                    media_data = media_by_data(media_item.data)
+                else:
+                    media_data = media_item.data
 
                 match media_item.type:
                     case MediaType.IMAGE:
                         media_group_builder.add_photo(
-                            media=media_by_data(media_item.data),
+                            media=media_data,
                             parse_mode=parse_mode)
 
                     case MediaType.VIDEO:
                         media_group_builder.add_video(
-                            media=media_by_data(media_item.data),
+                            media=media_data,
                             parse_mode=parse_mode)
 
-            wish_messages = await message.answer_media_group(
+            wish_messages = await bot.send_media_group(
+                chat_id=chat_id,
                 media=media_group_builder.build(),
                 message_effect_id=wish.effect_id)
         elif len(media) > 0:
             await bot.send_chat_action(
-                chat_id=message.chat.id,
+                chat_id=chat_id,
                 action=ChatAction.UPLOAD_PHOTO)
 
-            a_media = media[0]
-            match a_media.type:
+            first_media = media[0]
+            if isinstance(first_media.data, bytes):
+                media_data = media_by_data(first_media.data)
+            else:
+                media_data = first_media.data
+
+            match first_media.type:
                 case MediaType.IMAGE:
-                    wish_messages = [await message.answer_photo(
-                        photo=media_by_data(a_media.data),
+                    wish_messages = [await bot.send_photo(
+                        chat_id=chat_id,
+                        photo=media_data,
                         caption=wish.text,
                         parse_mode=parse_mode,
                         caption_entities=wish.text_entities,
                         message_effect_id=wish.effect_id)]
 
                 case MediaType.VIDEO:
-                    wish_messages = [await message.answer_video(
-                        video=media_by_data(a_media.data),
+                    wish_messages = [await bot.send_video(
+                        chat_id=chat_id,
+                        video=media_data,
                         caption=wish.text,
                         parse_mode=parse_mode,
                         caption_entities=wish.text_entities,
                         message_effect_id=wish.effect_id)]
     else:
         await bot.send_chat_action(
-            chat_id=message.chat.id,
+            chat_id=chat_id,
             action=ChatAction.TYPING)
-        wish_messages = [await message.answer(
+        wish_messages = [await bot.send_message(
+            chat_id=chat_id,
             text=wish.text,
             parse_mode=parse_mode,
             entities=wish.text_entities,

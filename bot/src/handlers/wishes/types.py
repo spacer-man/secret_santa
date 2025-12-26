@@ -8,7 +8,7 @@ from db.models import MediaType
 
 
 class MediaData(BaseModel):
-    file_id: str
+    data: str
     type: MediaType
 
 

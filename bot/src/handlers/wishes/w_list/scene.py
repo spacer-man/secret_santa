@@ -9,7 +9,7 @@ from aiogram.types import Message
 
 from . import keyboards
 from . import messages
-from . import utils
+from .. import utils
 from .keyboards import OptionPrefix
 from handlers import keyboards as common_keyboards
 from handlers.common.cancellable import CancellableScene
@@ -56,7 +56,10 @@ class WishesListScene(
 
         saved_messages: SavedMessages = {}
         for wish in user_wishes:
-            msgs = await utils.send_wish(message=message, bot=bot, wish=wish)
+            msgs = await utils.send_wish(
+                chat_id=message.chat.id,
+                bot=bot,
+                wish=wish)
             action_msg = await message.answer(
                 text=messages.ACTIONS_MESSAGE,
                 reply_markup=keyboards.wish_item_options(wish_id=wish.id))

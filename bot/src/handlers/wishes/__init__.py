@@ -1,5 +1,6 @@
 from .new.scene import WishingScene
 from .w_list.scene import WishesListScene
+from .validate.router import wish_validate_router
 
 
 scenes = (
@@ -8,4 +9,4 @@ scenes = (
 )
 
 
-__all__ = ("scenes",)
+__all__ = ("scenes", "wish_validate_router")

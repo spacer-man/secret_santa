@@ -15,7 +15,7 @@ from aiogram.types import MessageEntity
 from pydantic import BaseModel, Field
 
 from db import new_db_session
-from db.models import MediaType
+from db.models import MediaType, ValidStatus
 from repos.user.abc import UserRepository
 from repos.wish.abc import WishRepository
 from repos.media.abc import MediaRepository
@@ -40,7 +40,7 @@ class WishDTO(BaseModel):
     text_entities: list[MessageEntity] | None = Field(default=None)
     effect_id: str | None = Field(default=None)
     timestamp: datetime
-    media: Generator[MediaDTO]
+    media: Iterable[MediaDTO]
 
 
 # Args
@@ -169,6 +169,29 @@ class WishService(object):
 
         return wishes
 
+    async def get_one(self, wish_id: UUID) -> WishDTO | None:
+        """
+        Get a wish :class:`WishDTO`.
+
+        :returns: :class:`WishDTO`
+        """
+        async with new_db_session() as db_session:
+            user_repo = self.user_repo_type(session=db_session)
+            wish_repo = self.wish_repo_type(session=db_session)
+            media_repo = self.media_repo_type(session=db_session)
+
+            if wish := await wish_repo.get_one(wish_id=wish_id):
+                author = await user_repo.get_one(
+                    filter_by={"id": wish.author_id})
+                if author:
+                    return WishDTO.model_validate(obj={
+                        **wish.model_dump(),
+                        "author_telegram_id": author.telegram_id,
+                        "media": await self._wish_medias(
+                            wish_id=wish.id, media_repo=media_repo),
+                    })
+
+        return None
 
     async def delete(self, wish_id: UUID) -> None:
         """
@@ -183,5 +206,13 @@ class WishService(object):
 
             await media_repo.delete(filter_by={"wish_id": wish_id})
             await wish_repo.delete(filter_by={"id": wish_id})
+
+            await db_session.commit()
+
+    async def update_wish_status(self, wish_id: UUID, valid_status: ValidStatus) -> None:
+        async with new_db_session() as db_session:
+            wish_repo = self.wish_repo_type(session=db_session)
+
+            await wish_repo.edit(id=wish_id, valid_status=valid_status)
 
             await db_session.commit()

@@ -46,6 +46,8 @@ services:
       STATE_STORAGE_REDIS_URL: redis://:${STATE_STORAGE_PASSWORD}@state_storage:6379/0
 
       BOT_TOKEN: ${BOT_TOKEN}
+
+      WISH_VALIDATE_TG_IDS: ${WISH_VALIDATE_TG_IDS}
     volumes:
       - ./bot/logs:/app/logs
     networks:

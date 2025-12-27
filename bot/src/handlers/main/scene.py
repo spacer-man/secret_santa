@@ -2,7 +2,7 @@ from aiogram import F
 from aiogram.filters import CommandStart
 from aiogram.fsm.scene import on
 from aiogram.fsm.scene import Scene
-from aiogram.types import BufferedInputFile, CallbackQuery, FSInputFile, Message
+from aiogram.types import CallbackQuery, FSInputFile, Message
 
 from configs.labels import LabelsConfig
 

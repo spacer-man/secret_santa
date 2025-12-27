@@ -5,8 +5,10 @@ from typing import Any
 from aiogram import F
 from aiogram.filters import CommandStart, invert_f
 from aiogram.fsm.scene import on
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, FSInputFile, Message
 from pydantic import ValidationError
+
+from configs.labels import LabelsConfig
 
 from . import keyboards
 from . import messages
@@ -44,8 +46,9 @@ class WishingScene(
             return None
 
         await message.delete()
-        header = await message.answer(
-            text=messages.ENTER_NEW_WISH,
+        header = await message.answer_photo(
+            photo=FSInputFile(path=LabelsConfig().wish_new_label),
+            caption=messages.ENTER_NEW_WISH,
             reply_markup=common_keyboards.CANCEL)
         await self.wizard.update_data({
             HEADER_MESSAGE_DATAKEY: header.message_id})

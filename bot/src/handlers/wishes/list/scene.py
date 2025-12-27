@@ -4,8 +4,10 @@ from uuid import UUID
 
 from aiogram import F
 from aiogram.fsm.scene import on
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, FSInputFile
 from aiogram.types import Message
+
+from configs.labels import LabelsConfig
 
 from . import keyboards
 from . import messages
@@ -50,8 +52,8 @@ class WishesListScene(
             return None
 
         await message.delete()
-        header = await message.answer(
-            text="*YOUR WISHES*",
+        header = await message.answer_photo(
+            photo=FSInputFile(path=LabelsConfig().wish_list_label),
             reply_markup=common_keyboards.BACK)
 
         saved_messages: SavedMessages = {}
@@ -62,7 +64,8 @@ class WishesListScene(
                 wish=wish)
             action_msg = await message.answer(
                 text=messages.ACTIONS_MESSAGE,
-                reply_markup=keyboards.wish_item_options(wish_id=wish.id))
+                reply_markup=keyboards.wish_item_options(wish_id=wish.id),
+                reply_to_message_id=msgs[0].message_id)
             saved_messages[str(action_msg.message_id)] = [
                 msg.message_id for msg in msgs]
 

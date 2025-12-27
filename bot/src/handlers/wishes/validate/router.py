@@ -16,7 +16,7 @@ wish_validate_router = Router(name="wishes.validate")
 
 @wish_validate_router.callback_query(
         F.data.startswith(OptionPrefix.APPROVE)
-        or F.data.startswith(OptionPrefix.REJECT)
+        | F.data.startswith(OptionPrefix.REJECT)
         )
 async def approve_or_reject_wish(call: CallbackQuery) -> None:
     callback_data = call.data

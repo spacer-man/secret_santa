@@ -7,6 +7,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install -r requirements.txt;
 COPY logging.yaml logging.yaml
+COPY labels /labels
 
 COPY src .
 

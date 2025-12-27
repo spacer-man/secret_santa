@@ -34,7 +34,7 @@ class RegistrationScene(
             )
 
         greeting = await message.answer(
-            text=messages.FIRST_GREETING % {"name": f", {name}"})
+            text=messages.FIRST_GREETING % {"name": f", *{name}*"})
         await self.choose_timezone_menu(message=message)
         
         await asyncio.sleep(5)
@@ -127,6 +127,7 @@ class ConfirmTimezoneScene(
         await message.answer(
             text=messages.SHARE_REQUEST,
             reply_markup=common_keyboards.HIDE)
+        await asyncio.sleep(.5)
 
         to_delete.append(await message.answer(text=messages.WISH_OFFER))
         await asyncio.sleep(.5)

@@ -2,7 +2,9 @@ from aiogram import F
 from aiogram.filters import CommandStart
 from aiogram.fsm.scene import on
 from aiogram.fsm.scene import Scene
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, FSInputFile, Message
+
+from configs.labels import LabelsConfig
 
 from . import keyboards
 from handlers import buttons
@@ -36,8 +38,8 @@ class MainScene(
         except Exception:
             pass
 
-        await message.answer(
-            text="*MAIN MENU*",
+        await message.answer_photo(
+            photo=FSInputFile(path=LabelsConfig().menu_label),
             reply_markup=keyboards.MAIN_MENU)
 
     @on.callback_query(F.data == buttons.NEW_WISH)

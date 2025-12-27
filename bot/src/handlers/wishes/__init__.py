@@ -1,5 +1,5 @@
 from .new.scene import WishingScene
-from .w_list.scene import WishesListScene
+from .list.scene import WishesListScene
 from .validate.router import wish_validate_router
 
 

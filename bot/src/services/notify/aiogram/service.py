@@ -46,14 +46,26 @@ class AiogramNotifyService(NotifyService):
 
                 return reciever
             case ChoiceStrategy.ITERABLE:
-                recievers = self.reciever_tg_ids[:] + [self.reciever_tg_ids[0]]
-                # TODO: filter author
+                if len(self.reciever_tg_ids) == 1:
+                    reciever = self.reciever_tg_ids[0]
+                else:
+                    recievers = list(filter(
+                        lambda r: r != author,
+                        self.reciever_tg_ids[:]))
 
-                last_reciever_id = 0
-                if self.last_reciever is not None:
-                    last_reciever_id = recievers.index(self.last_reciever)
+                    if len(recievers) == 1:
+                        reciever = recievers[0]
 
-                return recievers[last_reciever_id + 1]
+                    else:
+                        last_reciever_id = -1
+                        if self.last_reciever is not None:
+                            last_reciever_id = recievers.index(self.last_reciever)
+
+                        recievers += [recievers[0]]
+                        reciever = recievers[last_reciever_id + 1]
+
+                self.last_reciever = reciever
+                return reciever
 
     async def new_wish_to_check(self, wish: WishDTO) -> None:
         reciever = self._get_reciever()

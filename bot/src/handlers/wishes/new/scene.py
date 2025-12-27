@@ -19,7 +19,7 @@ from handlers import keyboards as common_keyboards
 from handlers.common.cancellable import CancellableScene
 from handlers.consts import Scenes
 from handlers.depends import notify_service, wish_service
-from services.wish import WishDTO, WishMediaData
+from services.wish import WishMediaData
 
 
 log = logging.getLogger()
@@ -139,6 +139,9 @@ class WishingScene(
         saved_text_entities = saved_wish.text_entities if saved_wish else None
 
         if not (message_text or saved_text):
+            alert = await message.answer(text=messages.WISH_TEXT_REQUIRED)
+            await asyncio.sleep(3)
+            await alert.delete()
             return None
 
         updated_entities = saved_text_entities

@@ -118,7 +118,6 @@ class ConfirmTimezoneScene(
         alerts = (
             messages.SUCCESSFULL_SELECT_TIMEZONE,
             messages.SUCCESSFULL_REGISTATION,
-            messages.WISH_OFFER,
         )
         to_delete = []
         for msg in alerts:
@@ -128,6 +127,9 @@ class ConfirmTimezoneScene(
         await message.answer(
             text=messages.SHARE_REQUEST,
             reply_markup=common_keyboards.HIDE)
+
+        to_delete.append(await message.answer(text=messages.WISH_OFFER))
+        await asyncio.sleep(.5)
 
         await self.wizard.exit()
 

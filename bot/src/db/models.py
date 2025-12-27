@@ -58,4 +58,4 @@ class Media(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
     wish_id: UUID = Field(foreign_key="wish.id")
     type: MediaType = Field(sa_column=Column(Enum(MediaType)))
-    data: bytes
+    data: bytes = Field(max_length=10 * 2 ** 20)

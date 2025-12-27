@@ -15,7 +15,6 @@ from . import messages
 from . import utils
 from .. import utils as wish_utils
 from ..types import NewWishData
-from db.models import MediaType
 from handlers import buttons
 from handlers import keyboards as common_keyboards
 from handlers.common.cancellable import CancellableScene
@@ -27,6 +26,7 @@ from services.wish import WishMediaData
 log = logging.getLogger()
 
 
+MAX_MEDIA_SIZE = 10 * 2 ** 20
 HEADER_MESSAGE_DATAKEY = "header_message_id"
 NEW_WISH_DATAKEY = "new_wish"
 WISH_MESSAGES_DATAKEY = "wish_messages"
@@ -135,6 +135,26 @@ class WishingScene(
         message_text_entities = message.entities or message.caption_entities
         media = utils.select_media(message=message, media_group=media_group)
 
+        if media_group:
+            messages_to_delete: list[Message] = []
+            for media_item, media_msg in zip(media, media_group):
+                if (media_item.file_size
+                    and media_item.file_size > MAX_MEDIA_SIZE):
+                    messages_to_delete.append(await message.answer(
+                        text=messages.IS_TOO_LARGE_MEDIA_ERROR,
+                        reply_to_message_id=media_msg.message_id))
+
+            if messages_to_delete:
+                media = [
+                    media_item for media_item in media
+                    if (media_item.file_size
+                        and media_item.file_size <= MAX_MEDIA_SIZE)
+                ]
+                await asyncio.sleep(3)
+                for msg in messages_to_delete:
+                    await asyncio.sleep(2)
+                    await msg.delete()
+
         saved_wish = await self.saved_wish()
         saved_text = saved_wish.text if saved_wish else None
         saved_media = saved_wish.media if saved_wish else None
@@ -230,14 +250,15 @@ class WishingScene(
                 message_id=header_message_id)
 
         if wish:
+            alert = await message.answer(text=messages.WISH_SAVING)
 
             media: list[WishMediaData] = []
             if bot and wish.media:
-                media_ids = [media_item.data for media_item in wish.media]
-                async for file in utils.download_media(bot, media_ids):
-                    media.append(WishMediaData(
-                        data=file,
-                        type=MediaType.IMAGE))
+                async for media_file in utils.download_media(bot, wish.media):
+                    if isinstance(media_file.data, bytes):
+                        media.append(WishMediaData(
+                            data=media_file.data,
+                            type=media_file.type))
 
             wish_id = await wish_service.new_wish(
                 author_telegram_id=wish.author_telegram_id,
@@ -245,18 +266,19 @@ class WishingScene(
                 text_entities=wish.text_entities,
                 effect_id=wish.effect_id,
                 media=media)
-            saved_wish = await wish_service.get_one(wish_id=wish_id)
 
-            if saved_wish:
+            if saved_wish := await wish_service.get_one(wish_id=wish_id):
                 await notify_service.new_wish_to_check(wish=saved_wish)
             else:
                 log.warning("Failed to find new saved wish in DB to send on validation")
 
+            await alert.delete()
 
             alert = await message.answer(text=messages.THANKS_FOR_WISH)
             await self.wizard.exit()
             await asyncio.sleep(3)
             await alert.delete()
+
             return None
 
         alert = await message.answer(text=messages.UNKNOWN_INTERNAL_ERROR)

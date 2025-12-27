@@ -16,45 +16,62 @@ def select_media(
         for item_message in media_group:
 
             if item_message.photo:
+                media_item = item_message.photo[-1]
                 medias.append(MediaData(
-                    data=item_message.photo[-1].file_id,
+                    data=media_item.file_id,
+                    file_size=media_item.file_size,
                     type=MediaType.IMAGE))
 
             elif item_message.video:
+                media_item = item_message.video
                 medias.append(MediaData(
-                    data=item_message.video.file_id,
+                    data=media_item.file_id,
+                    file_size=media_item.file_size,
                     type=MediaType.VIDEO))
 
             elif item_message.video_note:
+                media_item = item_message.video_note
                 medias.append(MediaData(
-                    data=item_message.video_note.file_id,
-                    type=MediaType.VIDEO))
+                    data=media_item.file_id,
+                    file_size=media_item.file_size,
+                    type=MediaType.VIDEO_NOTE))
 
     elif message.photo:
+        media_item = message.photo[-1]
         medias.append(MediaData(
-            data=message.photo[-1].file_id,
+            data=media_item.file_id,
+            file_size=media_item.file_size,
             type=MediaType.IMAGE))
 
     elif message.video:
+        media_item = message.video
         medias.append(MediaData(
-            data=message.video.file_id,
+            data=media_item.file_id,
+            file_size=media_item.file_size,
             type=MediaType.VIDEO))
 
     elif message.video_note:
+        media_item = message.video_note
         medias.append(MediaData(
-            data=message.video_note.file_id,
-            type=MediaType.VIDEO))
+            data=media_item.file_id,
+            file_size=media_item.file_size,
+            type=MediaType.VIDEO_NOTE))
 
     return medias
 
 
 async def download_media(
         bot: Bot,
-        media_ids: list[str],
-        ) -> AsyncGenerator[bytes]:
-    for media_id in media_ids:
-        file_info = await bot.get_file(file_id=media_id)
-        if file_path := file_info.file_path:
-            file = await bot.download_file(file_path=file_path)
-            if file:
-                yield file.read()
+        media: list[MediaData],
+        ) -> AsyncGenerator[MediaData]:
+    for media_item in media:
+        if isinstance(media_item.data, str):
+            file_info = await bot.get_file(file_id=media_item.data)
+            if file_path := file_info.file_path:
+                file = await bot.download_file(file_path=file_path)
+                if file:
+                    data = file.read()
+                    yield MediaData(
+                        data=data,
+                        file_size=len(data),
+                        type=media_item.type)

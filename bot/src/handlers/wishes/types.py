@@ -8,7 +8,8 @@ from db.models import MediaType
 
 
 class MediaData(BaseModel):
-    data: str
+    data: str | bytes
+    file_size: Optional[int] = Field(default=None)  # File size in bytes
     type: MediaType
 
 

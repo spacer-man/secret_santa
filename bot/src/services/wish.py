@@ -29,7 +29,7 @@ class WishAuthorNotFoundError(Exception):
 # DTOs
 class MediaDTO(BaseModel):
     id: UUID
-    data: bytes
+    data: bytes = Field(max_length=10 * 2 ** 20)
     type: MediaType
 
 class WishDTO(BaseModel):

@@ -9,7 +9,7 @@ from typing import (
 )
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import MediaType
@@ -18,7 +18,7 @@ from db.models import MediaType
 class MediaDTO(BaseModel):
     id: UUID
     wish_id: UUID
-    data: bytes
+    data: bytes = Field(max_length=10 * 2 ** 20)
     type: MediaType
 
 

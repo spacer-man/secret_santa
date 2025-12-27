@@ -3,7 +3,6 @@ from datetime import datetime
 
 from aiogram import F
 from aiogram.fsm.scene import on
-from aiogram.fsm.scene import Scene
 from aiogram.types import CallbackQuery
 from aiogram.types import Message
 
@@ -19,7 +18,7 @@ from handlers.utils.timezone import tz_from_timeshift
 
 
 class EditTimezoneScene(
-        Scene,
+        CancellableScene,
         state=Scenes.EDIT_TIMEZONE,
         ):
     """Edit timezone scene"""
@@ -41,7 +40,7 @@ class EditTimezoneScene(
             ) -> None:
         await message.answer(
             text=messages.CHOOSE_TIMEZONE,
-            reply_markup=common_keyboards.TIMEZONE_MENU)
+            reply_markup=common_keyboards.TIMEZONE_MENU_OR_CANCEL)
 
     @on.callback_query(F.data.in_(ALL_TIMEZONES))
     async def set_timezone(self, _: CallbackQuery) -> None:

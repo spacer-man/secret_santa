@@ -6,12 +6,22 @@ from handlers.utils.timezone import ALL_TIMEZONES
 from handlers.utils.timezone import batch
 
 
-TIMEZONE_MENU = InlineKeyboardMarkup(inline_keyboard=[
+_TIMEZONE_MENU_BUTTONS = [
     [
         InlineKeyboardButton(text=timezone, callback_data=timezone)
         for timezone in chunk
     ]
     for chunk in batch(ALL_TIMEZONES, size=5)
+]
+
+
+TIMEZONE_MENU = InlineKeyboardMarkup(
+    inline_keyboard=_TIMEZONE_MENU_BUTTONS)
+
+
+TIMEZONE_MENU_OR_CANCEL = InlineKeyboardMarkup(inline_keyboard=[
+    *_TIMEZONE_MENU_BUTTONS,
+    [InlineKeyboardButton(text=buttons.CANCEL, callback_data=buttons.CANCEL)],
 ])
 
 

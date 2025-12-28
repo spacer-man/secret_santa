@@ -52,6 +52,7 @@ class Wish(SQLModel, table=True):
     valid_status: ValidStatus = Field(
         default=ValidStatus.ON_VALIDATION,
         sa_column=Column(Enum(ValidStatus)))
+    recipients_count: int = Field(default=0)
 
 
 class Media(SQLModel, table=True):

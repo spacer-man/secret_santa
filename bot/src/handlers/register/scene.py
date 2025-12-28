@@ -134,7 +134,8 @@ class ConfirmTimezoneScene(
         await message.answer(
             text=messages.SUPPORT_REQUEST % {
                 "support_link": SupportConfig().author_support_link},
-            reply_markup=common_keyboards.SUPPORT_OR_HIDE)
+            reply_markup=common_keyboards.SUPPORT_OR_HIDE,
+            disable_web_page_preview=True)
         await asyncio.sleep(.5)
 
         to_delete.append(await message.answer(text=messages.WISH_OFFER))

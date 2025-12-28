@@ -51,10 +51,12 @@ CONFIRM_OR_BACK = InlineKeyboardMarkup(inline_keyboard=[
 ])
 
 SUPPORT_OR_HIDE = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(
-        text=buttons.SUPPORT,
-        url=SupportConfig().author_support_link)],
-    [InlineKeyboardButton(
+    [
+        InlineKeyboardButton(
             text=buttons.HIDE,
-            callback_data=buttons.HIDE)],
+            callback_data=buttons.HIDE),
+        InlineKeyboardButton(
+            text=buttons.SUPPORT,
+            url=SupportConfig().author_support_link),
+    ],
 ])

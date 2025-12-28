@@ -7,6 +7,8 @@ from aiogram.fsm.scene import Scene
 from aiogram.types import CallbackQuery
 from aiogram.types import Message
 
+from configs.support import SupportConfig
+
 from . import messages
 from handlers import buttons
 from handlers import keyboards as common_keyboards
@@ -127,6 +129,12 @@ class ConfirmTimezoneScene(
         await message.answer(
             text=messages.SHARE_REQUEST,
             reply_markup=common_keyboards.HIDE)
+        await asyncio.sleep(.5)
+
+        await message.answer(
+            text=messages.SUPPORT_REQUEST % {
+                "support_link": SupportConfig().author_support_link},
+            reply_markup=common_keyboards.SUPPORT_OR_HIDE)
         await asyncio.sleep(.5)
 
         to_delete.append(await message.answer(text=messages.WISH_OFFER))

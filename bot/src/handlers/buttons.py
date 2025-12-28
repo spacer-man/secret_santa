@@ -15,3 +15,5 @@ EDIT_TIMEZONE = "🌐 Изменить часовой пояс"
 APPROVE_WISH = "✅ Да, одобрить"
 REJECT_WISH = "❌ Отклонить"
 HIDE_WISH = "❌ Закрыть ❌"
+
+SUPPORT = "↗️ Поддержать"

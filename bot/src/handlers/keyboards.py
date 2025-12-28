@@ -1,6 +1,8 @@
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.types import InlineKeyboardButton
 
+from configs.support import SupportConfig
+
 from . import buttons
 from handlers.utils.timezone import ALL_TIMEZONES
 from handlers.utils.timezone import batch
@@ -45,5 +47,16 @@ CONFIRM_OR_BACK = InlineKeyboardMarkup(inline_keyboard=[
         InlineKeyboardButton(
             text=buttons.BACK,
             callback_data=buttons.BACK),
+    ],
+])
+
+SUPPORT_OR_HIDE = InlineKeyboardMarkup(inline_keyboard=[
+    [
+        InlineKeyboardButton(
+            text=buttons.SUPPORT,
+            url=SupportConfig().author_support_link),
+        InlineKeyboardButton(
+            text=buttons.HIDE,
+            callback_data=buttons.HIDE),
     ],
 ])

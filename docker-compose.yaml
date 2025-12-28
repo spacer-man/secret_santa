@@ -48,6 +48,7 @@ services:
       BOT_TOKEN: ${BOT_TOKEN}
 
       WISH_VALIDATE_TG_IDS: ${WISH_VALIDATE_TG_IDS}
+      AUTHOR_SUPPORT_LINK: ${AUTHOR_SUPPORT_LINK}
     volumes:
       - ./bot/logs:/app/logs
     networks:

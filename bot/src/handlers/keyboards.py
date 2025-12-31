@@ -60,3 +60,9 @@ SUPPORT_OR_HIDE = InlineKeyboardMarkup(inline_keyboard=[
             url=SupportConfig().author_support_link),
     ],
 ])
+
+OPEN_WISH = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(
+        text=buttons.OPEN_WISH,
+        callback_data=buttons.OPEN_WISH)],
+])

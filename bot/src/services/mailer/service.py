@@ -60,7 +60,12 @@ class MailerService(object):
                 filter_by={"timezone": timezone})
 
         for user in users:
-            await self.send_wish(reciever=user.telegram_id)
+            try:
+                await self.send_wish(reciever=user.telegram_id)
+            except Exception:
+                log.warning(
+                    f"Failed to send wish "
+                    "to user with tg_id: {user.telegram_id}")
 
     def is_ny_has_come(self) -> int | None:
         """

@@ -1,4 +1,4 @@
-from .core import UserService
+from .service import UserService
 from .exceptions import UserServiceException
 from .exceptions import UserIsNotRegisteredError
 from .exceptions import UserAlreadyRegisteredError

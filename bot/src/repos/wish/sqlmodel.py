@@ -20,6 +20,39 @@ class SQLModelWishRepository(WishRepository):
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def get_with_min_recipients(
+            self,
+            recipient: Optional[UUID],
+            ) -> Generator[WishDTO]:
+        """
+        Get wishes with minimal recipients count exclude recipient.
+
+        :args:
+            :param recipient: User recipient ID in DB.
+            :type recipient: `UUID`
+        :returns: :class:`Generator[WishDTO]`
+        """
+        stmt = select(Wish)
+        if recipient: stmt = stmt.where(Wish.id != recipient)
+        stmt = stmt.order_by(Wish.recipients_count)
+
+        query_result = await self.session.execute(stmt)
+        scalars = query_result.scalars()
+        min_recipients_count = min(scalars, key=lambda w: w.recipients_count)
+        wishes = (
+            WishDTO.model_validate({
+                **wish.model_dump(),
+                "text_entities": (
+                    json.loads(wish.text_entities)
+                    if wish.text_entities else None
+                ),
+            })
+            for wish in query_result.scalars()
+            if wish.recipients_count == min_recipients_count
+        )
+
+        return wishes
+
     async def get_one(self, wish_id: UUID) -> WishDTO | None:
         stmt = select(Wish).filter_by(id=wish_id)
 

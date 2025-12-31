@@ -44,6 +44,20 @@ class EditWishArgs(TypedDict):
 
 class WishRepository(Protocol):
     def __init__(self, session: AsyncSession) -> None: ...
+
+    async def get_with_min_recipients(
+            self,
+            recipient: Optional[UUID],
+            ) -> Generator[WishDTO]:
+        """
+        Get wishes with minimal recipients count exclude recipient.
+
+        :args:
+            :param recipient: User recipient ID in DB.
+            :type recipient: `Optional[UUID]`
+        :returns: :class:`Generator[WishDTO]`
+        """
+        ...
     async def get_one(self, wish_id: UUID) -> WishDTO | None: ...
     async def get_many(
             self,

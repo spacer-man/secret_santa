@@ -1,9 +1,10 @@
+import asyncio
+
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, FSInputFile, Message
+from aiogram.types import CallbackQuery, Message
 
 from . import messages
 from .. import utils as wish_utils
-from configs.labels import LabelsConfig
 from handlers import buttons
 from handlers.depends import wish_service
 
@@ -19,14 +20,15 @@ async def hide_message(call: CallbackQuery) -> None:
         return None
     chat_id = message.chat.id
 
-    await message.delete()
-    await message.answer_photo(
-        photo=FSInputFile(path=LabelsConfig().opened_gift))
-
+    gift_header = await message.edit_caption(caption=messages.OPENED_WISH)
     wish = await wish_service.wish_to_send(reciever=message.chat.id)
 
     if not wish:
-        await message.answer(text=messages.HAVE_NO_WISH)
+        alert = await message.answer(text=messages.HAVE_NO_WISH)
+        await asyncio.sleep(3)
+        await alert.delete()
+        if isinstance(gift_header, Message):
+            await gift_header.delete()
         return None
 
     await wish_utils.send_wish(

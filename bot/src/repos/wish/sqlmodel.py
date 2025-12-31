@@ -13,7 +13,7 @@ from sqlmodel import delete, select, update
 from .abc import EditWishArgs, NewWishArgs
 from .abc import WishDTO
 from .abc import WishRepository
-from db.models import Wish
+from db.models import ValidStatus, Wish
 
 
 class SQLModelWishRepository(WishRepository):
@@ -32,13 +32,15 @@ class SQLModelWishRepository(WishRepository):
             :type recipient: `UUID`
         :returns: :class:`Generator[WishDTO]`
         """
-        stmt = select(Wish)
+        stmt = select(Wish).filter_by(valid_status=ValidStatus.APPROVED)
         if recipient: stmt = stmt.where(Wish.id != recipient)
         stmt = stmt.order_by(Wish.recipients_count)
 
         query_result = await self.session.execute(stmt)
-        scalars = query_result.scalars()
-        min_recipients_count = min(scalars, key=lambda w: w.recipients_count)
+        scalars = query_result.scalars().all()
+        min_recipients_count: int = min(
+            scalars, key=lambda w: w.recipients_count
+        ).recipients_count
         wishes = (
             WishDTO.model_validate({
                 **wish.model_dump(),
@@ -47,7 +49,7 @@ class SQLModelWishRepository(WishRepository):
                     if wish.text_entities else None
                 ),
             })
-            for wish in query_result.scalars()
+            for wish in scalars
             if wish.recipients_count == min_recipients_count
         )
 

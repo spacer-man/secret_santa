@@ -8,7 +8,7 @@ DELETE = "🗑️ Удалить"
 DELETE_WISH = "🗑️ Удалить пожелание"
 HIDE = "➖ Скрыть"
 EDIT_TIMEZONE = "🌐 Изменить часовой пояс"
-OPEN_WISH = "📬 Открыть"    # "🎁 Открыть"
+OPEN_WISH = "🎁 Открыть 🎁"    # "📬 Открыть"
 
 APPROVE_WISH = "✅ Да, одобрить"
 REJECT_WISH = "❌ Отклонить"

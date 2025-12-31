@@ -1,5 +1,8 @@
+import logging
 from datetime import datetime, timezone
-from apscheduler.schedulers.background import BackgroundScheduler
+
+from apscheduler.executors.asyncio import AsyncIOExecutor
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.schedulers.base import BaseScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -8,8 +11,12 @@ from services.mailer.service import MailerService
 from .bot import bot
 
 
+log = logging.getLogger(__name__)
+
+
 def setup_background_tasks() -> BaseScheduler:
-    sheduler = BackgroundScheduler()
+    sheduler = AsyncIOScheduler()
+    sheduler.add_executor(AsyncIOExecutor(), "asyncio")
 
     # ====== Mailer Service ====== #
     mailer = MailerService(bot=bot(), user_repo_type=SQLModelUserRepository)

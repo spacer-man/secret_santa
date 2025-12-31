@@ -1,5 +1,6 @@
 import json
 import random
+import time
 from datetime import datetime
 from typing import (
     AsyncGenerator,
@@ -267,13 +268,15 @@ class WishService(object):
             recipient = await user_repo.get_one(
                 filter_by={"telegram_id": reciever})
 
-            wishes = list(await wish_repo.get_with_min_recipients(
-                recipient=recipient.id if recipient else None))
+            wishes = list(
+                await wish_repo.get_with_min_recipients(
+                    recipient=recipient.id if recipient else None))
 
-            if not wishes:
+            if len(wishes) == 0:
                 return None
 
             wish_author = None
+            random.seed(time.perf_counter())
             wish = random.choice(wishes)
             while not wish_author:
                 wish = random.choice(wishes)

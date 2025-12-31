@@ -1,3 +1,6 @@
+import logging
+import random
+import time
 from datetime import datetime, timedelta, timezone
 from aiogram import Bot
 from aiogram.types import FSInputFile
@@ -7,6 +10,9 @@ from configs.labels import LabelsConfig
 from db import new_db_session
 from handlers import keyboards as common_keyboards
 from repos.user.abc import UserRepository
+
+
+log = logging.getLogger(__name__)
 
 
 class MailerService(object):
@@ -29,23 +35,24 @@ class MailerService(object):
             :type reciever: `int`
         :return: `None`
         """
+
+        random.seed(time.perf_counter())
+        color = random.choice(("white", "red", "blue"))
         await self.bot.send_photo(
             chat_id=reciever,
-            photo=FSInputFile(LabelsConfig().closed_gift),
+            photo=FSInputFile(LabelsConfig().gift(color)),
             caption=messages.NEW_WISH_ALERT,
             reply_markup=common_keyboards.OPEN_WISH)
 
-    async def send_wishes(self, offset: int) -> None:
+    async def send_wishes(self, timezone: str) -> None:
         """
         Send wishes for users wish timezone UTC hour offset;
 
         :args:
-            :param offset: Timezone UTC hour offset;
-            :type offset: `int`
+            :param timezone: Timezone in format UTC+XX;
+            :type timezone: `str`
         :return: `None`
         """
-        timezone = "UTC" + ("+" if offset >= 0 else "") + str(offset)
-
         async with new_db_session() as db_session:
             user_repo = self.user_repo_type(session=db_session)
 
@@ -87,4 +94,11 @@ class MailerService(object):
         :return: `None`
         """
         if (ny_offset := self.is_ny_has_come()) is not None:
-            await self.send_wishes(offset=ny_offset)
+            timezone = (
+                "UTC"
+                + ("+" if ny_offset >= 0 else "")
+                + str(ny_offset)
+            )
+
+            log.info(f"New Year has come in {timezone}!")
+            await self.send_wishes(timezone=timezone)

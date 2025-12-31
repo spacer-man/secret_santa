@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings
 
@@ -19,10 +20,5 @@ class LabelsConfig(BaseSettings):
     def wish_new_label(self) -> Path:
         return (self.ROOT_DIR / f"wish.new.{self.size}.png")
 
-    @property
-    def closed_gift(self) -> Path:
-        return (self.ROOT_DIR / f"gift.closed.{self.size}.png")
-
-    @property
-    def opened_gift(self) -> Path:
-        return (self.ROOT_DIR / f"gift.opened.{self.size}.png")
+    def gift(self, color: Literal["white", "red", "blue"]) -> Path:
+        return (self.ROOT_DIR / f"gift.{color}.{self.size}.png")

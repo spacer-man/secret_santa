@@ -11,6 +11,9 @@ log = logging.getLogger()
 async def main():
     await db.setup_relations()
 
+    bg_tasks = setup.setup_background_tasks()
+    bg_tasks.start()
+
     bot = setup.bot()
     dp = setup.dispatcher()
 

@@ -1,5 +1,6 @@
 from typing import (
     Any,
+    Generator,
     Optional,
     Unpack,
 )
@@ -29,6 +30,21 @@ class SQLModelUserRepository(UserRepository):
             return UserDTO.model_validate(user, from_attributes=True)
 
         return None
+
+    async def get_many(
+            self,
+            filter_by: Optional[dict[str, Any]] = None,
+            ) -> Generator[UserDTO]:
+        stmt = select(User)
+        if filter_by:
+            stmt = stmt.filter_by(**filter_by)
+
+        query_result = await self.session.execute(stmt)
+        users = (
+            UserDTO.model_validate(user, from_attributes=True)
+            for user in query_result.scalars()
+        )
+        return users
 
     async def create(self, **kwargs: Unpack[NewUserArgs]) -> UUID:
         new_user = User(**kwargs)

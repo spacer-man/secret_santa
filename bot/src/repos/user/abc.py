@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import (
     Any,
+    Generator,
     Optional,
     Protocol,
     Required,
@@ -36,5 +37,9 @@ class UserRepository(Protocol):
             self,
             filter_by: Optional[dict[str, Any]] = None,
             ) -> UserDTO | None: ...
+    async def get_many(
+            self,
+            filter_by: Optional[dict[str, Any]] = None,
+            ) -> Generator[UserDTO]: ...
     async def create(self, **kwargs: Unpack[NewUserArgs]) -> UUID: ...
     async def edit(self, **kwargs: Unpack[EditUserArgs]) -> None: ...

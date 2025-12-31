@@ -14,7 +14,7 @@ def setup_background_tasks() -> BaseScheduler:
     # ====== Mailer Service ====== #
     mailer = MailerService(bot=bot(), user_repo_type=SQLModelUserRepository)
     sheduler.add_job(
-        func=mailer.check_ny_and_send_wishes(),
+        func=mailer.check_ny_and_send_wishes,
         trigger=IntervalTrigger(
             hours=1,
             start_date=datetime(2025, 12, 1),

@@ -18,3 +18,11 @@ class LabelsConfig(BaseSettings):
     @property
     def wish_new_label(self) -> Path:
         return (self.ROOT_DIR / f"wish.new.{self.size}.png")
+
+    @property
+    def closed_gift(self) -> Path:
+        return (self.ROOT_DIR / f"gift.closed.{self.size}.png")
+
+    @property
+    def opened_gift(self) -> Path:
+        return (self.ROOT_DIR / f"gift.opened.{self.size}.png")

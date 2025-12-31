@@ -1,4 +1,5 @@
 import json
+import random
 from datetime import datetime
 from typing import (
     AsyncGenerator,
@@ -58,6 +59,9 @@ class NewWishArgs(TypedDict):
 
 # Service
 class WishService(object):
+    """
+    Serfice for manipulating with wish.
+    """
     def __init__(
             self,
             user_repo_type: type[UserRepository],
@@ -144,10 +148,16 @@ class WishService(object):
                     wish_id=wish.id, media_repo=media_repo),
             })
 
-    async def my_wishes(self, author_telegram_id: int) -> AsyncGenerator[WishDTO]:
+    async def my_wishes(
+            self,
+            author_telegram_id: int,
+            ) -> AsyncGenerator[WishDTO]:
         """
         Get wishes :class:`Generator`.
 
+        :args:
+            :param author_telegram_id: Author Telegram ID;
+            :type wish_id: `int`
         :returns: :class:`Generator[WishDTO]`
         """
         async with new_db_session() as db_session:
@@ -173,6 +183,9 @@ class WishService(object):
         """
         Get a wish :class:`WishDTO`.
 
+        :args:
+            :param wish_id: Wish DB id;
+            :type wish_id: `UUID`
         :returns: :class:`WishDTO`
         """
         async with new_db_session() as db_session:
@@ -198,6 +211,9 @@ class WishService(object):
         Remove wish by id.
         If hasn't wish with specified id than pass.
 
+        :args:
+            :param wish_id: Wish DB id;
+            :type wish_id: `UUID`
         :returns: :class:`None`
         """
         async with new_db_session() as db_session:
@@ -209,10 +225,64 @@ class WishService(object):
 
             await db_session.commit()
 
-    async def update_wish_status(self, wish_id: UUID, valid_status: ValidStatus) -> None:
+    async def update_wish_status(
+            self,
+            wish_id: UUID,
+            valid_status: ValidStatus,
+            ) -> None:
+        """
+        Update valid wish status.
+        If wish with current id is not exist, than do nothing.
+
+        :args:
+            :param wish_id: Wish DB id;
+            :type wish_id: `UUID`
+            :param valid_status: New wish valid status;
+            :type valid_status: `ValidStatus` (enum.StrEnum)
+
+        :return: :class:`None`
+        """
         async with new_db_session() as db_session:
             wish_repo = self.wish_repo_type(session=db_session)
 
             await wish_repo.edit(id=wish_id, valid_status=valid_status)
 
             await db_session.commit()
+
+    async def wish_to_send(self, reciever: int) -> WishDTO | None:
+        """
+        Update valid wish status.
+        If wish with current id is not exist, than do nothing.
+
+        :args:
+            :param reciever: Reciever Telegram ID;
+            :type reciever: `int`
+
+        :return: `WishDTO | None`
+        """
+        async with new_db_session() as db_session:
+            user_repo = self.user_repo_type(session=db_session)
+            wish_repo = self.wish_repo_type(session=db_session)
+            media_repo = self.media_repo_type(session=db_session)
+            recipient = await user_repo.get_one(
+                filter_by={"telegram_id": reciever})
+
+            wishes = list(await wish_repo.get_with_min_recipients(
+                recipient=recipient.id if recipient else None))
+
+            if not wishes:
+                return None
+
+            wish_author = None
+            wish = random.choice(wishes)
+            while not wish_author:
+                wish = random.choice(wishes)
+                wish_author = await user_repo.get_one(
+                    filter_by={"id": wish.author_id})
+
+            return WishDTO.model_validate(obj={
+                **wish.model_dump(),
+                "author_telegram_id": wish_author.telegram_id,
+                "media": await self._wish_medias(
+                    wish_id=wish.id, media_repo=media_repo),
+            })

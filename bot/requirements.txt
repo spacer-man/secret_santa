@@ -7,6 +7,7 @@ aiosqlite==0.22.0
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.12.0
+apscheduler==3.11.2
 asyncpg==0.31.0
 attrs==25.4.0
 certifi==2025.11.12
@@ -29,5 +30,6 @@ sqlmodel==0.0.27
 starlette==0.50.0
 typing-extensions==4.15.0
 typing-inspection==0.4.2
+tzlocal==5.3.1
 uuid7==0.1.0
 yarl==1.22.0

@@ -8,10 +8,17 @@
 import * as THREE from 'three';
 import type { TreeBall, TreeData } from '../../core/api';
 import { buildCabin } from './cabin';
+import { instancedOutline, withOutline } from './outline';
 import { terrainGeometry, terrainHeight, terrainOutline } from './terrain';
 import { ModelName, Models } from './models';
 import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape } from './layout';
-import { TREE_TOP, buildFirTree, treeRadius } from './tree-model';
+import { TIERS, TREE_TOP, buildFirTree, treeRadius } from './tree-model';
+
+/** A ball place: where the thread is tied and where the ball centre hangs */
+interface BallSlot {
+  top: THREE.Vector3;
+  ball: THREE.Vector3;
+}
 
 export interface SceneCallbacks {
   ball(ball: TreeBall): void;
@@ -305,7 +312,7 @@ export class TreeWorld {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    this.scene.fog = new THREE.Fog(0x1a1c45, 22, 70);
+    this.scene.fog = new THREE.Fog(0x0b0c22, 22, 70);
     this.buildSky();
     this.buildLights();
     this.buildGround();
@@ -340,12 +347,9 @@ export class TreeWorld {
     return new THREE.MeshToonMaterial({ color, gradientMap: this.gradient, ...extra });
   }
 
-  /** Anime-style outline for boxes: a slightly bigger back-faced copy */
-  private outline(mesh: THREE.Mesh, scale = 1.04): THREE.Mesh {
-    const o = new THREE.Mesh(mesh.geometry, this.outlineMat);
-    o.scale.setScalar(scale);
-    mesh.add(o);
-    return mesh;
+  /** Anime-style outline of constant width on screen (fence, cabin, gifts...) */
+  private outline(mesh: THREE.Mesh, _scale = 1.04): THREE.Mesh {
+    return withOutline(mesh);
   }
 
   private readonly hullMats = new Map<number, THREE.ShaderMaterial>();
@@ -393,27 +397,14 @@ export class TreeWorld {
         uniforms: {},
         vertexShader: `varying float h; void main(){ h = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `varying float h; void main(){
-          vec3 top = vec3(0.02, 0.03, 0.12); vec3 mid = vec3(0.10, 0.08, 0.26); vec3 low = vec3(0.22, 0.17, 0.40);
+          vec3 top = vec3(0.005, 0.008, 0.05); vec3 mid = vec3(0.035, 0.03, 0.12); vec3 low = vec3(0.085, 0.065, 0.19);
           vec3 c = mix(low, mid, smoothstep(-0.05, 0.25, h)); c = mix(c, top, smoothstep(0.25, 0.9, h));
           gl_FragColor = vec4(c, 1.0); }`,
       }),
     );
     this.scene.add(sky);
 
-    const stars = new Float32Array(600 * 3);
-    for (let i = 0; i < 600; i++) {
-      const theta = rand(i) * Math.PI * 2;
-      const phi = 0.08 + rand(i + 0.5) * 1.3;
-      stars.set([90 * Math.cos(theta) * Math.cos(phi), 90 * Math.sin(phi), 90 * Math.sin(theta) * Math.cos(phi)], i * 3);
-    }
-    const starGeo = new THREE.BufferGeometry();
-    starGeo.setAttribute('position', new THREE.BufferAttribute(stars, 3));
-    this.scene.add(
-      new THREE.Points(
-        starGeo,
-        new THREE.PointsMaterial({ color: 0xffffff, size: 0.35, sizeAttenuation: true, fog: false, transparent: true, opacity: 0.85 }),
-      ),
-    );
+    this.buildStars();
 
     const moon = new THREE.Mesh(new THREE.CircleGeometry(4, 32), new THREE.MeshBasicMaterial({ color: 0xfff4d6, fog: false }));
     moon.position.set(-40, 42, -60);
@@ -423,12 +414,76 @@ export class TreeWorld {
     this.scene.add(moon, moonGlow);
   }
 
+  private starMat!: THREE.ShaderMaterial;
+
+  /**
+   * Twinkling starry sky with a Milky Way band. Most stars are low over the
+   * horizon: that's the part of the sky the camera sees. Bright on a clear
+   * night, dimmed by clouds when it snows.
+   */
+  private buildStars(): void {
+    const n = 2600;
+    const pos: number[] = [];
+    const size: number[] = [];
+    const phase: number[] = [];
+    // Milky Way: a tilted great circle
+    const band = new THREE.Vector3(0.25, 1, 0.35).normalize();
+    for (let i = 0; i < n; i++) {
+      const theta = rand(i * 1.31) * Math.PI * 2;
+      // More stars near the horizon
+      const phi = 0.02 + Math.pow(rand(i * 2.17 + 0.5), 2.6) * 1.3;
+      let dir = new THREE.Vector3(Math.cos(theta) * Math.cos(phi), Math.sin(phi), Math.sin(theta) * Math.cos(phi));
+      const inBand = i % 3 === 0;
+      if (inBand) {
+        // Pull a third of the stars towards the band (thick in the middle)
+        const d = dir.dot(band);
+        dir = dir.sub(band.clone().multiplyScalar(d * (0.9 + rand(i) * 0.1))).normalize();
+        if (dir.y < 0.01) dir.y = Math.abs(dir.y) + 0.01;
+      }
+      pos.push(dir.x * 92, dir.y * 92, dir.z * 92);
+      const bright = rand(i * 7.7);
+      size.push(inBand ? 1.8 + bright * 1.6 : 2.2 + Math.pow(bright, 3) * 5);
+      phase.push(rand(i * 3.3) * Math.PI * 2);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('size', new THREE.Float32BufferAttribute(size, 1));
+    geo.setAttribute('phase', new THREE.Float32BufferAttribute(phase, 1));
+    this.starMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+      uniforms: { time: { value: 0 }, opacity: { value: 1 }, pixel: { value: Math.min(devicePixelRatio || 1, 1.75) } },
+      vertexShader: `
+        attribute float size; attribute float phase;
+        uniform float time; uniform float pixel;
+        varying float vTwinkle;
+        void main() {
+          vTwinkle = 0.55 + 0.45 * sin(time * (1.2 + fract(phase) * 2.0) + phase * 7.0);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = size * pixel * (0.8 + 0.4 * vTwinkle);
+        }`,
+      fragmentShader: `
+        uniform float opacity; varying float vTwinkle;
+        void main() {
+          float d = length(gl_PointCoord - 0.5);
+          float a = smoothstep(0.5, 0.0, d);
+          gl_FragColor = vec4(vec3(0.9, 0.94, 1.0) * 1.6, a * vTwinkle * opacity);
+        }`,
+    });
+    const stars = new THREE.Points(geo, this.starMat);
+    stars.frustumCulled = false;
+    this.scene.add(stars);
+    this.staticAnimated.push({ update: (t) => (this.starMat.uniforms['time'].value = t) });
+  }
+
   private buildLights(): void {
-    this.scene.add(new THREE.HemisphereLight(0x8290e0, 0x1c1638, 1.05));
-    const moon = new THREE.DirectionalLight(0xb9c6ff, 1.6);
+    this.scene.add(new THREE.HemisphereLight(0x5464be, 0x0d0a22, 0.48));
+    const moon = new THREE.DirectionalLight(0x93a6ff, 0.75);
     moon.position.set(-8, 14, -6);
     this.scene.add(moon);
-    const warm = new THREE.DirectionalLight(0xffb070, 0.35);
+    const warm = new THREE.DirectionalLight(0xffb070, 0.18);
     warm.position.set(6, 4, 8);
     this.scene.add(warm);
     this.treeLight.position.set(0, 2.6, 0);
@@ -642,7 +697,7 @@ export class TreeWorld {
   private buildCabin(): void {
     const cabin = buildCabin({
       toon: (c, e) => this.toon(c, e),
-      hull: (m, t) => this.hull(m, t),
+      hull: (m) => withOutline(m),
       outline: (m, sc) => this.outline(m, sc),
       glow: (c, sz, o) => this.glow(c, sz, o),
       glowTex: this.glowTex,
@@ -689,7 +744,8 @@ export class TreeWorld {
     meshes.forEach(({ geometry, material }, k) => {
       const inst = new THREE.InstancedMesh(geometry, material, placed[k].length);
       placed[k].forEach((m, j) => inst.setMatrixAt(j, m));
-      this.scene.add(inst);
+      // Thinner lines for the background forest
+      this.scene.add(inst, instancedOutline(inst, 0.0024));
     });
 
     // Snow piles, rocks and the bench around the courtyard
@@ -814,7 +870,8 @@ export class TreeWorld {
     // Mountains far away
     for (let i = 0; i < 14; i++) {
       const a = (i / 14) * Math.PI * 2 + rand(i) * 0.3;
-      const h = 12 + rand(i + 9) * 14;
+      // Low enough to leave the starry sky visible between the peaks
+      const h = 6 + rand(i + 9) * 7;
       const mountain = new THREE.Mesh(new THREE.ConeGeometry(h * 0.9, h, 6), this.toon(0x2a2f6a));
       mountain.position.set(Math.cos(a) * 62, h / 2 - 1, Math.sin(a) * 62);
       const top = new THREE.Mesh(new THREE.ConeGeometry(h * 0.3, h / 3, 6), this.toon(0xdfe6ff));
@@ -835,17 +892,24 @@ export class TreeWorld {
 
   /** Snowfall strength: light (free), snowfall, blizzard (unlocked for mandarins) */
   static readonly SNOWFALL = [
-    { count: 700, size: 0.16, speed: 1, wind: 0.08 },
-    { count: 1800, size: 0.2, speed: 1.25, wind: 0.25 },
-    { count: 3600, size: 0.24, speed: 1.7, wind: 0.9 },
+    { count: 0, size: 0.16, speed: 1, wind: 0.05, stars: 1 }, // clear night: the starry sky
+    { count: 700, size: 0.16, speed: 1, wind: 0.08, stars: 0.4 },
+    { count: 1800, size: 0.2, speed: 1.25, wind: 0.25, stars: 0.15 },
+    { count: 3600, size: 0.24, speed: 1.7, wind: 0.9, stars: 0.04 },
   ];
-  private snowLevel = 0;
+  private snowLevel = 1;
+  /** 1 = clear sky, 0 = overcast: fades stars and northern lights */
+  private skyClear = 0.4;
 
   setSnowfall(level: number): void {
     this.snowLevel = THREE.MathUtils.clamp(level, 0, TreeWorld.SNOWFALL.length - 1);
     const cfg = TreeWorld.SNOWFALL[this.snowLevel];
     this.snow.geometry.setDrawRange(0, cfg.count);
     (this.snow.material as THREE.PointsMaterial).size = cfg.size;
+    // Clouds come with the snow: fewer stars
+    if (this.starMat) this.starMat.uniforms['opacity'].value = cfg.stars;
+    // Northern lights need a clear sky too
+    this.skyClear = cfg.stars;
     this.renderOnce();
   }
 
@@ -861,72 +925,87 @@ export class TreeWorld {
       geo,
       new THREE.PointsMaterial({ map: this.glowTex, color: 0xffffff, size: 0.16, transparent: true, depthWrite: false, opacity: 0.9 }),
     );
-    geo.setDrawRange(0, TreeWorld.SNOWFALL[0].count);
+    geo.setDrawRange(0, TreeWorld.SNOWFALL[1].count);
     this.scene.add(this.snow);
   }
 
   // ====== Dynamic content ====== //
-  private ballSlots(): THREE.Vector3[] {
-    // Places on a golden-angle spiral from the bottom to the top: all sides, all heights
-    const slots: THREE.Vector3[] = [];
-    const n = 44;
-    for (let i = 0; i < n; i++) {
-      const y = 1.15 + ((i + 0.5) / n) * 3.55;
-      const a = i * 2.39996;
-      const p = this.onBranch(y, a);
-      if (p) slots.push(p);
-    }
-    // Fill order: van der Corput sequence over heights, so any number of balls
-    // is spread evenly from the bottom to the top (not bunched at one height)
-    const vdc = (i: number) => {
-      let x = 0;
-      for (let b = 0.5; i; i >>= 1, b /= 2) if (i & 1) x += b;
-      return x;
-    };
-    return slots
-      .map((p, i) => ({ p, key: vdc(i + 1) }))
-      .sort((a, b) => a.key - b.key)
-      .map((x) => x.p);
-  }
-
-  private slotsCache?: THREE.Vector3[];
-  private get slots(): THREE.Vector3[] {
-    return (this.slotsCache ??= this.ballSlots());
-  }
-  private ghostTex?: THREE.CanvasTexture;
-
   /**
-   * Where a ball hangs at height y around angle a: on the real surface of the
-   * tree (rays from outside), on the most sticking-out branch tip nearby, so
-   * balls don't end up inside the notches between branches.
-   * Returns the slot point (ball centre is ~0.04 lower).
+   * Places for balls: a thread from a branch tip at the lower rim of a tier,
+   * the ball hangs below it resting on the branches of the tier below
+   * (pushed out of them, the thread leans a little). All around, every tier;
+   * filled tier by tier in turn, so any number of balls covers all heights.
    */
-  private onBranch(y: number, a: number): THREE.Vector3 | null {
+  private ballSlots(): BallSlot[] {
     const BALL_R = 0.25;
-    const ballY = y - 0.09;
+    const perTier: BallSlot[][] = [];
+    TIERS.forEach(([bottom, , radius], t) => {
+      // Not under the lowest tier (the podium is right below) and not the tiny top one
+      if (t === 0 || radius < 0.6) return;
+      const count = Math.max(3, Math.floor((Math.PI * 2 * radius) / 0.85));
+      const list: BallSlot[] = [];
+      for (let k = 0; k < count; k++) {
+        const a = (k / count) * Math.PI * 2 + t * 1.13;
+        const tip = this.branchTip(bottom, a);
+        if (!tip) continue;
+        const top = new THREE.Vector3(Math.cos(tip.a) * (tip.r - 0.06), tip.y - 0.03, Math.sin(tip.a) * (tip.r - 0.06));
+        const ballY = top.y - 0.42;
+        const surface = this.surfaceRadius(ballY, tip.a);
+        const r = Math.max(tip.r - 0.06, surface + BALL_R * 0.85);
+        const ball = new THREE.Vector3(Math.cos(tip.a) * r, ballY, Math.sin(tip.a) * r);
+        list.push({ top, ball });
+      }
+      perTier.push(list);
+    });
+    const total = perTier.reduce((n, l) => n + l.length, 0);
+    const slots: BallSlot[] = [];
+    for (let k = 0; slots.length < total; k++) {
+      for (const list of perTier) if (k < list.length) slots.push(list[k]);
+    }
+    return slots;
+  }
+
+  /** Radius of the tree surface at height y towards angle a (ray from outside) */
+  private surfaceRadius(y: number, a: number): number {
+    if (!this.treeGroup) return treeRadius(y);
+    const ray = new THREE.Raycaster();
+    ray.set(new THREE.Vector3(Math.cos(a) * 6, y, Math.sin(a) * 6), new THREE.Vector3(-Math.cos(a), 0, -Math.sin(a)));
+    const hit = ray
+      .intersectObject(this.treeGroup, true)
+      .find((h) => !((h.object as THREE.Mesh).material instanceof THREE.ShaderMaterial));
+    return hit ? Math.hypot(hit.point.x, hit.point.z) : treeRadius(y);
+  }
+
+  /** The most sticking-out branch tip near angle a at the rim of a tier (y = tier bottom) */
+  private branchTip(bottom: number, a: number): { r: number; a: number; y: number } | null {
     if (!this.treeGroup) {
-      const r = treeRadius(y) * 0.92 + 0.1;
-      return r < 0.3 ? null : new THREE.Vector3(Math.cos(a) * r, y - 0.05, Math.sin(a) * r);
+      const r = treeRadius(bottom + 0.05);
+      return r < 0.3 ? null : { r, a, y: bottom };
     }
     this.treeGroup.updateMatrixWorld(true);
     const ray = new THREE.Raycaster();
-    let best: { r: number; a: number } | null = null;
-    for (const da of [-0.22, -0.11, 0, 0.11, 0.22]) {
-      const aa = a + da;
-      const dir = new THREE.Vector3(-Math.cos(aa), 0, -Math.sin(aa));
-      ray.set(new THREE.Vector3(Math.cos(aa) * 6, ballY, Math.sin(aa) * 6), dir);
-      const hit = ray
-        .intersectObject(this.treeGroup, true)
-        .find((h) => !((h.object as THREE.Mesh).material instanceof THREE.ShaderMaterial));
-      if (!hit) continue;
-      const r = Math.hypot(hit.point.x, hit.point.z);
-      if (!best || r > best.r) best = { r, a: aa };
+    let best: { r: number; a: number; y: number } | null = null;
+    for (const da of [-0.12, -0.06, 0, 0.06, 0.12]) {
+      for (const dy of [0.02, 0.1, 0.18]) {
+        const aa = a + da;
+        const y = bottom + dy;
+        ray.set(new THREE.Vector3(Math.cos(aa) * 6, y, Math.sin(aa) * 6), new THREE.Vector3(-Math.cos(aa), 0, -Math.sin(aa)));
+        const hit = ray
+          .intersectObject(this.treeGroup, true)
+          .find((h) => !((h.object as THREE.Mesh).material instanceof THREE.ShaderMaterial));
+        if (!hit) continue;
+        const r = Math.hypot(hit.point.x, hit.point.z);
+        if (!best || r > best.r) best = { r, a: aa, y };
+      }
     }
-    if (!best || best.r < 0.3) return null;
-    // Ball touches the branch from outside (slightly nestled)
-    const r = best.r + BALL_R * 0.75;
-    return new THREE.Vector3(Math.cos(best.a) * r, y - 0.05, Math.sin(best.a) * r);
+    return best && best.r > 0.3 ? best : null;
   }
+
+  private slotsCache?: BallSlot[];
+  private get slots(): BallSlot[] {
+    return (this.slotsCache ??= this.ballSlots());
+  }
+  private ghostTex?: THREE.CanvasTexture;
 
   private patternMap(pattern: string, color: number): THREE.CanvasTexture {
     const key = pattern + color;
@@ -946,7 +1025,7 @@ export class TreeWorld {
     });
 
     // Next free places pulse softly: tap to write a new greeting
-    this.slots.slice(onTree.length, onTree.length + 2).forEach((p, i) => this.addGhost(p, i));
+    this.slots.slice(onTree.length, onTree.length + 2).forEach((p, i) => this.addGhost(p.ball, i));
 
     this.addGarland(tree.garland);
     this.addStar(tree.star);
@@ -965,11 +1044,17 @@ export class TreeWorld {
     this.animated.length = 0;
   }
 
-  private addBall(ball: TreeBall, p: THREE.Vector3, i: number, isNewHung: boolean, isNewLit: boolean): void {
+  private addBall(ball: TreeBall, slot: BallSlot, i: number, isNewHung: boolean, isNewLit: boolean): void {
     const color = BALL_COLORS[ball.color] ?? BALL_COLORS['red'];
     const isLit = ball.state === 'lit';
+    // pivot: at the knot on the branch, sways; hang: turned along the thread
     const pivot = new THREE.Group();
-    pivot.position.set(p.x, p.y + 0.32, p.z);
+    pivot.position.copy(slot.top);
+    const toBall = slot.ball.clone().sub(slot.top);
+    const L = toBall.length();
+    const hang = new THREE.Group();
+    hang.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), toBall.normalize());
+    pivot.add(hang);
 
     const sphere = new THREE.Mesh(
       new THREE.SphereGeometry(0.25, 20, 14),
@@ -980,32 +1065,33 @@ export class TreeWorld {
         emissiveIntensity: isLit ? 0.55 : 0,
       }),
     );
-    sphere.position.y = -0.36;
+    sphere.position.y = -L;
     this.hull(sphere, 0.018);
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.07, 8), this.toon(0xd9b25a));
-    cap.position.y = -0.1;
-    const string = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.1, 4), new THREE.MeshBasicMaterial({ color: 0xd9c38a }));
-    string.position.y = -0.03;
-    pivot.add(sphere, cap, string);
+    cap.position.y = -L + 0.27;
+    const threadLen = Math.max(0.02, L - 0.3);
+    const string = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, threadLen, 4), new THREE.MeshBasicMaterial({ color: 0xd9c38a }));
+    string.position.y = -threadLen / 2;
+    hang.add(sphere, cap, string);
 
     let glow: THREE.Sprite | undefined;
     if (isLit) {
       glow = this.glow(color, 1.4, 0.9);
-      glow.position.y = -0.36;
-      pivot.add(glow);
+      glow.position.y = -L;
+      hang.add(glow);
     }
     if (Object.keys(ball.reactions).length || ball.replies) {
       const sparkle = this.glow(0xfff6c9, 0.35, 1);
-      sparkle.position.set(0.2, -0.12, 0);
-      pivot.add(sparkle);
+      sparkle.position.set(0.2, -L + 0.24, 0);
+      hang.add(sparkle);
       this.animated.push({ update: (t) => sparkle.material.opacity = 0.4 + 0.6 * Math.abs(Math.sin(t * 2 + i)) });
     }
 
     // Bigger invisible target: easy to tap with a finger
     const hit = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
-    hit.position.y = -0.36;
+    hit.position.y = -L;
     hit.userData = { kind: 'ball', ball };
-    pivot.add(hit);
+    hang.add(hit);
     this.clickables.push(hit);
     this.dynamic.add(pivot);
 
@@ -1019,7 +1105,7 @@ export class TreeWorld {
           // Falls onto the branch and bounces
           const k = Math.min(1, age / 1.0);
           const bounce = 1 - Math.pow(1 - k, 3) * Math.cos(k * 9);
-          pivot.position.y = p.y + 0.32 + (1 - bounce) * 2.2;
+          pivot.position.y = slot.top.y + (1 - bounce) * 2.2;
         }
         if (glow) {
           const pulse = 1.4 + Math.sin(t * 2 + i) * 0.12;
@@ -1636,7 +1722,8 @@ export class TreeWorld {
       this.animated.push({
         update: (t) => {
           map.offset.x = t * 0.006 * rb.speed;
-          (mesh.material as THREE.MeshBasicMaterial).opacity = 0.85 + 0.15 * Math.sin(t * 0.45 + i * 1.7);
+          (mesh.material as THREE.MeshBasicMaterial).opacity = (0.85 + 0.15 * Math.sin(t * 0.45 + i * 1.7)) * Math.min(1, this.skyClear * 1.4);
+          mesh.visible = this.skyClear > 0.1;
           // Reshape ~15 times a second: smooth enough for slow waves, cheap
           if (t - last > 0.066) {
             last = t;

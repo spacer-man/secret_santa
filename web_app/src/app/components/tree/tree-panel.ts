@@ -10,13 +10,14 @@ import { BallArt, BallDefs } from './ball-art';
 import { Tree3d } from '../tree3d/tree-3d';
 
 const SEEN_KEY = 'santa.tree.seen';
-const SNOW_KEY = 'santa.snowfall';
+const SNOW_KEY = 'santa.snowfall.v2';
 
 function readSnow(): number {
   try {
-    return Math.min(2, Math.max(0, Number(localStorage.getItem(SNOW_KEY) ?? 0) || 0));
+    const v = localStorage.getItem(SNOW_KEY);
+    return v === null ? 1 : Math.min(3, Math.max(0, Number(v) || 0));
   } catch {
-    return 0;
+    return 1;
   }
 }
 
@@ -188,6 +189,7 @@ export class TreePanel {
 
   // Snowfall strength: dense modes are unlocked in the shop for mandarins
   protected readonly snowModes = [
+    { key: 'clear', icon: '✨', price: 0 },
     { key: 'light', icon: '❄️', price: 0 },
     { key: 'snowfall', icon: '🌨', price: 150 },
     { key: 'blizzard', icon: '🌬', price: 400 },
@@ -195,7 +197,7 @@ export class TreePanel {
   protected readonly snowfall = signal(readSnow());
   protected readonly snowNote = signal('');
   /** Unlocked snowfall modes (filled by the shop when it opens) */
-  private readonly unlockedSnow = signal<number[]>([0]);
+  private readonly unlockedSnow = signal<number[]>([0, 1]);
   private readonly scene3d = viewChild<Tree3d>('scene3d');
 
   protected readonly progress = computed(() => {

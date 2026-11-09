@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { outlineMaterial, smoothForOutline } from './outline';
 
 const BASE = '/models/holiday/';
 
@@ -47,22 +47,8 @@ export class Models {
   private readonly loader = new GLTFLoader();
   private readonly cache = new Map<ModelName, Promise<THREE.Group>>();
   private readonly materials = new Map<string, THREE.MeshToonMaterial>();
-  private readonly outline: THREE.ShaderMaterial;
 
   constructor(private readonly gradient: THREE.Texture) {
-    // Outline of constant width on screen: the shell is pushed out in view space
-    // proportionally to the depth, so it doesn't grow with the model's scale
-    this.outline = new THREE.ShaderMaterial({
-      side: THREE.BackSide,
-      vertexShader: `
-        void main() {
-          vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          vec3 n = normalize(normalMatrix * normal);
-          mv.xyz += n * (-mv.z) * 0.0035;
-          gl_Position = projectionMatrix * mv;
-        }`,
-      fragmentShader: `void main() { gl_FragColor = vec4(0.04, 0.04, 0.12, 1.0); }`,
-    });
   }
 
   /** A fresh copy of the model (geometry and materials are shared) */
@@ -74,7 +60,7 @@ export class Models {
       copy.traverse((o) => {
         const mesh = o as THREE.Mesh;
         if (mesh.isMesh && !mesh.userData['outline']) {
-          const hull = new THREE.Mesh(this.smooth(mesh.geometry), this.outline);
+          const hull = new THREE.Mesh(smoothForOutline(mesh.geometry), outlineMaterial());
           hull.userData['outline'] = true;
           mesh.add(hull);
         }
@@ -92,25 +78,6 @@ export class Models {
     found.updateWorldMatrix(true, false);
     const geometry = found.geometry.clone().applyMatrix4(found.matrixWorld);
     return { geometry, material: found.material as THREE.Material };
-  }
-
-  private readonly smoothCache = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>();
-
-  /**
-   * Low-poly models have split (hard-edge) normals: a shell pushed along them
-   * breaks apart at the edges. Merged vertices + averaged normals keep it closed.
-   */
-  private smooth(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
-    let g = this.smoothCache.get(geometry);
-    if (!g) {
-      const copy = new THREE.BufferGeometry();
-      copy.setAttribute('position', geometry.getAttribute('position'));
-      if (geometry.index) copy.setIndex(geometry.index);
-      g = mergeVertices(copy, 1e-4);
-      g.computeVertexNormals();
-      this.smoothCache.set(geometry, g);
-    }
-    return g;
   }
 
   private async load(name: ModelName): Promise<THREE.Group> {
@@ -140,6 +107,5 @@ export class Models {
 
   dispose(): void {
     this.materials.forEach((m) => m.dispose());
-    this.outline.dispose();
   }
 }

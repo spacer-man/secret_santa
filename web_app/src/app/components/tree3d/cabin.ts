@@ -98,7 +98,8 @@ export function buildCabin(kit: Kit): Cabin {
   // Roof slabs with a thick snow layer, drips and icicles
   const slope = Math.atan2(RIDGE, W);
   const slabLen = Math.hypot(W + OVER, RIDGE + OVER * Math.tan(slope));
-  const roofMat = kit.toon(0x4a2c22);
+  // Red-brown: stands out from the dark log gables
+  const roofMat = kit.toon(0x9a3a2a);
   const icicleMat = kit.toon(0xcfe6ff, { transparent: true, opacity: 0.9 });
   for (const side of [-1, 1]) {
     const pivot = new THREE.Group();

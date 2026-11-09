@@ -656,7 +656,10 @@ export class TreeWorld {
 
   private buildForest(): void {
     this.buildMountains();
-    this.buildKenneyWorld().catch(() => this.buildConeForest());
+    this.buildKenneyWorld().catch(() => {
+      this.buildConeForest();
+      this.heapsDone();
+    });
   }
 
   /** Forest of snowy fir trees, snow piles and rocks (Kenney models, instanced) */
@@ -704,14 +707,20 @@ export class TreeWorld {
       place(name, new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r), sc, name === 'bench' ? -a - Math.PI / 2 : rot),
     );
     // A heap of presents in the middle of every corner
-    for (let ci = 0; ci < CORNERS.length; ci++) jobs.push(this.buildHeap(ci));
-    await Promise.all(jobs);
+    const heaps = CORNERS.map((_, ci) => this.buildHeap(ci));
+    Promise.all(heaps).then(() => this.heapsDone());
+    await Promise.all([...jobs, ...heaps]);
   }
 
   /**
    * A heap of presents: a tight bottom row that doesn't intersect, and one
    * smaller present standing on top of the biggest flat one.
    */
+  /** Real footprints of the present heaps (known once they are built) */
+  private readonly heapColliders: Circle[] = [];
+  private heapsDone!: () => void;
+  private readonly heapsReady = new Promise<void>((resolve) => (this.heapsDone = resolve));
+
   private async buildHeap(ci: number): Promise<void> {
     const kinds: ModelName[] = ['present-a-cube', 'present-b-rectangle', 'present-a-round', 'present-b-cube', 'present-a-rectangle', 'present-b-round'];
     const pick = (k: number) => kinds[(ci * 2 + k) % kinds.length];
@@ -740,6 +749,7 @@ export class TreeWorld {
       bodies.forEach((b, k) => {
         objs[k].position.set(b.x, 0, b.z);
         this.scene.add(objs[k]);
+        this.heapColliders.push(...circlesOf(b));
       });
 
       // The top one on the biggest (first) present, smaller than it
@@ -750,6 +760,7 @@ export class TreeWorld {
       top.rotation.y = rand(ci + 0.5) * Math.PI;
       top.position.set(base.position.x, baseBox.max.y - 0.02, base.position.z);
       this.scene.add(top);
+      this.heapColliders.push(...circlesOf(makeBody(top.position.x, top.position.z, shape(top, top.rotation.y))));
       this.renderOnce();
     } catch (err) {
       console.warn('Heap failed', err);
@@ -1181,11 +1192,13 @@ export class TreeWorld {
     );
     const previewKind = DECOR_KINDS[this.previewItem] ?? DECOR_KINDS['snowman'];
     const previewProto = await this.models.get(previewKind.model, false).catch(() => null);
+    // The heaps' real size matters: wait until they are built
+    await Promise.race([this.heapsReady, new Promise((r) => setTimeout(r, 5000))]);
     if (version !== this.version) return;
 
     // Figures are placed one by one; each tries its allowed poses and keeps
     // the one that moves it least, the placed ones become obstacles
-    const obstacles: Circle[] = [...STATIC_COLLIDERS];
+    const obstacles: Circle[] = [...STATIC_COLLIDERS, ...this.heapColliders];
     const placedPads = new Set<number>();
     items.forEach((d, k) => {
       const obj = objects[k];
@@ -1234,7 +1247,7 @@ export class TreeWorld {
       // All previews breathe together: clearly "not real yet"
       this.animated.push({
         update: (t) => {
-          const o = 0.5 + 0.15 * Math.sin(t * 2.2);
+          const o = 0.7 + 0.08 * Math.sin(t * 2.2);
           this.ghostMats.forEach((m) => (m.opacity = o));
         },
       });
@@ -1282,7 +1295,7 @@ export class TreeWorld {
           emissive: 0x7f9cff,
           emissiveIntensity: 0.55,
           transparent: true,
-          opacity: 0.5,
+          opacity: 0.7,
           depthWrite: false,
           depthFunc: THREE.LessEqualDepth,
         });

@@ -4,6 +4,8 @@
  * Local space: the door faces +Z.
  */
 import * as THREE from 'three';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { withOutline } from './outline';
 
 export interface Kit {
   toon(color: number, extra?: Partial<THREE.MeshToonMaterialParameters>): THREE.MeshToonMaterial;
@@ -25,6 +27,34 @@ export interface Cabin {
 function rand(seed: number): number {
   const x = Math.sin(seed * 9301 + 49297) * 233280;
   return x - Math.floor(x);
+}
+
+/**
+ * Fluffy snow layer for a roof slab: the top half of a rounded box
+ * (superellipsoid) with soft bumps; edges round over and droop a little.
+ */
+function snowPillow(length: number, height: number, depth: number, seed: number): THREE.BufferGeometry {
+  const raw = new THREE.SphereGeometry(1, 64, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+  raw.deleteAttribute('uv');
+  raw.deleteAttribute('normal');
+  const g = mergeVertices(raw);
+  const p = g.attributes['position'] as THREE.BufferAttribute;
+  const e = 0.28; // < 1: boxy in plan, still round at the edges
+  const shape = (v: number, k: number) => Math.sign(v) * Math.pow(Math.abs(v), k);
+  for (let i = 0; i < p.count; i++) {
+    const x = shape(p.getX(i), e);
+    const z = shape(p.getZ(i), e);
+    let y = shape(Math.max(p.getY(i), 0), 0.55);
+    // Soft lumps on the top, stronger towards the middle
+    const bump = 0.18 * Math.sin(x * 9 + seed * 2) * Math.sin(z * 7 - seed) + 0.1 * Math.sin(x * 21 + z * 13 + seed);
+    y *= 1 + bump * y;
+    // Edges droop: the rim hangs a bit below the slab
+    const rim = Math.max(Math.abs(x), Math.abs(z));
+    const droop = rim > 0.9 ? (rim - 0.9) * 1.2 : 0;
+    p.setXYZ(i, (x * length) / 2, y * height - droop * height, (z * depth) / 2);
+  }
+  g.computeVertexNormals();
+  return g;
 }
 
 const W = 2.2; // half width (x)
@@ -114,8 +144,10 @@ export function buildCabin(kit: Kit): Cabin {
     pivot.add(slab);
 
     // Outlined slab below is enough: the snow layer's own outline showed under the eaves
-    const snowLayer = new THREE.Mesh(new THREE.BoxGeometry(slabLen + 0.06, 0.2, D * 2 + OVER * 2 + 0.08), snow);
-    snowLayer.position.set((dir * slabLen) / 2, 0.17, 0);
+    const snowLayer = withOutline(
+      new THREE.Mesh(snowPillow(slabLen + 0.12, 0.26, D * 2 + OVER * 2 + 0.16, side), snow),
+    );
+    snowLayer.position.set((dir * slabLen) / 2, 0.06, 0);
     pivot.add(snowLayer);
 
     // Snow hanging over the eave

@@ -71,6 +71,8 @@ export class Tree3d implements OnDestroy {
   readonly starClick = output<void>();
   /** Decorate mode: free courtyard places glow and can be chosen */
   readonly decorMode = input(false);
+  /** 0 light, 1 snowfall, 2 blizzard */
+  readonly snowfall = input(0);
   readonly padClick = output<{ pad: number; corner: string; item: string | null }>();
   readonly focusLost = output<void>();
   readonly focused = output<number>();
@@ -92,6 +94,10 @@ export class Tree3d implements OnDestroy {
       const on = this.decorMode();
       this.world?.setDecorMode(on);
     });
+    effect(() => {
+      const level = this.snowfall();
+      this.world?.setSnowfall(level);
+    });
   }
 
   private async init(): Promise<void> {
@@ -109,6 +115,7 @@ export class Tree3d implements OnDestroy {
         focused: (corner) => this.focused.emit(corner),
       });
       this.world.setDecorMode(this.decorMode());
+      this.world.setSnowfall(this.snowfall());
       // For screenshots/tests only: ?debug exposes the scene
       if (new URLSearchParams(location.search).has('debug')) (window as unknown as { santaTree: TreeWorld }).santaTree = this.world;
       this.world.setTree(this.tree(), this.newHung(), this.newLit());

@@ -10,12 +10,22 @@ import { BallArt, BallDefs } from './ball-art';
 import { Tree3d } from '../tree3d/tree-3d';
 
 const SEEN_KEY = 'santa.tree.seen';
+const SNOW_KEY = 'santa.snowfall';
+
+function readSnow(): number {
+  try {
+    return Math.min(2, Math.max(0, Number(localStorage.getItem(SNOW_KEY) ?? 0) || 0));
+  } catch {
+    return 0;
+  }
+}
 
 type Sheet =
   | { kind: 'ball'; ball: TreeBall; wish?: MyWish }
   | { kind: 'star' }
   | { kind: 'wallet'; history?: MandarinTx[] }
   | { kind: 'pad'; pad: number; corner: string; item: string | null }
+  | { kind: 'snow' }
   | null;
 
 function readSeen(): Record<string, string> | null {
@@ -42,6 +52,7 @@ function readSeen(): Record<string, string> | null {
           #scene3d
           [tree]="t"
           [decorMode]="decorMode()"
+          [snowfall]="snowfall()"
           (padClick)="openPad($event)"
           (focused)="cornerFocused.set(true)"
           (focusLost)="cornerFocused.set(false)"
@@ -58,6 +69,9 @@ function readSeen(): Record<string, string> | null {
           <p class="drag-hint">↔ {{ i18n.t('dragHint') }}</p>
           <button class="decor-btn" (click)="toggleDecor()">⛄ {{ i18n.t('decorate') }}</button>
         }
+        <button class="snow-btn" (click)="sheet.set({ kind: 'snow' })" [attr.aria-label]="i18n.t('snowfall')">
+          {{ snowModes[snowfall()].icon }}
+        </button>
         </div>
         <div class="level">
           <div class="row between small">
@@ -115,6 +129,24 @@ function readSeen(): Record<string, string> | null {
               <p class="muted">{{ s.item ? i18n.t('padTaken') : i18n.t('padFree') }}</p>
             }
           }
+          @case ('snow') {
+            <div class="sheet-emoji">🌨</div>
+            <h2>{{ i18n.t('snowfall') }}</h2>
+            <div class="snow-modes">
+              @for (m of snowModes; track m.key; let i = $index) {
+                <button class="snow-mode" [class.selected]="snowfall() === i" [class.locked]="!isUnlocked(i)" (click)="pickSnow(i)">
+                  <span class="snow-icon">{{ m.icon }}</span>
+                  <span>{{ i18n.dict.snowModes[m.key] }}</span>
+                  @if (!isUnlocked(i)) {
+                    <small>🔒 {{ m.price }} 🍊</small>
+                  }
+                </button>
+              }
+            </div>
+            @if (snowNote()) {
+              <p class="small muted">{{ snowNote() }}</p>
+            }
+          }
           @case ('wallet') {
             <div class="sheet-emoji">🍊</div>
             <h2>{{ i18n.t('mandarins') }}: {{ tree()?.mandarins }}</h2>
@@ -153,6 +185,17 @@ export class TreePanel {
   protected readonly sheet = signal<Sheet>(null);
   protected readonly decorMode = signal(false);
   protected readonly cornerFocused = signal(false);
+
+  // Snowfall strength: dense modes are unlocked in the shop for mandarins
+  protected readonly snowModes = [
+    { key: 'light', icon: '❄️', price: 0 },
+    { key: 'snowfall', icon: '🌨', price: 150 },
+    { key: 'blizzard', icon: '🌬', price: 400 },
+  ];
+  protected readonly snowfall = signal(readSnow());
+  protected readonly snowNote = signal('');
+  /** Unlocked snowfall modes (filled by the shop when it opens) */
+  private readonly unlockedSnow = signal<number[]>([0]);
   private readonly scene3d = viewChild<Tree3d>('scene3d');
 
   protected readonly progress = computed(() => {
@@ -210,6 +253,23 @@ export class TreePanel {
       const wish = (await this.api.wishes()).find((w) => w.id === ball.id);
       const current = this.sheet();
       if (current?.kind === 'ball' && current.ball.id === ball.id) this.sheet.set({ kind: 'ball', ball, wish });
+    } catch {}
+  }
+
+  isUnlocked(i: number): boolean {
+    return this.unlockedSnow().includes(i);
+  }
+
+  pickSnow(i: number): void {
+    this.tg.haptic('light');
+    if (!this.isUnlocked(i)) {
+      this.snowNote.set(this.i18n.t('snowLocked').replace('%s', String(this.snowModes[i].price)));
+      return;
+    }
+    this.snowNote.set('');
+    this.snowfall.set(i);
+    try {
+      localStorage.setItem(SNOW_KEY, String(i));
     } catch {}
   }
 

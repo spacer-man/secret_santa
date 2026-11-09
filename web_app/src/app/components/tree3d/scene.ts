@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import type { TreeBall, TreeData } from '../../core/api';
 import { buildCabin } from './cabin';
+import { ModelName, Models } from './models';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export interface SceneCallbacks {
@@ -43,6 +44,17 @@ const TIERS: [number, number, number][] = [
   [4.2, 0.95, 0.5],
 ];
 const TREE_TOP = 5.15;
+
+/** Places for courtyard figures: a ring between the train track and the fence */
+const DECOR_PADS = Array.from({ length: 10 }, (_, i) => {
+  const a = (i / 10) * Math.PI * 2 + 0.3;
+  return new THREE.Vector3(Math.cos(a) * 5.7, 0, Math.sin(a) * 5.7);
+}).filter((p) => {
+  // Keep the path to the cabin free
+  const ca = (14 / 20) * Math.PI * 2 - 0.12;
+  const a = Math.atan2(p.z, p.x);
+  return Math.abs(Math.atan2(Math.sin(a - ca), Math.cos(a - ca))) > 0.4;
+});
 
 function rand(seed: number): number {
   const x = Math.sin(seed * 9301 + 49297) * 233280;
@@ -145,6 +157,8 @@ export class TreeWorld {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(44, 1, 0.1, 200);
   private readonly gradient = toonGradient();
+  private readonly models = new Models(this.gradient);
+  private version = 0;
   private readonly glowTex = glowTexture();
   private readonly outlineMat = new THREE.MeshBasicMaterial({ color: 0x0b0a1e, side: THREE.BackSide });
   private readonly dynamic = new THREE.Group();
@@ -447,6 +461,63 @@ export class TreeWorld {
   }
 
   private buildForest(): void {
+    this.buildMountains();
+    this.buildKenneyWorld().catch(() => this.buildConeForest());
+  }
+
+  /** Forest of snowy fir trees, snow piles and rocks (Kenney models, instanced) */
+  private async buildKenneyWorld(): Promise<void> {
+    const kinds: ModelName[] = ['tree-snow-a', 'tree-snow-b', 'tree-snow-c'];
+    const meshes = await Promise.all(kinds.map((k) => this.models.mesh(k)));
+    const n = 90;
+    const ca = (14 / 20) * Math.PI * 2 - 0.12; // cabin direction
+    const placed: THREE.Matrix4[][] = kinds.map(() => []);
+    for (let i = 0; i < n; i++) {
+      const a = rand(i * 3) * Math.PI * 2;
+      const r = 15 + rand(i * 5) * 26;
+      if (r < 20 && Math.abs(Math.atan2(Math.sin(a - ca), Math.cos(a - ca))) < 0.4) continue;
+      const s = 1.8 + rand(i * 7) * 1.8;
+      placed[i % kinds.length].push(
+        new THREE.Matrix4().compose(
+          new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r),
+          new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand(i) * 6.28),
+          new THREE.Vector3(s, s * (0.9 + rand(i + 2) * 0.3), s),
+        ),
+      );
+    }
+    meshes.forEach(({ geometry, material }, k) => {
+      const inst = new THREE.InstancedMesh(geometry, material, placed[k].length);
+      placed[k].forEach((m, j) => inst.setMatrixAt(j, m));
+      this.scene.add(inst);
+    });
+
+    // Snow piles and rocks around the courtyard
+    const decor: [ModelName, number, number, number, number][] = [
+      // model, angle, radius, scale, rotation
+      ['snow-pile', 0.3, 7.6, 1.6, 0.2],
+      ['snow-pile', 1.9, 7.4, 1.3, 1.1],
+      ['snow-pile', 3.6, 7.7, 1.8, 2.2],
+      ['snow-pile', 5.2, 7.5, 1.4, 0.7],
+      ['snow-flat-large', 2.6, 10.5, 1.4, 0.4],
+      ['snow-flat-large', 5.8, 11, 1.6, 1.4],
+      ['snow-bunker', 0.9, 10.5, 1.3, 2.0],
+      ['rocks-large', 1.3, 12, 1.0, 0.3],
+      ['rocks-medium', 3.1, 11, 1.2, 1.5],
+      ['rocks-small', 4.6, 10.2, 1.4, 2.6],
+      ['rocks-medium', 5.6, 12.5, 1.0, 0.9],
+      ['bench', ca + 0.35, 7.0, 1.4, 0],
+    ];
+    for (const [name, a, r, sc, rot] of decor) {
+      const obj = await this.models.get(name);
+      obj.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+      obj.scale.setScalar(sc);
+      obj.rotation.y = name === 'bench' ? -a - Math.PI / 2 : rot;
+      this.scene.add(obj);
+    }
+    this.renderOnce();
+  }
+
+  private buildConeForest(): void {
     const n = 70;
     const cone = new THREE.ConeGeometry(1, 2.4, 7);
     const cap = new THREE.ConeGeometry(0.62, 1.0, 7);
@@ -483,7 +554,9 @@ export class TreeWorld {
     }
     trees.count = caps.count = k;
     this.scene.add(trees, caps);
+  }
 
+  private buildMountains(): void {
     // Mountains far away
     for (let i = 0; i < 14; i++) {
       const a = (i / 14) * Math.PI * 2 + rand(i) * 0.3;
@@ -682,7 +755,10 @@ export class TreeWorld {
 
     this.addGarland(tree.garland);
     this.addStar(tree.star);
-    tree.balls.filter((b) => b.state === 'box').slice(0, 6).forEach((b, i) => this.addGift(b, i));
+    const version = ++this.version;
+    tree.balls.filter((b) => b.state === 'box').slice(0, 6).forEach((b, i) => this.addGift(b, i, version));
+    if (tree.level >= 6) this.addTrain(version);
+    (tree.decor ?? []).forEach((d) => this.addDecor(d.item, d.pad, version));
     this.applyLevel(tree.level);
     this.renderOnce();
   }
@@ -863,47 +939,116 @@ export class TreeWorld {
     });
   }
 
-  private addGift(ball: TreeBall, i: number): void {
-    const palette: [number, number][] = [
-      [0xc8102e, 0xffd36b],
-      [0x1f6f4a, 0xff4d6d],
-      [0x1e5aa8, 0xdfe7f5],
-      [0x6b2fa3, 0xffd36b],
-    ];
-    const [boxColor, ribbonColor] = palette[i % palette.length];
-    const size = 0.55 + rand(i + 4) * 0.2;
-    const gift = new THREE.Group();
-    const box = this.outline(new THREE.Mesh(new THREE.BoxGeometry(size, size * 0.8, size), this.toon(boxColor)), 1.05);
-    box.position.y = size * 0.4;
-    const ribbon = this.toon(ribbonColor);
-    const r1 = new THREE.Mesh(new THREE.BoxGeometry(size * 1.02, size * 0.82, size * 0.16), ribbon);
-    const r2 = new THREE.Mesh(new THREE.BoxGeometry(size * 0.16, size * 0.82, size * 1.02), ribbon);
-    r1.position.y = r2.position.y = size * 0.4;
-    const bowL = new THREE.Mesh(new THREE.TorusGeometry(size * 0.16, size * 0.05, 6, 12), ribbon);
-    const bowR = bowL.clone();
-    bowL.position.set(-size * 0.12, size * 0.88, 0);
-    bowR.position.set(size * 0.12, size * 0.88, 0);
-    bowL.rotation.y = 0.5;
-    bowR.rotation.y = -0.5;
-    gift.add(box, r1, r2, bowL, bowR);
+  private async addGift(ball: TreeBall, i: number, version: number): Promise<void> {
+    const kinds: ModelName[] = ['present-a-cube', 'present-b-rectangle', 'present-a-round', 'present-b-cube', 'present-a-rectangle', 'present-b-round'];
+    const gift = await this.models.get(kinds[i % kinds.length]);
+    if (version !== this.version) return;
+    const size = 1.45 + rand(i + 4) * 0.35;
+    gift.scale.setScalar(size);
 
     // On the podium, around the tree
     const a = 0.5 + i * 1.05;
-    gift.position.set(Math.cos(a) * 1.95, 0.6, Math.sin(a) * 1.95);
-    gift.rotation.y = rand(i) * Math.PI;
+    const holder = new THREE.Group();
+    holder.position.set(Math.cos(a) * 1.95, 0.6, Math.sin(a) * 1.95);
+    holder.rotation.y = rand(i) * Math.PI;
+    holder.add(gift);
 
-    const hit = new THREE.Mesh(new THREE.SphereGeometry(size * 1.1, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
-    hit.position.y = size * 0.45;
+    const hit = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = 0.35;
     hit.userData = { kind: 'ball', ball };
-    gift.add(hit);
+    holder.add(hit);
     this.clickables.push(hit);
-    this.dynamic.add(gift);
+    this.dynamic.add(holder);
     this.animated.push({
       update: (t) => {
         const hop = Math.max(0, Math.sin(t * 2.2 + i * 1.7));
-        gift.position.y = 0.6 + Math.pow(hop, 8) * 0.12;
+        holder.position.y = 0.6 + Math.pow(hop, 8) * 0.12;
       },
     });
+    this.renderOnce();
+  }
+
+  /** Toy train running around the podium (festive level 6+) */
+  private async addTrain(version: number): Promise<void> {
+    const R = 3.75;
+    // Track: two rails and sleepers
+    const metal = this.toon(0x4a4f6a);
+    for (const r of [R - 0.17, R + 0.17]) {
+      const rail = new THREE.Mesh(new THREE.TorusGeometry(r, 0.03, 4, 96), metal);
+      rail.rotation.x = Math.PI / 2;
+      rail.position.y = 0.07;
+      this.dynamic.add(rail);
+    }
+    const sleepers = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.05, 0.12), this.toon(0x6b4a3a), 64);
+    const m = new THREE.Matrix4();
+    for (let k = 0; k < 64; k++) {
+      const a = (k / 64) * Math.PI * 2;
+      m.compose(
+        new THREE.Vector3(Math.cos(a) * R, 0.03, Math.sin(a) * R),
+        new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -a),
+        new THREE.Vector3(1, 1, 1),
+      );
+      sleepers.setMatrixAt(k, m);
+    }
+    this.dynamic.add(sleepers);
+
+    const kinds: ModelName[] = ['train-locomotive', 'train-tender', 'train-wagon', 'train-wagon-logs', 'train-wagon-short'];
+    const cars = await Promise.all(kinds.map((k) => this.models.get(k)));
+    if (version !== this.version) return;
+    const lengths = [0.67, 0.34, 0.72, 0.72, 0.5].map((l) => l * 1.7 + 0.08);
+    const holders = cars.map((car) => {
+      car.scale.setScalar(1.7);
+      const h = new THREE.Group();
+      h.add(car);
+      this.dynamic.add(h);
+      return h;
+    });
+    const smoke = this.glow(0xd8def5, 0.6, 0);
+    this.dynamic.add(smoke);
+
+    this.animated.push({
+      update: (t) => {
+        let angle = t * 0.22;
+        holders.forEach((h, k) => {
+          if (k > 0) angle -= (lengths[k - 1] / 2 + lengths[k] / 2) / R;
+          h.position.set(Math.cos(angle) * R, 0.08 + Math.abs(Math.sin(t * 9 + k)) * 0.01, Math.sin(angle) * R);
+          // Cars look along the track (models face +X)
+          h.rotation.y = -angle - Math.PI / 2;
+        });
+        const loco = holders[0].position;
+        const puff = (t * 1.5) % 1;
+        smoke.position.set(loco.x, 0.95 + puff * 0.8, loco.z);
+        smoke.scale.setScalar(0.3 + puff * 0.7);
+        smoke.material.opacity = Math.sin(puff * Math.PI) * 0.6;
+      },
+    });
+    this.renderOnce();
+  }
+
+  /** Courtyard figures bought in the shop, standing on fixed pads */
+  private async addDecor(item: string, pad: number, version: number): Promise<void> {
+    const kinds: Record<string, [ModelName, number]> = {
+      snowman: ['snowman-hat', 1.3],
+      'snowman-classic': ['snowman', 1.3],
+      reindeer: ['reindeer', 1.25],
+      sled: ['sled', 1.6],
+      'sled-long': ['sled-long', 1.5],
+      'candy-cane': ['candy-cane-red', 2.2],
+      'candy-cane-green': ['candy-cane-green', 2.2],
+      gingerbread: ['gingerbread-man', 2.4],
+      nutcracker: ['nutcracker', 1.5],
+      lantern: ['lantern', 1.8],
+    };
+    const kind = kinds[item];
+    if (!kind) return;
+    const obj = await this.models.get(kind[0]);
+    if (version !== this.version) return;
+    const p = DECOR_PADS[pad % DECOR_PADS.length];
+    obj.scale.setScalar(kind[1]);
+    obj.position.set(p.x, 0, p.z);
+    obj.rotation.y = Math.atan2(p.x, p.z); // faces outwards: towards the camera passing by
+    this.dynamic.add(obj);
+    this.renderOnce();
   }
 
   private applyLevel(level: number): void {
@@ -1123,6 +1268,8 @@ export class TreeWorld {
   }
 
   dispose(): void {
+    this.version++;
+    this.models.dispose();
     this.stop();
     this.observer?.disconnect();
     this.cleanup.forEach((f) => f());

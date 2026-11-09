@@ -809,7 +809,7 @@ export class TreeWorld {
       const t = k / 120;
       const y = 1.0 + t * 3.9;
       const a = t * turns * Math.PI * 2;
-      const r = treeRadius(y) * 0.86 + 0.08;
+      const r = treeRadius(y) * 0.96 + 0.06;
       points.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
     }
     const curve = new THREE.CatmullRomCurve3(points);

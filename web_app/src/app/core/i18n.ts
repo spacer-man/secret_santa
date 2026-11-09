@@ -13,6 +13,7 @@ const ru = {
   happyNewYear: 'С Новым годом!',
   // Tree
   myTree: 'Моя ёлка',
+  dragHint: 'Покрути ёлку пальцем',
   festiveLevel: 'Уровень праздника',
   levelMax: 'Максимальный уровень! 🎆',
   levelHint: 'Шары, огоньки гирлянды и звезда поднимают уровень — и ёлка вокруг меняется',
@@ -138,6 +139,7 @@ const en: Dict = {
   seconds: 'sec',
   happyNewYear: 'Happy New Year!',
   myTree: 'My tree',
+  dragHint: 'Drag to spin the tree',
   festiveLevel: 'Festive level',
   levelMax: 'Max level! 🎆',
   levelHint: 'Balls, garland lights and the star raise the level — and the scene around changes',

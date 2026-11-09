@@ -7,7 +7,7 @@ import { Store } from '../../core/store';
 import { Telegram } from '../../core/telegram';
 import { confetti } from '../fx/confetti';
 import { BallArt, BallDefs } from './ball-art';
-import { TreeScene } from './tree-scene';
+import { Tree3d } from '../tree3d/tree-3d';
 
 const SEEN_KEY = 'santa.tree.seen';
 
@@ -28,7 +28,7 @@ function readSeen(): Record<string, string> | null {
 /** The tree with its HUD: mandarins, festive level, ball/star/wallet sheets */
 @Component({
   selector: 'tree-panel',
-  imports: [TreeScene, BallArt, BallDefs, KeyValuePipe],
+  imports: [Tree3d, BallArt, BallDefs, KeyValuePipe],
   template: `
     @if (tree(); as t) {
       <section class="tree-card">
@@ -36,7 +36,7 @@ function readSeen(): Record<string, string> | null {
           <span class="hud-title">🎄 {{ i18n.t('myTree') }}</span>
           <button class="mandarin-chip" (click)="openWallet()">🍊 {{ t.mandarins }}</button>
         </div>
-        <tree-scene
+        <tree-3d
           [tree]="t"
           [newHung]="newHung()"
           [newLit]="newLit()"
@@ -44,6 +44,7 @@ function readSeen(): Record<string, string> | null {
           (addBall)="router.navigateByUrl('/new')"
           (starClick)="sheet.set({ kind: 'star' })"
         />
+        <p class="drag-hint">↔ {{ i18n.t('dragHint') }}</p>
         <div class="level">
           <div class="row between small">
             <b>✨ {{ i18n.t('festiveLevel') }}: {{ t.level }}/10</b>

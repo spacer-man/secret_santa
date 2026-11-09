@@ -1481,26 +1481,66 @@ export class TreeWorld {
     if (this.fenceBulbs) this.fenceBulbs.visible = level >= 5;
 
     this.levelGroup.clear();
-    if (level >= 9) {
-      // Northern lights
-      const tex = canvasTexture(256, (ctx, s) => {
-        const g = ctx.createLinearGradient(0, 0, 0, s);
-        g.addColorStop(0, 'rgba(61,255,176,0)');
-        g.addColorStop(0.5, 'rgba(61,255,176,0.6)');
-        g.addColorStop(0.8, 'rgba(109,123,255,0.4)');
-        g.addColorStop(1, 'rgba(109,123,255,0)');
+    if (level >= 9) this.addAurora();
+  }
+
+  /**
+   * Northern lights: wavy curtains with vertical rays all around the sky,
+   * low enough to be seen behind the forest from the usual camera angle.
+   */
+  private addAurora(): void {
+    const tex = canvasTexture(512, (ctx, w) => {
+      // Vertical rays of different brightness
+      for (let x = 0; x < w; x++) {
+        const ray = 0.35 + 0.65 * Math.pow(Math.abs(Math.sin(x * 0.11) * Math.sin(x * 0.031 + 1)), 0.7);
+        const g = ctx.createLinearGradient(0, 0, 0, w);
+        g.addColorStop(0, `rgba(170,110,255,0)`);
+        g.addColorStop(0.35, `rgba(120,140,255,${0.35 * ray})`);
+        g.addColorStop(0.7, `rgba(70,255,180,${0.9 * ray})`);
+        g.addColorStop(0.92, `rgba(120,255,200,${0.5 * ray})`);
+        g.addColorStop(1, `rgba(120,255,200,0)`);
         ctx.fillStyle = g;
-        ctx.fillRect(0, 0, s, s);
-      });
-      for (let i = 0; i < 3; i++) {
-        const band = new THREE.Mesh(
-          new THREE.CylinderGeometry(70, 70, 22, 48, 1, true, i * 2.1, 1.6),
-          new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, side: THREE.BackSide, depthWrite: false, fog: false }),
-        );
-        band.position.y = 34;
-        this.levelGroup.add(band);
-        this.animated.push({ update: (t) => ((band.material as THREE.MeshBasicMaterial).opacity = 0.5 + 0.35 * Math.sin(t * 0.4 + i)) });
+        ctx.fillRect(x, 0, 1, w);
       }
+    });
+    tex.wrapS = THREE.RepeatWrapping;
+
+    for (let i = 0; i < 3; i++) {
+      const radius = 50 + i * 4;
+      const geo = new THREE.CylinderGeometry(radius, radius, 14 - i * 2, 160, 1, true);
+      // Waves: the curtain folds in and out and its lower edge undulates
+      const pos = geo.attributes['position'] as THREE.BufferAttribute;
+      for (let v = 0; v < pos.count; v++) {
+        const a = Math.atan2(pos.getZ(v), pos.getX(v));
+        const k = 1 + 0.08 * Math.sin(a * 5 + i * 2) + 0.04 * Math.sin(a * 13 + i);
+        pos.setX(v, pos.getX(v) * k);
+        pos.setZ(v, pos.getZ(v) * k);
+        if (pos.getY(v) < 0) pos.setY(v, pos.getY(v) + 2.5 * Math.sin(a * 3 + i * 1.7));
+      }
+      const map = tex.clone();
+      map.needsUpdate = true;
+      map.repeat.set(3 + i, 1);
+      const band = new THREE.Mesh(
+        geo,
+        new THREE.MeshBasicMaterial({
+          map,
+          transparent: true,
+          opacity: 0.8,
+          blending: THREE.AdditiveBlending,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          fog: false,
+        }),
+      );
+      band.position.y = 10.5 + i * 2.2;
+      this.levelGroup.add(band);
+      this.animated.push({
+        update: (t) => {
+          // Rays drift slowly, brightness breathes
+          map.offset.x = t * (0.004 + i * 0.002) * (i % 2 ? -1 : 1);
+          (band.material as THREE.MeshBasicMaterial).opacity = 0.55 + 0.3 * Math.sin(t * 0.5 + i * 1.3);
+        },
+      });
     }
   }
 

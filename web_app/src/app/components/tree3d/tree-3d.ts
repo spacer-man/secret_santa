@@ -71,8 +71,8 @@ export class Tree3d implements OnDestroy {
   readonly starClick = output<void>();
   /** Decorate mode: free courtyard places glow and can be chosen */
   readonly decorMode = input(false);
-  /** 0 light, 1 snowfall, 2 blizzard */
-  readonly snowfall = input(0);
+  /** 0 clear (starry sky), 1 light, 2 snowfall, 3 blizzard */
+  readonly snowfall = input(1);
   readonly padClick = output<{ pad: number; corner: string; item: string | null }>();
   readonly focusLost = output<void>();
   readonly focused = output<number>();

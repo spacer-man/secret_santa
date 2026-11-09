@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import type { TreeBall, TreeData } from '../../core/api';
 import { buildCabin } from './cabin';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export interface SceneCallbacks {
   ball(ball: TreeBall): void;
@@ -369,6 +370,7 @@ export class TreeWorld {
     for (let i = 0; i < posts; i++) {
       const a = (i / posts) * Math.PI * 2;
       const p = new THREE.Vector3(Math.cos(a) * R, 0.5, Math.sin(a) * R);
+      if (i === gapAt) continue; // entrance: no lonely post in front of the cabin
       const post = this.outline(new THREE.Mesh(postGeo, wood), 1.08);
       post.position.copy(p);
       const cap = new THREE.Mesh(capGeo, snow);
@@ -497,6 +499,7 @@ export class TreeWorld {
   private buildTree(): void {
     // One material: needles and snow are painted per face (crisp toon look)
     const mat = this.toon(0xffffff, { vertexColors: true });
+    const pillowMat = this.toon(0xf4f7ff);
     const green = new THREE.Color(0x1f8a55);
     const greenDark = new THREE.Color(0x17734a);
     const white = new THREE.Color(0xf4f7ff);
@@ -543,7 +546,7 @@ export class TreeWorld {
         const noise = rand(seg * 7.13 + i * 13);
         // Snow lies on the visible outer part of the branches; the very edge stays green
         const tipSeg = seg % 2 === 0;
-        const isSnow = f < 0.2 || (f > 0.56 && f < (tipSeg ? 0.92 : 0.78) - noise * 0.1);
+        const isSnow = f < 0.2 || (f > 0.58 && f < (tipSeg ? 0.86 : 0.72) - noise * 0.1);
         const shade = rand(tri * 0.37 + i);
         const color = isSnow ? (shade > 0.85 ? blueSnow : white) : shade > 0.5 ? green : greenDark;
         for (let k = 0; k < 3; k++) colors.set([color.r, color.g, color.b], (tri + k) * 3);
@@ -554,9 +557,73 @@ export class TreeWorld {
       const tier = this.hull(new THREE.Mesh(flat, mat), 0.025, geo);
       tier.position.y = bottom + h / 2;
       tier.rotation.y = i * 0.7;
+      const pillows = this.snowPillows(geo, h, r, i);
+      if (pillows) tier.add(new THREE.Mesh(pillows, pillowMat));
       tree.add(tier);
     });
     this.scene.add(tree);
+  }
+
+  /**
+   * Soft snow clumps lying across the branch ends (tilted with the slope):
+   * together they form a wavy snow rim on every tier.
+   */
+  private snowPillows(geo: THREE.BufferGeometry, h: number, r: number, tierIndex: number): THREE.BufferGeometry | null {
+    const pos = geo.attributes['position'] as THREE.BufferAttribute;
+    const tips: THREE.Vector3[] = [];
+    const seen = new Set<string>();
+    for (let v = 0; v < pos.count; v++) {
+      const p = new THREE.Vector3(pos.getX(v), pos.getY(v), pos.getZ(v));
+      const radial = Math.hypot(p.x, p.z);
+      if (p.y > -h / 2 + 0.02 || radial < r * 1.02) continue; // bottom ring, sticking-out tips only
+      const key = `${p.x.toFixed(2)}:${p.z.toFixed(2)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tips.push(p);
+    }
+    if (!tips.length) return null;
+
+    const apex = new THREE.Vector3(0, h / 2, 0);
+    const up = new THREE.Vector3(0, 1, 0);
+    const parts: THREE.BufferGeometry[] = [];
+    const m = new THREE.Matrix4();
+    tips.forEach((tip, k) => {
+      const seed = tierIndex * 100 + k;
+      const d = new THREE.Vector3(tip.x, 0, tip.z).normalize();
+      const u = tip.clone().sub(apex).normalize(); // along the branch, outwards and down
+      const side = new THREE.Vector3().crossVectors(up, d).normalize();
+      const n = new THREE.Vector3().crossVectors(u, side).normalize(); // surface normal, outwards and up
+      if (n.y < 0) n.negate();
+      const z = new THREE.Vector3().crossVectors(u, n).normalize();
+
+      // A clump lying across the branch near its end: neighbours almost join into a wavy rim
+      if (rand(seed + 9) < 0.06) return; // a rare gap: snow fell unevenly
+      const spacing = (Math.PI * 2 * r) / tips.length;
+      const across = spacing * (0.5 + rand(seed) * 0.12);
+      const along = Math.min(0.22, r * 0.12) * (0.85 + rand(seed + 1) * 0.3);
+      const height = 0.055 + rand(seed + 2) * 0.04;
+      const centre = apex.clone().lerp(tip, 0.8 + rand(seed + 4) * 0.08).addScaledVector(n, 0.012);
+
+      // Seam vertices are merged: no dark line across the clump
+      const raw = new THREE.SphereGeometry(1, 14, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+      raw.deleteAttribute('uv');
+      raw.deleteAttribute('normal');
+      const dome = mergeVertices(raw);
+      const dp = dome.attributes['position'] as THREE.BufferAttribute;
+      for (let v = 0; v < dp.count; v++) {
+        const x = dp.getX(v);
+        const y = dp.getY(v);
+        const zz = dp.getZ(v);
+        // Bumps depend on the position (not the index), so seams stay closed
+        const bump = 1 + (rand(x * 12.9898 + zz * 78.233 + seed) - 0.5) * 0.3 * y;
+        dp.setXYZ(v, x * along, y * height * bump, zz * across);
+      }
+      m.makeBasis(u, n, z).setPosition(centre);
+      dome.applyMatrix4(m);
+      dome.computeVertexNormals();
+      parts.push(dome);
+    });
+    return parts.length ? mergeGeometries(parts) : null;
   }
 
   private buildSnowfall(): void {
@@ -769,24 +836,29 @@ export class TreeWorld {
     const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.12, bevelEnabled: true, bevelSize: 0.03, bevelThickness: 0.03, bevelSegments: 1 });
     geo.center();
     const star = this.outline(
-      new THREE.Mesh(geo, this.toon(on ? 0xffd36b : 0x5c6380, { emissive: on ? 0xffb020 : 0x000000, emissiveIntensity: on ? 0.8 : 0 })),
+      new THREE.Mesh(
+        geo,
+        this.toon(on ? 0xffd36b : 0xc9d2ec, {
+          emissive: on ? 0xffb020 : 0x5a6ab0,
+          emissiveIntensity: on ? 0.8 : 0.35,
+        }),
+      ),
       1.06,
     );
     star.position.y = TREE_TOP + 0.35;
     star.userData = { kind: 'star' };
     this.clickables.push(star);
     this.dynamic.add(star);
-    let glow: THREE.Sprite | undefined;
-    if (on) {
-      glow = this.glow(0xffe08a, 2.6, 0.9);
-      glow.position.copy(star.position);
-      this.dynamic.add(glow);
-    }
+    // Lit: warm big glow. Not lit yet: a faint cold shimmer, so the star is still noticeable
+    const glow = on ? this.glow(0xffe08a, 2.6, 0.9) : this.glow(0x9fb4ff, 1.5, 0.35);
+    glow.position.copy(star.position);
+    this.dynamic.add(glow);
     this.animated.push({
       update: (t) => {
         star.quaternion.copy(this.camera.quaternion);
         star.rotateZ(Math.sin(t * 1.2) * 0.08);
-        if (glow) glow.scale.setScalar(2.4 + Math.sin(t * 2) * 0.3);
+        if (on) glow.scale.setScalar(2.4 + Math.sin(t * 2) * 0.3);
+        else glow.material.opacity = 0.2 + 0.2 * Math.abs(Math.sin(t * 0.9));
       },
     });
   }

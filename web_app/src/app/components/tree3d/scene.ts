@@ -1505,43 +1505,88 @@ export class TreeWorld {
     });
     tex.wrapS = THREE.RepeatWrapping;
 
-    for (let i = 0; i < 3; i++) {
-      const radius = 50 + i * 4;
-      const geo = new THREE.CylinderGeometry(radius, radius, 14 - i * 2, 160, 1, true);
-      // Waves: the curtain folds in and out and its lower edge undulates
+    // Separate ribbons of different length, height and tilt
+    const ribbons = [
+      { start: 0.3, length: 2.2, radius: 52, base: 9.5, height: 11, tilt: 0.06, speed: 1 },
+      { start: 2.9, length: 1.6, radius: 56, base: 12, height: 8, tilt: -0.05, speed: -0.8 },
+      { start: 4.4, length: 2.0, radius: 50, base: 10.5, height: 10, tilt: 0.04, speed: 1.2 },
+      { start: 1.6, length: 1.3, radius: 58, base: 14, height: 6, tilt: -0.03, speed: -1.1 },
+      { start: 5.6, length: 1.7, radius: 55, base: 11, height: 9, tilt: -0.06, speed: 0.9 },
+      { start: 3.6, length: 1.1, radius: 49, base: 8.5, height: 7, tilt: 0.05, speed: -1.3 },
+    ];
+    const SEG = 140;
+    const ROWS = 4;
+
+    ribbons.forEach((rb, i) => {
+      const geo = new THREE.PlaneGeometry(1, 1, SEG, ROWS);
       const pos = geo.attributes['position'] as THREE.BufferAttribute;
-      for (let v = 0; v < pos.count; v++) {
-        const a = Math.atan2(pos.getZ(v), pos.getX(v));
-        const k = 1 + 0.08 * Math.sin(a * 5 + i * 2) + 0.04 * Math.sin(a * 13 + i);
-        pos.setX(v, pos.getX(v) * k);
-        pos.setZ(v, pos.getZ(v) * k);
-        if (pos.getY(v) < 0) pos.setY(v, pos.getY(v) + 2.5 * Math.sin(a * 3 + i * 1.7));
+      // u along the ribbon (0..1), v from the bottom (0) to the top (1)
+      const uv = new Float32Array(pos.count * 2);
+      const colors = new Float32Array(pos.count * 3);
+      for (let k = 0; k < pos.count; k++) {
+        const u = pos.getX(k) + 0.5;
+        const v = pos.getY(k) + 0.5;
+        uv[k * 2] = u * rb.length * 1.6;
+        uv[k * 2 + 1] = v;
+        // The ends fade out softly; brightness varies along the ribbon
+        const ends = Math.sin(Math.PI * u) ** 0.8;
+        const along = 0.55 + 0.45 * Math.sin(u * 9 + i * 2) * Math.sin(u * 3.7 + i);
+        const b = Math.min(1, 1.25 * ends * Math.max(0.2, along));
+        colors.set([b, b, b], k * 3);
       }
+      geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      const base = Float32Array.from(pos.array as Float32Array);
+
       const map = tex.clone();
       map.needsUpdate = true;
-      map.repeat.set(3 + i, 1);
-      const band = new THREE.Mesh(
+      const mesh = new THREE.Mesh(
         geo,
         new THREE.MeshBasicMaterial({
           map,
+          vertexColors: true,
           transparent: true,
-          opacity: 0.8,
           blending: THREE.AdditiveBlending,
           side: THREE.DoubleSide,
           depthWrite: false,
           fog: false,
         }),
       );
-      band.position.y = 10.5 + i * 2.2;
-      this.levelGroup.add(band);
+      mesh.rotation.z = rb.tilt;
+      mesh.frustumCulled = false;
+      this.levelGroup.add(mesh);
+
+      // Shape: arc around the courtyard with folds, a wavy bottom and a ragged
+      // top of varying height; everything sways slowly
+      const shape = (t: number) => {
+        for (let k = 0; k < pos.count; k++) {
+          const u = base[k * 3] + 0.5;
+          const v = base[k * 3 + 1] + 0.5;
+          const a = rb.start + u * rb.length;
+          const fold =
+            1 + 0.07 * Math.sin(a * 7 + t * 0.25 * rb.speed + i) + 0.035 * Math.sin(a * 19 - t * 0.4 * rb.speed);
+          const r = rb.radius * fold;
+          const bottom = rb.base + 1.6 * Math.sin(a * 4 + t * 0.2 + i) + 0.7 * Math.sin(a * 11 - t * 0.3);
+          const top = rb.height * (0.55 + 0.45 * (0.5 + 0.5 * Math.sin(a * 6 + t * 0.15 + i * 3)) * (0.6 + 0.4 * Math.sin(a * 17 + i)));
+          pos.setXYZ(k, Math.cos(a) * r, bottom + v * top, Math.sin(a) * r);
+        }
+        pos.needsUpdate = true;
+      };
+      shape(0);
+
+      let last = -1;
       this.animated.push({
         update: (t) => {
-          // Rays drift slowly, brightness breathes
-          map.offset.x = t * (0.004 + i * 0.002) * (i % 2 ? -1 : 1);
-          (band.material as THREE.MeshBasicMaterial).opacity = 0.55 + 0.3 * Math.sin(t * 0.5 + i * 1.3);
+          map.offset.x = t * 0.006 * rb.speed;
+          (mesh.material as THREE.MeshBasicMaterial).opacity = 0.85 + 0.15 * Math.sin(t * 0.45 + i * 1.7);
+          // Reshape ~15 times a second: smooth enough for slow waves, cheap
+          if (t - last > 0.066) {
+            last = t;
+            shape(t);
+          }
         },
       });
-    }
+    });
   }
 
   // ====== Input ====== //

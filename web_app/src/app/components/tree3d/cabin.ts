@@ -4,8 +4,6 @@
  * Local space: the door faces +Z.
  */
 import * as THREE from 'three';
-import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { withOutline } from './outline';
 
 export interface Kit {
   toon(color: number, extra?: Partial<THREE.MeshToonMaterialParameters>): THREE.MeshToonMaterial;
@@ -27,39 +25,6 @@ export interface Cabin {
 function rand(seed: number): number {
   const x = Math.sin(seed * 9301 + 49297) * 233280;
   return x - Math.floor(x);
-}
-
-/**
- * Fluffy snow layer for a roof slab: the top half of a rounded box
- * (superellipsoid) with soft bumps; edges round over and droop a little.
- */
-function snowPillow(length: number, height: number, depth: number, seed: number, eaveDir: number): THREE.BufferGeometry {
-  const raw = new THREE.SphereGeometry(1, 64, 10, 0, Math.PI * 2, 0, Math.PI / 2);
-  raw.deleteAttribute('uv');
-  raw.deleteAttribute('normal');
-  const g = mergeVertices(raw);
-  const p = g.attributes['position'] as THREE.BufferAttribute;
-  const e = 0.28; // < 1: boxy in plan, still round at the edges
-  const shape = (v: number, k: number) => Math.sign(v) * Math.pow(Math.abs(v), k);
-  for (let i = 0; i < p.count; i++) {
-    const x = shape(p.getX(i), e);
-    const z = shape(p.getZ(i), e);
-    let y = shape(Math.max(p.getY(i), 0), 0.55);
-    // Waves running down the slope and overlapping: a gentle back towards the
-    // ridge, a steep rounded front facing the eave; crests wander a little
-    const down = (x * eaveDir + 1) / 2; // 0 at the ridge .. 1 at the eave
-    const phase = down * 4.2 + 0.18 * Math.sin(z * 5 + seed * 3) + 0.08 * Math.sin(z * 13 - seed);
-    const w = phase - Math.floor(phase);
-    const wave = Math.pow(w, 1.6) * (1 - Math.pow(Math.max(0, (w - 0.82) / 0.18), 1.5));
-    y *= 0.72 + 0.7 * wave * Math.min(1, down * 3);
-    // Edges droop: the rim hangs a bit below the slab (not on the ridge side,
-    // where the ridge roll covers the joint)
-    const rim = Math.max(x * eaveDir, Math.abs(z));
-    const droop = rim > 0.9 ? (rim - 0.9) * 1.2 : 0;
-    p.setXYZ(i, (x * length) / 2, y * height - droop * height, (z * depth) / 2);
-  }
-  g.computeVertexNormals();
-  return g;
 }
 
 const W = 2.2; // half width (x)
@@ -149,11 +114,9 @@ export function buildCabin(kit: Kit): Cabin {
     pivot.add(slab);
 
     // Outlined slab below is enough: the snow layer's own outline showed under the eaves
-    const snowLayer = withOutline(
-      new THREE.Mesh(snowPillow(slabLen + 0.12, 0.26, D * 2 + OVER * 2 + 0.16, side, dir), snow),
-    );
-    // Snow from both slopes meets over the ridge, like real snow does
-    snowLayer.position.set((dir * slabLen) / 2, 0.06, 0);
+    // Outlined slab below is enough: the snow layer's own outline showed under the eaves
+    const snowLayer = new THREE.Mesh(new THREE.BoxGeometry(slabLen + 0.06, 0.2, D * 2 + OVER * 2 + 0.08), snow);
+    snowLayer.position.set((dir * slabLen) / 2, 0.17, 0);
     pivot.add(snowLayer);
 
     // Snow hanging over the eave
@@ -184,9 +147,22 @@ export function buildCabin(kit: Kit): Cabin {
   // Chimney with smoke
   const chimney = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.3, 0.5), kit.toon(0x8a5a4a)), 1.04);
   chimney.position.set(-1.0, top + RIDGE * 0.55 + 0.5, -0.6);
-  const chimneySnow = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.12, 0.6), snow);
-  chimneySnow.position.set(chimney.position.x, chimney.position.y + 0.7, chimney.position.z);
-  g.add(chimney, chimneySnow);
+  // Open chimney: a dark flue inside, snow only on the rim (smoke comes out)
+  const topY = chimney.position.y + 0.65;
+  const flue = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), new THREE.MeshBasicMaterial({ color: 0x120a08 }));
+  flue.rotation.x = -Math.PI / 2;
+  flue.position.set(chimney.position.x, topY + 0.005, chimney.position.z);
+  g.add(chimney, flue);
+  for (const [dx, dz, w, d] of [
+    [0, 0.24, 0.6, 0.12],
+    [0, -0.24, 0.6, 0.12],
+    [0.24, 0, 0.12, 0.36],
+    [-0.24, 0, 0.12, 0.36],
+  ]) {
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, d), snow);
+    rim.position.set(chimney.position.x + dx, topY + 0.04, chimney.position.z + dz);
+    g.add(rim);
+  }
 
   const smoke: THREE.Sprite[] = [];
   for (let i = 0; i < 9; i++) {

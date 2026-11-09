@@ -23,6 +23,38 @@ export interface Config {
   bot_username: string;
   reactions: string[];
   timezones: string[];
+  ball_colors: string[];
+  ball_patterns: string[];
+  rewards: Record<string, number>;
+}
+
+export type BallState = 'box' | 'hung' | 'lit';
+
+export interface TreeBall {
+  id: string;
+  color: string;
+  pattern: string;
+  state: BallState;
+  reactions: Record<string, number>;
+  replies: number;
+}
+
+export interface TreeData {
+  year: number;
+  balls: TreeBall[];
+  star: boolean;
+  garland: number;
+  mandarins: number;
+  level: number;
+  points: number;
+  level_from: number;
+  level_to: number | null;
+}
+
+export interface MandarinTx {
+  amount: number;
+  reason: string;
+  created_at: string;
 }
 
 export interface Stats {
@@ -132,13 +164,20 @@ export class Api {
   logout = () => (this.session = null);
 
   wishes = () => this.request<MyWish[]>('GET', '/wishes');
-  newWish = (text: string, files: File[]) => {
+  newWish = (text: string, files: File[], look?: { color: string; pattern: string }) => {
     const form = new FormData();
     form.append('text', text);
+    if (look) {
+      form.append('ball_color', look.color);
+      form.append('ball_pattern', look.pattern);
+    }
     files.forEach((f) => form.append('files', f, f.name));
     return this.request<{ id: string }>('POST', '/wishes', form);
   };
   deleteWish = (id: string) => this.request<void>('DELETE', `/wishes/${id}`);
+
+  tree = () => this.request<TreeData>('GET', '/tree');
+  mandarins = () => this.request<{ balance: number; history: MandarinTx[] }>('GET', '/mandarins');
 
   gift = () => this.request<Gift>('GET', '/gift');
   openGift = () => this.request<Gift>('POST', '/gift/open');

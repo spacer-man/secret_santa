@@ -1,14 +1,20 @@
+import logging
 from uuid import UUID
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
 from . import keyboards
 from . import messages
 from db.models import ValidStatus
 from handlers import buttons
+from handlers import keyboards as common_keyboards
 from handlers.depends import wish_service
+from services.mandarins import REWARDS, Reason
 from services.notify.aiogram.keyboards import OptionPrefix
+
+
+log = logging.getLogger(__name__)
 
 
 wish_validate_router = Router(name="wishes.validate")
@@ -45,10 +51,36 @@ async def approve_or_reject_wish(call: CallbackQuery) -> None:
         wish_id=wish_id,
         valid_status=new_wish_valid_status)
 
+    await notify_wish_author(call, wish_id, new_wish_valid_status)
+
     # Show successful validate processed
     await message.edit_text(
         text=messages.VERIFIED_WISH_ACTIONS % {"status": status_message},
         reply_markup=keyboards.HIDE_WISH)
+
+
+async def notify_wish_author(
+        call: CallbackQuery,
+        wish_id: UUID,
+        status: ValidStatus,
+        ) -> None:
+    bot = call.bot
+    wish = await wish_service.get_one(wish_id)
+    if not (bot and wish):
+        return None
+    if status == ValidStatus.APPROVED:
+        text = messages.AUTHOR_APPROVED % {"mandarins": REWARDS[Reason.WISH_APPROVED]}
+    else:
+        text = messages.AUTHOR_REJECTED
+    app_row = common_keyboards.open_app(text=buttons.OPEN_TREE)
+    try:
+        await bot.send_message(
+            chat_id=wish.author_telegram_id,
+            text=text,
+            parse_mode=None,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[app_row]) if app_row else None)
+    except Exception:
+        log.warning("Failed to notify wish author", exc_info=True)
 
 
 @wish_validate_router.callback_query(F.data == buttons.HIDE_WISH)

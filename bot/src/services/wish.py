@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 from sqlmodel import update
 
 from db import new_db_session
-from db.models import Delivery, MediaType, ValidStatus
+from db.models import Delivery, MediaType, User, ValidStatus, Wish
+from services import mandarins
 from repos.user.abc import UserRepository
 from repos.wish.abc import WishRepository
 from repos.media.abc import MediaRepository
@@ -53,6 +54,8 @@ class WishMediaData(TypedDict):
 
 class NewWishArgs(TypedDict):
     author_telegram_id: Required[int]
+    ball_color: NotRequired[str | None]
+    ball_pattern: NotRequired[str | None]
     text: Required[str]
     text_entities: NotRequired[list[MessageEntity] | None]
     effect_id: NotRequired[str | None]
@@ -104,7 +107,9 @@ class WishService(object):
                 author_id=author_id,
                 text_entities=text_entities,
                 effect_id=kwargs.get("effect_id"),
-                text=kwargs["text"])
+                text=kwargs["text"],
+                ball_color=kwargs.get("ball_color"),
+                ball_pattern=kwargs.get("ball_pattern"))
             await db_session.commit()
 
             if media := kwargs.get("media"):
@@ -254,4 +259,20 @@ class WishService(object):
 
             await wish_repo.edit(id=wish_id, valid_status=valid_status)
 
+            if valid_status == ValidStatus.APPROVED:
+                await self._reward_approved(db_session, wish_id)
+
             await db_session.commit()
+
+    async def _reward_approved(self, db_session, wish_id: UUID) -> None:
+        """Author gets mandarins; the friend who invited them too (once)"""
+        wish = await db_session.get(Wish, wish_id)
+        if not wish:
+            return None
+        await mandarins.award(
+            db_session, wish.author_id, mandarins.Reason.WISH_APPROVED, wish_id)
+        author = await db_session.get(User, wish.author_id)
+        if author and author.referrer_id:
+            await mandarins.award(
+                db_session, author.referrer_id,
+                mandarins.Reason.FRIEND_WISH, author.id)

@@ -73,6 +73,7 @@ export class Tree3d implements OnDestroy {
   readonly decorMode = input(false);
   readonly padClick = output<{ pad: number; corner: string; item: string | null }>();
   readonly focusLost = output<void>();
+  readonly focused = output<number>();
 
   protected readonly fallback = signal(new URLSearchParams(location.search).get('scene') === '2d');
   protected readonly ready = signal(false);
@@ -105,6 +106,7 @@ export class Tree3d implements OnDestroy {
         addBall: () => this.addBall.emit(),
         pad: (pad, corner, item) => this.padClick.emit({ pad, corner, item }),
         focusLost: () => this.focusLost.emit(),
+        focused: (corner) => this.focused.emit(corner),
       });
       this.world.setDecorMode(this.decorMode());
       // For screenshots/tests only: ?debug exposes the scene

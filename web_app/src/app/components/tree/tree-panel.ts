@@ -43,6 +43,8 @@ function readSeen(): Record<string, string> | null {
           [tree]="t"
           [decorMode]="decorMode()"
           (padClick)="openPad($event)"
+          (focused)="cornerFocused.set(true)"
+          (focusLost)="cornerFocused.set(false)"
           [newHung]="newHung()"
           [newLit]="newLit()"
           (ballClick)="openBall($event)"
@@ -50,7 +52,7 @@ function readSeen(): Record<string, string> | null {
           (starClick)="sheet.set({ kind: 'star' })"
         />
         @if (decorMode()) {
-          <p class="drag-hint decor-hint">✨ {{ i18n.t('decorHint') }}</p>
+          <p class="drag-hint decor-hint">✨ {{ i18n.t(cornerFocused() ? 'decorHintPlace' : 'decorHint') }}</p>
           <button class="decor-btn active" (click)="toggleDecor()">✓ {{ i18n.t('decorDone') }}</button>
         } @else {
           <p class="drag-hint">↔ {{ i18n.t('dragHint') }}</p>
@@ -150,6 +152,7 @@ export class TreePanel {
   protected readonly newLit = signal<string[]>([]);
   protected readonly sheet = signal<Sheet>(null);
   protected readonly decorMode = signal(false);
+  protected readonly cornerFocused = signal(false);
   private readonly scene3d = viewChild<Tree3d>('scene3d');
 
   protected readonly progress = computed(() => {

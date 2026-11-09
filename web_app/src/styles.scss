@@ -763,9 +763,8 @@ blockquote {
   -webkit-backdrop-filter: blur(6px);
 }
 .level {
-  padding: 0.8rem 1rem 1rem;
-  background: linear-gradient(180deg, rgba(12, 11, 34, 0), #0c0b22 30%);
-  margin-top: -0.5rem;
+  padding: 1.1rem 1rem 1rem;
+  background: #0c0b22;
   position: relative;
 }
 .level p {
@@ -930,4 +929,38 @@ blockquote {
   font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.55);
   pointer-events: none;
+}
+
+.scene-wrap {
+  position: relative;
+}
+.scene-wrap .drag-hint {
+  bottom: 0.7rem;
+  margin: 0;
+}
+.decor-btn {
+  position: absolute;
+  left: 0.7rem;
+  bottom: 2.6rem;
+  z-index: 2;
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #fff;
+  padding: 0.5rem 0.85rem;
+  border-radius: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(12, 11, 34, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+.decor-btn.active {
+  background: var(--gold-color);
+  color: #1a1a21;
+  border-color: transparent;
+}
+.decor-hint {
+  color: var(--gold-color);
+  font-weight: 700;
 }

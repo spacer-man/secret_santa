@@ -15,6 +15,10 @@ export interface SceneCallbacks {
   ball(ball: TreeBall): void;
   star(): void;
   addBall(): void;
+  /** A courtyard place was tapped in decorate mode (item: what stands there, if anything) */
+  pad(pad: number, corner: string, item: string | null): void;
+  /** The camera left the focused corner (the user started rotating) */
+  focusLost(): void;
 }
 
 const BALL_COLORS: Record<string, number> = {
@@ -35,16 +39,33 @@ const ZOOM_DEFAULT = 0.25;
 
 
 
-/** Places for courtyard figures: a ring between the train track and the fence */
-const DECOR_PADS = Array.from({ length: 10 }, (_, i) => {
-  const a = (i / 10) * Math.PI * 2 + 0.3;
-  return new THREE.Vector3(Math.cos(a) * 5.7, 0, Math.sin(a) * 5.7);
-}).filter((p) => {
-  // Keep the path to the cabin free
-  const ca = (14 / 20) * Math.PI * 2 - 0.12;
-  const a = Math.atan2(p.z, p.x);
-  return Math.abs(Math.atan2(Math.sin(a - ca), Math.cos(a - ca))) > 0.4;
-});
+/**
+ * Courtyard corners for figures from the shop. Each corner has a few places
+ * set irregularly around a centre, so the courtyard doesn't look like a ring.
+ * Angles are measured as in Math.atan2(z, x); the cabin is at ~4.28 rad.
+ */
+export const CORNERS: { key: string; angle: number; radius: number; pads: [number, number][] }[] = [
+  // pads: [tangential offset, radial offset] around the corner centre
+  { key: 'porch', angle: 4.98, radius: 6.1, pads: [[-0.9, 0.2], [0.35, 0.65], [0.95, -0.35]] },
+  { key: 'lantern', angle: 0.33, radius: 6.3, pads: [[-0.8, -0.1], [0.2, 0.55], [0.9, -0.25]] },
+  { key: 'hill', angle: 1.85, radius: 5.9, pads: [[-1.0, 0.35], [-0.1, -0.3], [0.85, 0.4], [0.3, 0.95]] },
+  { key: 'rocks', angle: 3.3, radius: 6.2, pads: [[-0.7, 0.45], [0.25, -0.2], [1.0, 0.5]] },
+  { key: 'path', angle: 5.75, radius: 5.8, pads: [[-0.55, -0.25], [0.5, 0.35]] },
+];
+
+/** All places, in order: corner by corner */
+const DECOR_PADS = CORNERS.flatMap((c, ci) =>
+  c.pads.map(([t, r]) => {
+    const rr = c.radius + r;
+    const a = c.angle + t / rr;
+    return { corner: ci, pos: new THREE.Vector3(Math.cos(a) * rr, 0, Math.sin(a) * rr) };
+  }),
+);
+
+function cornerCentre(i: number): THREE.Vector3 {
+  const c = CORNERS[i];
+  return new THREE.Vector3(Math.cos(c.angle) * c.radius, 0, Math.sin(c.angle) * c.radius);
+}
 
 function rand(seed: number): number {
   const x = Math.sin(seed * 9301 + 49297) * 233280;
@@ -576,18 +597,27 @@ export class TreeWorld {
 
   // ====== Dynamic content ====== //
   private ballSlots(): THREE.Vector3[] {
-    // Golden-angle spiral over the tree surface: balls are spread on all sides
+    // Places on a golden-angle spiral from the bottom to the top: all sides, all heights
     const slots: THREE.Vector3[] = [];
     const n = 44;
     for (let i = 0; i < n; i++) {
-      const y = 1.15 + (i / n) * 3.7 + (rand(i) - 0.5) * 0.15;
+      const y = 1.15 + ((i + 0.5) / n) * 3.55;
       const a = i * 2.39996;
       const r = treeRadius(y) * 0.92 + 0.1;
-      if (r < 0.25) continue;
+      if (r < 0.3) continue;
       slots.push(new THREE.Vector3(Math.cos(a) * r, y - 0.05, Math.sin(a) * r));
     }
-    // Fill from the bottom-middle, mixing sides
-    return slots.sort((p, q) => Math.abs(p.y - 2.4) - Math.abs(q.y - 2.4) + (rand(p.x) - 0.5) * 1.2);
+    // Fill order: van der Corput sequence over heights, so any number of balls
+    // is spread evenly from the bottom to the top (not bunched at one height)
+    const vdc = (i: number) => {
+      let x = 0;
+      for (let b = 0.5; i; i >>= 1, b /= 2) if (i & 1) x += b;
+      return x;
+    };
+    return slots
+      .map((p, i) => ({ p, key: vdc(i + 1) }))
+      .sort((a, b) => a.key - b.key)
+      .map((x) => x.p);
   }
 
   private slots = this.ballSlots();
@@ -619,6 +649,7 @@ export class TreeWorld {
     tree.balls.filter((b) => b.state === 'box').slice(0, 6).forEach((b, i) => this.addGift(b, i, version));
     if (tree.level >= 6) this.addTrain(version);
     (tree.decor ?? []).forEach((d) => this.addDecor(d.item, d.pad, version));
+    this.addPadMarkers(new Set((tree.decor ?? []).map((d) => d.pad)));
     this.applyLevel(tree.level);
     this.renderOnce();
   }
@@ -714,8 +745,13 @@ export class TreeWorld {
         ctx.stroke();
       }));
     const ghost = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-    ghost.scale.setScalar(0.5);
-    ghost.position.copy(p);
+    ghost.scale.setScalar(0.55);
+    // Slightly in front of the branches, with a warm glow behind
+    const out = new THREE.Vector3(p.x, 0, p.z).normalize().multiplyScalar(0.12);
+    ghost.position.copy(p).add(out);
+    const halo = this.glow(0xfff0b0, 1.3, 0.8);
+    halo.position.copy(ghost.position);
+    this.dynamic.add(halo);
     const hit = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
     hit.userData = { kind: 'add' };
     ghost.add(hit);
@@ -723,7 +759,10 @@ export class TreeWorld {
     this.dynamic.add(ghost);
     this.animated.push({
       update: (t) => {
-        ghost.material.opacity = 0.35 + 0.4 * Math.abs(Math.sin(t * 1.5 + i));
+        const k = Math.abs(Math.sin(t * 1.6 + i));
+        ghost.material.opacity = 0.55 + 0.45 * k;
+        halo.material.opacity = 0.35 + 0.55 * k;
+        halo.scale.setScalar(1.1 + 0.35 * k);
       },
     });
   }
@@ -903,12 +942,99 @@ export class TreeWorld {
     if (!kind) return;
     const obj = await this.models.get(kind[0]);
     if (version !== this.version) return;
-    const p = DECOR_PADS[pad % DECOR_PADS.length];
+    const place = DECOR_PADS[pad % DECOR_PADS.length];
+    const p = place.pos;
     obj.scale.setScalar(kind[1]);
     obj.position.set(p.x, 0, p.z);
-    obj.rotation.y = Math.atan2(p.x, p.z); // faces outwards: towards the camera passing by
-    this.dynamic.add(obj);
+    // Faces outwards (towards the camera passing by), a little turned for a natural look
+    obj.rotation.y = Math.atan2(p.x, p.z) + (rand(pad) - 0.5) * 0.9;
+    const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.4, 8), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.set(p.x, 0.7, p.z);
+    hit.userData = { kind: 'pad', pad: pad % DECOR_PADS.length, item };
+    this.clickables.push(hit);
+    this.dynamic.add(obj, hit);
     this.renderOnce();
+  }
+
+  // ====== Decorate mode & corners ====== //
+  private decorMode = false;
+  private padMarkers: THREE.Object3D[] = [];
+  private ringTex?: THREE.CanvasTexture;
+
+  /** Glowing rings on free places (visible only in decorate mode) */
+  private addPadMarkers(occupied: Set<number>): void {
+    this.padMarkers = [];
+    const tex =
+      this.ringTex ??
+      (this.ringTex = canvasTexture(128, (ctx, s) => {
+        const g = ctx.createRadialGradient(s / 2, s / 2, s * 0.2, s / 2, s / 2, s / 2);
+        g.addColorStop(0, 'rgba(255,190,60,0.25)');
+        g.addColorStop(0.55, 'rgba(255,190,60,0.9)');
+        g.addColorStop(0.72, 'rgba(255,240,170,1)');
+        g.addColorStop(1, 'rgba(255,190,60,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, s, s);
+      }));
+    DECOR_PADS.forEach((place, i) => {
+      if (occupied.has(i)) return;
+      const ring = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.1, 1.1),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }),
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(place.pos.x, 0.03, place.pos.z);
+      // A soft column of light above the place: visible from far away
+      const column = this.glow(0xffc850, 1.1, 0.7);
+      column.scale.set(0.7, 1.8, 1);
+      column.position.set(place.pos.x, 0.8, place.pos.z);
+      const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.2, 8), new THREE.MeshBasicMaterial({ visible: false }));
+      hit.position.set(place.pos.x, 0.6, place.pos.z);
+      hit.userData = { kind: 'pad', pad: i, item: null };
+      const marker = new THREE.Group();
+      marker.add(ring, column, hit);
+      marker.visible = this.decorMode;
+      this.padMarkers.push(marker);
+      this.clickables.push(hit);
+      this.dynamic.add(marker);
+      this.animated.push({
+        update: (t) => {
+          const k = 1 + Math.sin(t * 2.5 + i) * 0.12;
+          ring.scale.set(k, k, 1);
+          (ring.material as THREE.MeshBasicMaterial).opacity = 0.75 + 0.25 * Math.sin(t * 2.5 + i);
+          column.material.opacity = 0.45 + 0.3 * Math.sin(t * 2.5 + i);
+        },
+      });
+    });
+  }
+
+  setDecorMode(on: boolean): void {
+    this.decorMode = on;
+    this.padMarkers.forEach((m) => (m.visible = on));
+    if (!on) this.clearFocus();
+    this.start();
+    this.renderOnce();
+  }
+
+  // Camera flight to a corner
+  private focusTarget = new THREE.Vector3();
+  private focusAzimuth = 0;
+  private focusTo = 0;
+  private focusBlend = 0;
+
+  focusCorner(corner: number): void {
+    const c = cornerCentre(corner);
+    // A bit towards the tree, so the tree peeks into the frame
+    this.focusTarget.set(c.x * 0.85, 0.5, c.z * 0.85);
+    // Look from outside the corner over the fence, with the tree in the background
+    this.focusAzimuth = Math.atan2(c.x, c.z);
+    this.focusTo = 1;
+    this.velocity = 0;
+    this.start();
+  }
+
+  clearFocus(): void {
+    this.focusTo = 0;
+    this.start();
   }
 
   private applyLevel(level: number): void {
@@ -1000,6 +1126,10 @@ export class TreeWorld {
       if (Math.abs(e.clientX - startX) > 6 || Math.abs(e.clientY - startY) > 6) moved = true;
       const now = performance.now();
       const rot = (dx / this.canvas.clientWidth) * Math.PI * 1.3;
+      if (moved && this.focusTo === 1) {
+        this.focusTo = 0;
+        this.callbacks.focusLost();
+      }
       this.azimuth -= rot;
       this.velocity = -rot / Math.max(1, now - lastT);
       lastX = e.clientX;
@@ -1045,6 +1175,12 @@ export class TreeWorld {
     if (data['kind'] === 'ball') this.callbacks.ball(data['ball']);
     else if (data['kind'] === 'star') this.callbacks.star();
     else if (data['kind'] === 'add') this.callbacks.addBall();
+    else if (data['kind'] === 'pad' && (this.decorMode || data['item'])) {
+      const pad = data['pad'] as number;
+      const corner = DECOR_PADS[pad].corner;
+      this.focusCorner(corner);
+      this.callbacks.pad(pad, CORNERS[corner].key, data['item'] ?? null);
+    }
   }
 
   // ====== Loop ====== //
@@ -1071,11 +1207,19 @@ export class TreeWorld {
   private placeCamera(): void {
     const z = this.zoom;
     const lerp = THREE.MathUtils.lerp;
-    const d = lerp(ZOOM_NEAR.distance, ZOOM_FAR.distance, z);
-    const e = lerp(ZOOM_NEAR.elevation, ZOOM_FAR.elevation, z);
+    const b = THREE.MathUtils.smoothstep(this.focusBlend, 0, 1);
+    // Normal view around the tree, blended with the close view of a corner
+    // From above, over the fence: nothing blocks the corner
+    const d = lerp(lerp(ZOOM_NEAR.distance, ZOOM_FAR.distance, z), 6.6, b);
+    const e = lerp(lerp(ZOOM_NEAR.elevation, ZOOM_FAR.elevation, z), 0.72, b);
     const ty = lerp(ZOOM_NEAR.target, ZOOM_FAR.target, z);
-    this.camera.position.set(Math.sin(this.azimuth) * Math.cos(e) * d, ty + Math.sin(e) * d, Math.cos(this.azimuth) * Math.cos(e) * d);
-    this.camera.lookAt(0, ty, 0);
+    const target = new THREE.Vector3(0, ty, 0).lerp(this.focusTarget, b);
+    this.camera.position.set(
+      target.x + Math.sin(this.azimuth) * Math.cos(e) * d,
+      target.y + Math.sin(e) * d,
+      target.z + Math.cos(this.azimuth) * Math.cos(e) * d,
+    );
+    this.camera.lookAt(target);
   }
 
   private start(): void {
@@ -1100,7 +1244,13 @@ export class TreeWorld {
     const t = this.clock.getElapsedTime();
 
     this.zoom += (this.zoomTarget - this.zoom) * Math.min(1, dt * 8);
-    if (!this.dragging) {
+    this.focusBlend += (this.focusTo - this.focusBlend) * Math.min(1, dt * 2.5);
+    if (this.focusTo === 1 && !this.dragging) {
+      // Fly around to the corner along the shortest way
+      const diff = Math.atan2(Math.sin(this.focusAzimuth - this.azimuth), Math.cos(this.focusAzimuth - this.azimuth));
+      this.azimuth += diff * Math.min(1, dt * 2.5);
+      this.lastInteraction = t;
+    } else if (!this.dragging) {
       // Inertia, then a slow auto-rotation when nobody touches the scene
       this.azimuth += this.velocity * dt * 1000;
       this.velocity *= Math.pow(0.04, dt);

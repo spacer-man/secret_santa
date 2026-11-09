@@ -69,6 +69,10 @@ export class Tree3d implements OnDestroy {
   readonly ballClick = output<TreeBall>();
   readonly addBall = output<void>();
   readonly starClick = output<void>();
+  /** Decorate mode: free courtyard places glow and can be chosen */
+  readonly decorMode = input(false);
+  readonly padClick = output<{ pad: number; corner: string; item: string | null }>();
+  readonly focusLost = output<void>();
 
   protected readonly fallback = signal(new URLSearchParams(location.search).get('scene') === '2d');
   protected readonly ready = signal(false);
@@ -83,6 +87,10 @@ export class Tree3d implements OnDestroy {
       const lit = this.newLit();
       this.world?.setTree(tree, hung, lit);
     });
+    effect(() => {
+      const on = this.decorMode();
+      this.world?.setDecorMode(on);
+    });
   }
 
   private async init(): Promise<void> {
@@ -95,13 +103,23 @@ export class Tree3d implements OnDestroy {
         ball: (b) => this.ballClick.emit(b),
         star: () => this.starClick.emit(),
         addBall: () => this.addBall.emit(),
+        pad: (pad, corner, item) => this.padClick.emit({ pad, corner, item }),
+        focusLost: () => this.focusLost.emit(),
       });
+      this.world.setDecorMode(this.decorMode());
+      // For screenshots/tests only: ?debug exposes the scene
+      if (new URLSearchParams(location.search).has('debug')) (window as unknown as { santaTree: TreeWorld }).santaTree = this.world;
       this.world.setTree(this.tree(), this.newHung(), this.newLit());
       this.ready.set(true);
     } catch (err) {
       console.warn('3D tree is unavailable, using 2D', err);
       this.fallback.set(true);
     }
+  }
+
+  /** Back from a corner to the whole tree */
+  clearFocus(): void {
+    this.world?.clearFocus();
   }
 
   protected zoom(delta: number): void {

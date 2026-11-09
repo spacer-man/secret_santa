@@ -82,7 +82,8 @@ export function buildCabin(kit: Kit): Cabin {
   gable.lineTo(-W - 0.05, 0);
   const gableGeo = new THREE.ExtrudeGeometry(gable, { depth: 0.14, bevelEnabled: false });
   for (const z of [D - 0.07, -D - 0.07]) {
-    const m = kit.outline(new THREE.Mesh(gableGeo, logB), 1.01);
+    // No outline: the gable sits flush under the roof and on the logs
+    const m = new THREE.Mesh(gableGeo, logB);
     m.position.set(0, top, z);
     g.add(m);
   }
@@ -109,7 +110,8 @@ export function buildCabin(kit: Kit): Cabin {
     slab.position.set((dir * slabLen) / 2, 0, 0);
     pivot.add(slab);
 
-    const snowLayer = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(slabLen + 0.06, 0.2, D * 2 + OVER * 2 + 0.08), snow), 1.02);
+    // Outlined slab below is enough: the snow layer's own outline showed under the eaves
+    const snowLayer = new THREE.Mesh(new THREE.BoxGeometry(slabLen + 0.06, 0.2, D * 2 + OVER * 2 + 0.08), snow);
     snowLayer.position.set((dir * slabLen) / 2, 0.17, 0);
     pivot.add(snowLayer);
 

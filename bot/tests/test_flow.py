@@ -213,3 +213,34 @@ def test_full_new_year_flow():
     stats = client.get("/api/stats").json()
     assert stats["participants"] == 3
     assert stats["timezones"]["UTC+5:30"] == 1
+
+    # ====== Tree & mandarins ====== #
+    with patch("services.tree.datetime") as fake_dt:
+        fake_dt.now.return_value = ny_india
+        carol = client.get("/api/tree", headers=h(1003)).json()
+    assert carol["star"] is True and carol["balls"] == []
+    assert carol["mandarins"] == 50     # opened the gift
+
+    alice_tree = client.get("/api/tree", headers=h(1001)).json()
+    ball = alice_tree["balls"][0]
+    assert ball["state"] == "lit"       # Alice's wish reached Bob (and maybe Carol)
+    assert alice_tree["garland"] == 2
+    # 2 friends joined + Bob's wish approved + her wish approved/delivered
+    history = client.get("/api/mandarins", headers=h(1001)).json()
+    reasons = sorted(tx["reason"] for tx in history["history"])
+    assert reasons.count("friend_joined") == 2 and "friend_wish" in reasons
+    assert "wish_approved" in reasons and "wish_delivered" in reasons
+    assert history["balance"] == alice_tree["mandarins"] >= 15 * 2 + 50 + 30 + 20
+
+    # Re-approving doesn't pay twice
+    run(wish_service.update_wish_status(UUID(alice_wish), ValidStatus.APPROVED))
+    assert client.get("/api/mandarins", headers=h(1001)).json()["balance"] == history["balance"]
+
+    # Ball look: chosen in the app, validated
+    r = client.post("/api/wishes", headers=h(1003),
+                    data={"text": "Greetings from Kiribati!", "ball_color": "gold", "ball_pattern": "stars"})
+    assert r.status_code == 201
+    box = client.get("/api/tree", headers=h(1003)).json()["balls"][0]
+    assert (box["color"], box["pattern"], box["state"]) == ("gold", "stars", "box")
+    assert client.post("/api/wishes", headers=h(1003),
+                       data={"text": "Greetings again!!", "ball_color": "rainbow"}).status_code == 422

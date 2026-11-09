@@ -57,6 +57,9 @@ class Wish(SQLModel, table=True):
         default=ValidStatus.ON_VALIDATION,
         sa_column=Column(Enum(ValidStatus)))
     recipients_count: int = Field(default=0)
+    # Look of the wish's ball on the tree (see services/tree.py)
+    ball_color: str | None = Field(default=None, max_length=16)
+    ball_pattern: str | None = Field(default=None, max_length=16)
 
 
 class Media(SQLModel, table=True):
@@ -88,3 +91,20 @@ class Delivery(SQLModel, table=True):
         sa_column=Column(TIMESTAMP(timezone=True)))
     reaction: str | None = Field(default=None, max_length=16)
     reply: str | None = Field(default=None, max_length=1024)
+
+
+class MandarinTx(SQLModel, table=True):
+    """
+    Mandarins 🍊 (in-app currency) ledger.
+    One reward per (user, reason, ref): repeated awards are ignored.
+    """
+    __table_args__ = (UniqueConstraint("user_id", "reason", "ref"),)
+
+    id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
+    user_id: UUID = Field(foreign_key="user.id", index=True)
+    amount: int
+    reason: str = Field(max_length=32)
+    ref: str = Field(default="", max_length=64)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(TIMESTAMP(timezone=True)))

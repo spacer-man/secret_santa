@@ -25,7 +25,16 @@ from handlers.referral import parse_ref_code, ref_code
 from repos.media.sqlmodel import SQLModelMediaRepository
 from repos.user.sqlmodel import SQLModelUserRepository
 from repos.wish.sqlmodel import SQLModelWishRepository
-from services.delivery import REACTIONS, DeliveryDTO, DeliveryError, DeliveryService, season_start
+from services import mandarins
+from services.delivery import (
+    REACTIONS,
+    DeliveryDTO,
+    DeliveryError,
+    DeliveryService,
+    current_season_year,
+    season_start,
+)
+from services.tree import BALL_COLORS, BALL_PATTERNS, build_tree
 from services.feedback import notify_author
 from services.notify import AiogramNotifyService
 from services.user import UserService
@@ -122,6 +131,9 @@ async def config() -> dict:
         "bot_username": state.get("bot_username"),
         "reactions": REACTIONS,
         "timezones": timezones.ALL_TIMEZONES,
+        "ball_colors": BALL_COLORS,
+        "ball_patterns": BALL_PATTERNS,
+        "rewards": mandarins.REWARDS,
     }
 
 
@@ -219,12 +231,16 @@ async def new_wish(
         user=Depends(registered_user),
         text: str = Form(min_length=8, max_length=4096),
         files: list[UploadFile] = File(default=[]),
+        ball_color: str | None = Form(default=None),
+        ball_pattern: str | None = Form(default=None),
         ) -> dict:
     if len(files) > MAX_MEDIA_PER_WISH:
         raise HTTPException(status_code=422, detail=f"Max {MAX_MEDIA_PER_WISH} files")
 
-    now = datetime.now(timezone.utc)
-    year = now.year + 1 if now.month > 1 else now.year
+    if ball_color not in (None, *BALL_COLORS) or ball_pattern not in (None, *BALL_PATTERNS):
+        raise HTTPException(status_code=422, detail="Unknown ball look")
+
+    year = current_season_year()
     async with new_db_session() as session:
         count = await session.scalar(
             select(func.count(col(Wish.id)))
@@ -246,7 +262,9 @@ async def new_wish(
     wish_id = await wish_service.new_wish(
         author_telegram_id=user.telegram_id,
         text=text.strip(),
-        media=media)
+        media=media,
+        ball_color=ball_color,
+        ball_pattern=ball_pattern)
 
     if wish := await wish_service.get_one(wish_id):
         try:
@@ -267,6 +285,24 @@ async def delete_wish(wish_id: UUID, user=Depends(registered_user)) -> None:
     if delivered:
         raise HTTPException(status_code=409, detail="Wish is already delivered")
     await wish_service.delete(wish_id)
+
+
+# ====== Tree & mandarins ====== #
+@app.get("/api/tree")
+async def tree(user=Depends(registered_user)) -> dict:
+    return (await build_tree(user.id, delivery_service)).model_dump(mode="json")
+
+
+@app.get("/api/mandarins")
+async def mandarins_history(user=Depends(registered_user)) -> dict:
+    async with new_db_session() as session:
+        return {
+            "balance": await mandarins.balance(session, user.id),
+            "history": [
+                {"amount": tx.amount, "reason": tx.reason, "created_at": tx.created_at}
+                for tx in await mandarins.history(session, user.id)
+            ],
+        }
 
 
 # ====== Gifts ====== #

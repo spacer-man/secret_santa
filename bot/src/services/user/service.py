@@ -5,6 +5,7 @@ from typing import Unpack
 from uuid import UUID
 
 from db import new_db_session
+from services import mandarins
 from repos.user.abc import UserDTO, UserRepository
 from .exceptions import (
     UserAlreadyRegisteredError,
@@ -71,6 +72,10 @@ class UserService(object):
                 kwargs.pop("referrer_id")
 
             user_id = await repo.create(**kwargs)
+            if referrer_id := kwargs.get("referrer_id"):
+                await mandarins.award(
+                    db_session, referrer_id,
+                    mandarins.Reason.FRIEND_JOINED, user_id)
 
             await db_session.commit()
         return user_id

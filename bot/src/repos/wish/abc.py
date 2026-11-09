@@ -34,6 +34,8 @@ class NewWishArgs(TypedDict, total=False):
     text_entities: NotRequired[str | None]
     effect_id: NotRequired[str | None]
     author_id: Required[UUID]
+    ball_color: NotRequired[str | None]
+    ball_pattern: NotRequired[str | None]
 
 
 class EditWishArgs(TypedDict):

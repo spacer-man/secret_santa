@@ -15,6 +15,7 @@ import timezones
 from db import new_db_session
 from db.models import Delivery, User, ValidStatus, Wish
 from repos.wish.abc import WishRepository
+from services import mandarins
 from services.wish import WishDTO, WishService
 
 
@@ -62,6 +63,12 @@ def season_start(year: int) -> datetime:
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def current_season_year(now: datetime | None = None) -> int:
+    """Year of the closest New Year (January belongs to the New Year that has just come)"""
+    now = now or utc_now()
+    return now.year + 1 if now.month > 1 else now.year
 
 
 class DeliveryService(object):
@@ -163,9 +170,15 @@ class DeliveryService(object):
                     wish = random.choice(wishes)
                     delivery.wish_id = wish.id
                     await wish_repo.increment_recipients(wish.id)
+                    # The author's ball lights up
+                    await mandarins.award(
+                        session, wish.author_id,
+                        mandarins.Reason.WISH_DELIVERED, delivery.id)
 
             if delivery.opened_at is None:
                 delivery.opened_at = utc_now()
+                await mandarins.award(
+                    session, user.id, mandarins.Reason.GIFT_OPENED, delivery.id)
 
             session.add(delivery)
             await session.commit()
@@ -216,10 +229,17 @@ class DeliveryService(object):
                 delivery.reply = reply
 
             session.add(delivery)
-            author_tg_id = await session.scalar(
-                select(User.telegram_id)
+            author = (await session.execute(
+                select(User.id, User.telegram_id)
                 .join(Wish, col(Wish.author_id) == User.id)
-                .where(Wish.id == delivery.wish_id))
+                .where(Wish.id == delivery.wish_id))).first()
+            author_tg_id = author[1] if author else None
+            if author and is_new_reaction:
+                await mandarins.award(
+                    session, author[0], mandarins.Reason.REACTION, delivery.id)
+            if author and is_new_reply:
+                await mandarins.award(
+                    session, author[0], mandarins.Reason.REPLY, delivery.id)
             await session.commit()
 
         return ReactionResult(
@@ -268,9 +288,7 @@ class DeliveryService(object):
 
     # ====== Public stats ====== #
     async def stats(self) -> dict:
-        now = utc_now()
-        # Season of the closest New Year
-        year = now.year + 1 if now.month > 1 else now.year
+        year = current_season_year()
 
         async with new_db_session() as session:
             users = await session.scalar(select(func.count(col(User.id))))

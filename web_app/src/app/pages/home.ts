@@ -8,25 +8,33 @@ import { newYearMoment } from '../core/time';
 import { Countdown } from '../components/countdown';
 import { GiftBox } from '../components/gift-box';
 import { Wave } from '../components/wave';
+import { TreePanel } from '../components/tree/tree-panel';
 import { confetti } from '../components/fx/confetti';
 
 @Component({
   selector: 'home-page',
-  imports: [Countdown, GiftBox, Wave, RouterLink],
+  imports: [Countdown, GiftBox, Wave, RouterLink, TreePanel],
   template: `
     @let gift = store.gift();
-    <section class="card center festive">
-      @if (gift?.status === 'ready') {
+    @if (gift?.status === 'ready') {
+      <section class="card center festive">
         <h2>🎁 {{ i18n.t('giftReady') }}</h2>
         <gift-box (opened)="open()" />
         <p class="muted">{{ i18n.t('giftTap') }}</p>
-      } @else if (gift?.status === 'opened') {
+      </section>
+    }
+
+    <tree-panel />
+
+    <section class="card center festive">
+      @if (gift?.status === 'opened') {
         <countdown [target]="target()" />
         <a class="btn btn-primary" routerLink="/inbox">🎁 {{ i18n.t('giftShow') }}</a>
       } @else {
         <countdown [target]="target()" />
         <p class="muted small">{{ i18n.t('giftWaiting') }}</p>
       }
+      <a class="btn btn-primary wide" routerLink="/new">✍️ {{ i18n.t('writeWish') }}</a>
     </section>
 
     @if (store.stats(); as stats) {
@@ -37,11 +45,6 @@ import { confetti } from '../components/fx/confetti';
       </section>
     }
 
-    <section class="card">
-      <h2>✍️ {{ i18n.t('writeWish') }}</h2>
-      <p class="muted">{{ i18n.t('writeWishHint') }}</p>
-      <a class="btn btn-primary wide" routerLink="/new">{{ i18n.t('writeWish') }}</a>
-    </section>
 
     @if (store.me()?.invite_link) {
       <section class="card">

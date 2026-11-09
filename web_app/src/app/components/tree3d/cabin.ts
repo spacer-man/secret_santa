@@ -45,9 +45,13 @@ function snowPillow(length: number, height: number, depth: number, seed: number,
     const x = shape(p.getX(i), e);
     const z = shape(p.getZ(i), e);
     let y = shape(Math.max(p.getY(i), 0), 0.55);
-    // Soft lumps on the top, stronger towards the middle
-    const bump = 0.18 * Math.sin(x * 9 + seed * 2) * Math.sin(z * 7 - seed) + 0.1 * Math.sin(x * 21 + z * 13 + seed);
-    y *= 1 + bump * y;
+    // Waves running down the slope and overlapping: a gentle back towards the
+    // ridge, a steep rounded front facing the eave; crests wander a little
+    const down = (x * eaveDir + 1) / 2; // 0 at the ridge .. 1 at the eave
+    const phase = down * 4.2 + 0.18 * Math.sin(z * 5 + seed * 3) + 0.08 * Math.sin(z * 13 - seed);
+    const w = phase - Math.floor(phase);
+    const wave = Math.pow(w, 1.6) * (1 - Math.pow(Math.max(0, (w - 0.82) / 0.18), 1.5));
+    y *= 0.72 + 0.7 * wave * Math.min(1, down * 3);
     // Edges droop: the rim hangs a bit below the slab (not on the ridge side,
     // where the ridge roll covers the joint)
     const rim = Math.max(x * eaveDir, Math.abs(z));
@@ -146,10 +150,10 @@ export function buildCabin(kit: Kit): Cabin {
 
     // Outlined slab below is enough: the snow layer's own outline showed under the eaves
     const snowLayer = withOutline(
-      new THREE.Mesh(snowPillow(slabLen - 0.1, 0.26, D * 2 + OVER * 2 + 0.16, side, dir), snow),
+      new THREE.Mesh(snowPillow(slabLen + 0.12, 0.26, D * 2 + OVER * 2 + 0.16, side, dir), snow),
     );
-    // Starts a bit below the ridge: the two slopes don't cut into each other
-    snowLayer.position.set(dir * (slabLen / 2 + 0.11), 0.06, 0);
+    // Snow from both slopes meets over the ridge, like real snow does
+    snowLayer.position.set((dir * slabLen) / 2, 0.06, 0);
     pivot.add(snowLayer);
 
     // Snow hanging over the eave
@@ -171,7 +175,7 @@ export function buildCabin(kit: Kit): Cabin {
     g.add(pivot);
   }
   // Ridge snow
-  const ridge = withOutline(new THREE.Mesh(new THREE.CapsuleGeometry(0.24, D * 2 + OVER * 2, 6, 12), snow));
+  const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, D * 2 + OVER * 2 + 0.1, 8), snow);
   ridge.rotation.x = Math.PI / 2;
   ridge.scale.set(1, 1, 0.7);
   ridge.position.y = top + RIDGE + 0.22;

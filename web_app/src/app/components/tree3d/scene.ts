@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import type { TreeBall, TreeData } from '../../core/api';
 import { buildCabin } from './cabin';
-import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { terrainGeometry, terrainHeight, terrainOutline } from './terrain';
 import { ModelName, Models } from './models';
 import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape } from './layout';
 import { TREE_TOP, buildFirTree, treeRadius } from './tree-model';
@@ -436,8 +436,9 @@ export class TreeWorld {
   }
 
   private buildGround(): void {
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(80, 48), this.toon(0xbcc4e6));
-    ground.rotation.x = -Math.PI / 2;
+    // Uneven snowy ground with drifts, outlined like the models
+    const ground = new THREE.Mesh(terrainGeometry(), this.toon(0xdfe5f8));
+    ground.add(new THREE.Mesh(ground.geometry, terrainOutline()));
     this.scene.add(ground);
 
     // Cobblestone ring around the podium: colour + height (bevelled stones,
@@ -509,91 +510,6 @@ export class TreeWorld {
     plaza.rotation.x = -Math.PI / 2;
     plaza.position.y = 0.01;
     this.scene.add(plaza);
-    this.buildSnowdrifts();
-  }
-
-  /**
-   * Snowdrifts: long wavy drifts along the fence (both sides) and soft mounds
-   * all over the field up to the forest. Smooth domes, toon-shaded.
-   */
-  private buildSnowdrifts(): void {
-    const snow = this.toon(0xfbfcff);
-    const cabinA = CABIN_ANGLE;
-    const nearCabin = (a: number, r: number) =>
-      r < 18 && Math.abs(Math.atan2(Math.sin(a - cabinA), Math.cos(a - cabinA))) < 0.42;
-
-    // Dome with a soft lumpy surface (vertices merged: no seams)
-    const dome = (seed: number) => {
-      const raw = new THREE.SphereGeometry(1, 20, 7, 0, Math.PI * 2, 0, Math.PI / 2);
-      raw.deleteAttribute('uv');
-      raw.deleteAttribute('normal');
-      const g = mergeVertices(raw);
-      const p = g.attributes['position'] as THREE.BufferAttribute;
-      for (let v = 0; v < p.count; v++) {
-        const x = p.getX(v);
-        const y = p.getY(v);
-        const z = p.getZ(v);
-        const n = 1 + 0.12 * Math.sin(x * 5 + seed) * Math.cos(z * 4 - seed) * y;
-        // Flattened top, steeper sides: looks like piled snow
-        p.setXYZ(v, x * n, Math.pow(Math.max(y, 0), 0.8) * n, z * n);
-      }
-      g.computeVertexNormals();
-      return g;
-    };
-    const geos = [dome(1), dome(2.7), dome(4.1)];
-
-    const items: { x: number; z: number; sx: number; sy: number; sz: number; rot: number }[] = [];
-
-    // 1. Along the fence: a chain of stretched drifts, outside and inside
-    for (const [r, h, w] of [
-      [9.2, 0.7, 0.85],
-      [8.0, 0.3, 0.42],
-    ] as [number, number, number][]) {
-      const n = Math.round((Math.PI * 2 * r) / 1.3);
-      for (let k = 0; k < n; k++) {
-        const a = (k / n) * Math.PI * 2 + rand(k + r) * 0.05;
-        if (nearCabin(a, r) && Math.abs(Math.atan2(Math.sin(a - cabinA), Math.cos(a - cabinA))) < 0.12) continue; // gate
-        const len = 0.9 + rand(k * 3 + r) * 0.6;
-        items.push({
-          x: Math.cos(a) * r,
-          z: Math.sin(a) * r,
-          sx: len,
-          sy: h * (0.6 + rand(k * 7 + r) * 0.8),
-          sz: w * (0.8 + rand(k + 2 * r) * 0.4),
-          rot: -a + Math.PI / 2, // stretched along the fence
-        });
-      }
-    }
-
-    // 2. Mounds on the field between the fence and the forest
-    for (let i = 0; i < 70; i++) {
-      const a = rand(i * 1.7 + 3) * Math.PI * 2;
-      const r = 10 + Math.pow(rand(i * 2.3 + 1), 0.8) * 30;
-      if (nearCabin(a, r)) continue;
-      const size = 0.8 + rand(i * 5.1) * 2.4 * (r / 25);
-      items.push({
-        x: Math.cos(a) * r,
-        z: Math.sin(a) * r,
-        sx: size * (1 + rand(i + 0.3) * 0.6),
-        sy: 0.45 + rand(i * 4.7) * 0.8 * Math.min(1.6, size),
-        sz: size,
-        rot: rand(i * 9.1) * Math.PI,
-      });
-    }
-
-    // Instanced, split between the three dome shapes
-    geos.forEach((g, gi) => {
-      const mine = items.filter((_, k) => k % geos.length === gi);
-      const inst = new THREE.InstancedMesh(g, snow, mine.length);
-      const m = new THREE.Matrix4();
-      const q = new THREE.Quaternion();
-      mine.forEach((it, k) => {
-        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), it.rot);
-        m.compose(new THREE.Vector3(it.x, -0.02, it.z), q, new THREE.Vector3(it.sx, it.sy, it.sz));
-        inst.setMatrixAt(k, m);
-      });
-      this.scene.add(inst);
-    });
   }
 
   private buildPodium(): void {
@@ -737,7 +653,7 @@ export class TreeWorld {
 
     // Outside the fence, next to the entrance, facing the tree
     const a = (14 / 20) * Math.PI * 2 - 0.12;
-    cabin.group.position.set(Math.cos(a) * 12.5, 0, Math.sin(a) * 12.5);
+    cabin.group.position.set(Math.cos(a) * 12.5, terrainHeight(Math.cos(a) * 12.5, Math.sin(a) * 12.5), Math.sin(a) * 12.5);
     cabin.group.lookAt(0, 0, 0);
     this.scene.add(cabin.group);
   }
@@ -764,7 +680,7 @@ export class TreeWorld {
       const s = 1.8 + rand(i * 7) * 1.8;
       placed[i % kinds.length].push(
         new THREE.Matrix4().compose(
-          new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r),
+          new THREE.Vector3(Math.cos(a) * r, terrainHeight(Math.cos(a) * r, Math.sin(a) * r) - 0.1, Math.sin(a) * r),
           new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand(i) * 6.28),
           new THREE.Vector3(s, s * (0.9 + rand(i + 2) * 0.3), s),
         ),
@@ -792,7 +708,7 @@ export class TreeWorld {
       }
     };
     const jobs: Promise<void>[] = decor.map(([name, a, r, sc, rot]) =>
-      place(name, new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r), sc, name === 'bench' ? -a - Math.PI / 2 : rot),
+      place(name, new THREE.Vector3(Math.cos(a) * r, terrainHeight(Math.cos(a) * r, Math.sin(a) * r) - 0.05, Math.sin(a) * r), sc, name === 'bench' ? -a - Math.PI / 2 : rot),
     );
     // A heap of presents in the middle of every corner
     const heaps = CORNERS.map((_, ci) => this.buildHeap(ci));
@@ -1313,7 +1229,7 @@ export class TreeWorld {
       const kind = DECOR_KINDS[d.item];
       obj.scale.setScalar(kind.scale);
       const { b, yaw } = this.fit(obj, kind, pad, obstacles);
-      obj.position.set(b.x, 0, b.z);
+      obj.position.set(b.x, terrainHeight(b.x, b.z), b.z);
       obj.rotation.y = yaw;
       obstacles.push(...circlesOf(b));
       placedPads.add(pad);
@@ -1337,7 +1253,7 @@ export class TreeWorld {
         const b = makeBody(home.pos.x, home.pos.z, [{ dx: 0, dz: 0, r: 0.45 }]);
         resolve([b], obstacles, COURTYARD_RING);
         const marker = this.arrowMarker(i);
-        marker.position.set(b.x, 0, b.z);
+        marker.position.set(b.x, terrainHeight(b.x, b.z), b.z);
         const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 2.2, 8), new THREE.MeshBasicMaterial({ visible: false }));
         hit.position.y = 1.1;
         hit.userData = { kind: 'pad', pad: i, item: null };
@@ -1388,7 +1304,7 @@ export class TreeWorld {
         const ghost = this.ghost(previewProto);
         ghost.scale.setScalar(previewKind.scale);
         const { b, yaw } = this.fit(ghost, previewKind, i, obstacles);
-        ghost.position.set(b.x, 0, b.z);
+        ghost.position.set(b.x, terrainHeight(b.x, b.z), b.z);
         ghost.rotation.y = yaw;
         const marker = new THREE.Group();
         marker.add(ghost);

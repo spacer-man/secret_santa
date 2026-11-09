@@ -916,8 +916,24 @@ export class TreeWorld {
     );
   }
 
+  /** Snowfall strength: light (free), snowfall, blizzard (unlocked for mandarins) */
+  static readonly SNOWFALL = [
+    { count: 700, size: 0.16, speed: 1, wind: 0.08 },
+    { count: 1800, size: 0.2, speed: 1.25, wind: 0.25 },
+    { count: 3600, size: 0.24, speed: 1.7, wind: 0.9 },
+  ];
+  private snowLevel = 0;
+
+  setSnowfall(level: number): void {
+    this.snowLevel = THREE.MathUtils.clamp(level, 0, TreeWorld.SNOWFALL.length - 1);
+    const cfg = TreeWorld.SNOWFALL[this.snowLevel];
+    this.snow.geometry.setDrawRange(0, cfg.count);
+    (this.snow.material as THREE.PointsMaterial).size = cfg.size;
+    this.renderOnce();
+  }
+
   private buildSnowfall(): void {
-    const n = 700;
+    const n = TreeWorld.SNOWFALL[TreeWorld.SNOWFALL.length - 1].count;
     const pos = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       pos.set([(rand(i) - 0.5) * 26, rand(i + 0.3) * 14, (rand(i + 0.6) - 0.5) * 26], i * 3);
@@ -928,6 +944,7 @@ export class TreeWorld {
       geo,
       new THREE.PointsMaterial({ map: this.glowTex, color: 0xffffff, size: 0.16, transparent: true, depthWrite: false, opacity: 0.9 }),
     );
+    geo.setDrawRange(0, TreeWorld.SNOWFALL[0].count);
     this.scene.add(this.snow);
   }
 
@@ -1869,11 +1886,16 @@ export class TreeWorld {
     }
 
     const pos = this.snow.geometry.attributes['position'] as THREE.BufferAttribute;
-    for (let i = 0; i < pos.count; i++) {
-      let y = pos.getY(i) - dt * (0.5 + (i % 5) * 0.08);
+    const fall = TreeWorld.SNOWFALL[this.snowLevel];
+    // Gusts: in a blizzard the wind comes in waves
+    const gust = fall.wind * (0.6 + 0.4 * Math.sin(t * 0.7));
+    for (let i = 0; i < fall.count; i++) {
+      let y = pos.getY(i) - dt * (0.5 + (i % 5) * 0.08) * fall.speed;
+      let x = pos.getX(i) + Math.sin(t + i) * dt * 0.08 + gust * dt * (0.7 + (i % 3) * 0.3);
       if (y < 0) y += 14;
+      if (x > 13) x -= 26;
+      pos.setX(i, x);
       pos.setY(i, y);
-      pos.setX(i, pos.getX(i) + Math.sin(t + i) * dt * 0.08);
     }
     pos.needsUpdate = true;
 

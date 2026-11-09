@@ -964,3 +964,50 @@ blockquote {
   color: var(--gold-color);
   font-weight: 700;
 }
+
+.snow-btn {
+  position: absolute;
+  right: 0.7rem;
+  bottom: 8.4rem;
+  z-index: 2;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(12, 11, 34, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-size: 1.15rem;
+  cursor: pointer;
+}
+.snow-modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+.snow-mode {
+  font: inherit;
+  color: #fff;
+  background: #1c1b2b;
+  border: 2px solid var(--border-color);
+  border-radius: 0.9rem;
+  padding: 0.7rem 0.3rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  cursor: pointer;
+}
+.snow-mode.selected {
+  border-color: #fff;
+}
+.snow-mode.locked {
+  opacity: 0.6;
+}
+.snow-mode small {
+  color: #ffa040;
+  font-weight: 700;
+}
+.snow-icon {
+  font-size: 1.6rem;
+}

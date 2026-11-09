@@ -220,7 +220,7 @@ export function buildCabin(kit: Kit): Cabin {
     step.position.set(0.95, 0.18 - s * 0.12, D + 1.38 + s * 0.3);
     g.add(step);
   }
-  for (const px of [0.0, 1.9]) {
+  for (const px of [1.9]) {
     const post = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.12), plank), 1.06);
     post.position.set(px, 0.85, D + 1.2);
     const cap = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.18), snow);

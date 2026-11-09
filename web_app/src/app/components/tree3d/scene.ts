@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import type { TreeBall, TreeData } from '../../core/api';
 import { buildCabin } from './cabin';
 import { ModelName, Models } from './models';
-import { Body, Circle, body, footprint, resolve } from './layout';
+import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape } from './layout';
 import { TREE_TOP, buildFirTree, treeRadius } from './tree-model';
 
 export interface SceneCallbacks {
@@ -62,18 +62,30 @@ const PAD_SPREAD: Record<number, number[]> = {
   4: [-1.85, -0.7, 0.55, 1.6],
 };
 
-/** Figures that can be bought for the courtyard: model and scale */
-const DECOR_KINDS: Record<string, [ModelName, number]> = {
-  snowman: ['snowman-hat', 1.3],
-  'snowman-classic': ['snowman', 1.3],
-  reindeer: ['reindeer', 1.25],
-  sled: ['sled', 1.6],
-  'sled-long': ['sled-long', 1.5],
-  'candy-cane': ['candy-cane-red', 2.2],
-  'candy-cane-green': ['candy-cane-green', 2.2],
-  gingerbread: ['gingerbread-man', 2.4],
-  nutcracker: ['nutcracker', 1.5],
-  lantern: ['lantern', 1.8],
+/**
+ * Figures that can be bought for the courtyard, with their placement rules:
+ * `yaws` are the allowed turns relative to "facing the tree", tried in order;
+ * the one that moves the figure least from its place wins.
+ */
+interface DecorKind {
+  model: ModelName;
+  scale: number;
+  yaws: number[];
+}
+const CHARACTER = [0, -0.45, 0.45]; // looks at the tree, may turn a little
+const SIDEWAYS = [Math.PI / 2, -Math.PI / 2, 0]; // long things: best along the fence
+const ANY = [0, Math.PI / 2, Math.PI, -Math.PI / 2]; // round/symmetric things
+const DECOR_KINDS: Record<string, DecorKind> = {
+  snowman: { model: 'snowman-hat', scale: 1.3, yaws: CHARACTER },
+  'snowman-classic': { model: 'snowman', scale: 1.3, yaws: CHARACTER },
+  reindeer: { model: 'reindeer', scale: 1.25, yaws: CHARACTER },
+  nutcracker: { model: 'nutcracker', scale: 1.5, yaws: CHARACTER },
+  gingerbread: { model: 'gingerbread-man', scale: 2.4, yaws: CHARACTER },
+  sled: { model: 'sled', scale: 1.6, yaws: SIDEWAYS },
+  'sled-long': { model: 'sled-long', scale: 1.5, yaws: SIDEWAYS },
+  'candy-cane': { model: 'candy-cane-red', scale: 2.2, yaws: ANY },
+  'candy-cane-green': { model: 'candy-cane-green', scale: 2.2, yaws: ANY },
+  lantern: { model: 'lantern', scale: 1.8, yaws: ANY },
 };
 
 /** Figures stand between the train track and the fence */
@@ -132,6 +144,39 @@ const DECOR_PADS = CORNERS.flatMap((c, ci) => {
     return { corner: ci, pos: centre.clone().addScaledVector(dir, dist), dir };
   });
 });
+
+/** Normal map from a greyscale height canvas (Sobel filter) */
+function normalFromHeight(height: HTMLCanvasElement, strength: number): THREE.CanvasTexture {
+  const w = height.width;
+  const h = height.height;
+  const src = height.getContext('2d')!.getImageData(0, 0, w, h).data;
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  const octx = out.getContext('2d')!;
+  const img = octx.createImageData(w, h);
+  const at = (x: number, y: number) => src[(((y + h) % h) * w + ((x + w) % w)) * 4] / 255;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const dx = at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1);
+      const dy = at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1);
+      let nx = -dx * strength;
+      let ny = dy * strength;
+      let nz = 1;
+      const len = Math.hypot(nx, ny, nz);
+      nx /= len;
+      ny /= len;
+      nz /= len;
+      const i = (y * w + x) * 4;
+      img.data[i] = (nx * 0.5 + 0.5) * 255;
+      img.data[i + 1] = (ny * 0.5 + 0.5) * 255;
+      img.data[i + 2] = (nz * 0.5 + 0.5) * 255;
+      img.data[i + 3] = 255;
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(out);
+}
 
 function rand(seed: number): number {
   const x = Math.sin(seed * 9301 + 49297) * 233280;
@@ -392,41 +437,122 @@ export class TreeWorld {
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground);
 
-    // Cobblestone ring around the podium
-    const stones = canvasTexture(512, (ctx, s) => {
-      ctx.fillStyle = '#c9cde6';
-      ctx.fillRect(0, 0, s, s);
-      for (let r = 140; r < 256; r += 18) {
-        const n = Math.round((2 * Math.PI * r) / 22);
-        for (let k = 0; k < n; k++) {
-          const a = (k / n) * Math.PI * 2 + (r % 36 ? 0.05 : 0);
+    // Cobblestone ring around the podium: colour + height (bevelled stones,
+    // deep joints, snow in the joints) -> normal map for real relief
+    const size = 1024;
+    const color = document.createElement('canvas');
+    const height = document.createElement('canvas');
+    color.width = color.height = height.width = height.height = size;
+    const cc = color.getContext('2d')!;
+    const hc = height.getContext('2d')!;
+    cc.fillStyle = '#b9bedb';
+    cc.fillRect(0, 0, size, size);
+    hc.fillStyle = '#000';
+    hc.fillRect(0, 0, size, size);
+    const half = size / 2;
+    for (let r = 280; r < 512; r += 36) {
+      const n = Math.round((2 * Math.PI * r) / 44);
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2 + (Math.round(r / 36) % 2 ? 0.5 / n * Math.PI * 2 : 0);
+        const seed = k * 13 + r;
+        for (const [ctx, isHeight] of [
+          [cc, false],
+          [hc, true],
+        ] as [CanvasRenderingContext2D, boolean][]) {
           ctx.save();
-          ctx.translate(s / 2 + Math.cos(a) * r, s / 2 + Math.sin(a) * r);
+          ctx.translate(half + Math.cos(a) * r, half + Math.sin(a) * r);
           ctx.rotate(a);
-          ctx.fillStyle = `rgb(${150 + rand(k + r) * 25},${154 + rand(k + r) * 25},${178 + rand(k + r) * 25})`;
-          ctx.fillRect(-7, -9, 14, 18);
+          const w = 30;
+          const h = 38;
+          if (isHeight) {
+            // Rounded top: bright in the middle, darker to the edges
+            const g = ctx.createRadialGradient(0, 0, 2, 0, 0, h * 0.62);
+            g.addColorStop(0, '#fff');
+            g.addColorStop(0.7, '#9a9a9a');
+            g.addColorStop(1, '#3a3a3a');
+            ctx.fillStyle = g;
+          } else {
+            const v = rand(seed);
+            ctx.fillStyle = `rgb(${142 + v * 28},${147 + v * 28},${172 + v * 26})`;
+          }
+          ctx.beginPath();
+          ctx.roundRect(-w / 2, -h / 2, w, h, 8);
+          ctx.fill();
           ctx.restore();
         }
       }
-      // Snow dusting
-      for (let i = 0; i < 900; i++) {
-        ctx.fillStyle = `rgba(240,244,255,${0.25 + rand(i) * 0.5})`;
-        ctx.beginPath();
-        ctx.arc(rand(i + 1) * s, rand(i + 2) * s, 2 + rand(i + 3) * 7, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    });
-    const plaza = new THREE.Mesh(new THREE.CircleGeometry(7.2, 64), this.toon(0xffffff, { map: stones }));
+    }
+    // Snow: lies in the joints and on some stones (lighter and flatter)
+    for (let i = 0; i < 1400; i++) {
+      const x = rand(i + 1) * size;
+      const y = rand(i + 2) * size;
+      const rr = 3 + rand(i + 3) * 12;
+      cc.fillStyle = `rgba(240,244,255,${0.3 + rand(i) * 0.5})`;
+      cc.beginPath();
+      cc.arc(x, y, rr, 0, Math.PI * 2);
+      cc.fill();
+      hc.fillStyle = 'rgba(150,150,150,0.45)';
+      hc.beginPath();
+      hc.arc(x, y, rr, 0, Math.PI * 2);
+      hc.fill();
+    }
+    const map = new THREE.CanvasTexture(color);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.anisotropy = 4;
+    const plaza = new THREE.Mesh(
+      new THREE.CircleGeometry(7.2, 64),
+      this.toon(0xffffff, { map, normalMap: normalFromHeight(height, 5), normalScale: new THREE.Vector2(1.2, 1.2) }),
+    );
     plaza.rotation.x = -Math.PI / 2;
     plaza.position.y = 0.01;
     this.scene.add(plaza);
   }
 
   private buildPodium(): void {
-    const stone = this.toon(0x8f93b8);
-    const low = new THREE.Mesh(new THREE.CylinderGeometry(3.0, 3.1, 0.28, 48), stone);
+    // Stone blocks on the sides of the podium steps (with relief)
+    const blocks = (repeat: number) => {
+      const w = 512;
+      const h = 64;
+      const color = document.createElement('canvas');
+      const height = document.createElement('canvas');
+      color.width = height.width = w;
+      color.height = height.height = h;
+      const cc = color.getContext('2d')!;
+      const hc = height.getContext('2d')!;
+      cc.fillStyle = '#6f7398';
+      cc.fillRect(0, 0, w, h);
+      hc.fillStyle = '#000';
+      hc.fillRect(0, 0, w, h);
+      for (let row = 0; row < 2; row++) {
+        for (let x = row ? -32 : 0; x < w; x += 64) {
+          const v = rand(x + row * 7);
+          cc.fillStyle = `rgb(${132 + v * 25},${136 + v * 25},${168 + v * 22})`;
+          cc.beginPath();
+          cc.roundRect(x + 3, row * 32 + 3, 58, 26, 5);
+          cc.fill();
+          const g = hc.createLinearGradient(0, row * 32, 0, row * 32 + 32);
+          g.addColorStop(0, '#888');
+          g.addColorStop(0.3, '#fff');
+          g.addColorStop(1, '#666');
+          hc.fillStyle = g;
+          hc.beginPath();
+          hc.roundRect(x + 3, row * 32 + 3, 58, 26, 5);
+          hc.fill();
+        }
+      }
+      const map = new THREE.CanvasTexture(color);
+      map.colorSpace = THREE.SRGBColorSpace;
+      const normalMap = normalFromHeight(height, 4);
+      for (const t of [map, normalMap]) {
+        t.wrapS = THREE.RepeatWrapping;
+        t.repeat.set(repeat, 1);
+      }
+      return this.toon(0xffffff, { map, normalMap });
+    };
+    const top = this.toon(0x8f93b8);
+    const low = new THREE.Mesh(new THREE.CylinderGeometry(3.0, 3.1, 0.28, 64), [blocks(5), top, top]);
     low.position.y = 0.14;
-    const high = new THREE.Mesh(new THREE.CylinderGeometry(2.45, 2.55, 0.28, 48), stone);
+    const high = new THREE.Mesh(new THREE.CylinderGeometry(2.45, 2.55, 0.28, 64), [blocks(4), top, top]);
     high.position.y = 0.42;
     const snow = new THREE.Mesh(new THREE.CylinderGeometry(2.38, 2.38, 0.06, 48), this.toon(0xf2f5ff));
     snow.position.y = 0.58;
@@ -578,22 +704,56 @@ export class TreeWorld {
       place(name, new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r), sc, name === 'bench' ? -a - Math.PI / 2 : rot),
     );
     // A heap of presents in the middle of every corner
-    const presents: ModelName[] = ['present-a-cube', 'present-b-rectangle', 'present-a-round', 'present-b-cube', 'present-a-rectangle', 'present-b-round'];
-    for (let ci = 0; ci < CORNERS.length; ci++) {
-      const c = cornerCentre(ci);
-      const heap: [number, number, number, number][] = [
-        // x, z (local), y, scale
-        [0, 0, 0, 2.0],
-        [0.42, 0.2, 0, 1.6],
-        [-0.38, 0.25, 0, 1.7],
-        [0.05, -0.35, 0, 1.5],
-        [0.05, 0.05, 0.55, 1.3],
-      ];
-      heap.forEach(([x, z, y, sc], k) =>
-        jobs.push(place(presents[(ci * 2 + k) % presents.length], new THREE.Vector3(c.x + x, y, c.z + z), sc, rand(ci * 10 + k) * Math.PI)),
-      );
-    }
+    for (let ci = 0; ci < CORNERS.length; ci++) jobs.push(this.buildHeap(ci));
     await Promise.all(jobs);
+  }
+
+  /**
+   * A heap of presents: a tight bottom row that doesn't intersect, and one
+   * smaller present standing on top of the biggest flat one.
+   */
+  private async buildHeap(ci: number): Promise<void> {
+    const kinds: ModelName[] = ['present-a-cube', 'present-b-rectangle', 'present-a-round', 'present-b-cube', 'present-a-rectangle', 'present-b-round'];
+    const pick = (k: number) => kinds[(ci * 2 + k) % kinds.length];
+    const bottom: [number, number, number][] = [
+      // home offset x, z and scale
+      [0, 0, 2.0],
+      [0.45, 0.25, 1.6],
+      [-0.45, 0.2, 1.7],
+      [0.05, -0.45, 1.5],
+    ];
+    try {
+      const objs = await Promise.all([...bottom.map((_, k) => this.models.get(pick(k))), this.models.get(pick(4))]);
+      const c = cornerCentre(ci);
+      const bodies = bottom.map(([x, z, sc], k) => {
+        const o = objs[k];
+        o.scale.setScalar(sc);
+        o.rotation.y = rand(ci * 10 + k) * Math.PI;
+        return makeBody(c.x + x, c.z + z, shape(o, o.rotation.y));
+      });
+      // Pull them tightly together around the centre, but without overlaps
+      bodies.forEach((b) => {
+        b.homeX = c.x;
+        b.homeZ = c.z;
+      });
+      resolve(bodies, [], FREE, 120);
+      bodies.forEach((b, k) => {
+        objs[k].position.set(b.x, 0, b.z);
+        this.scene.add(objs[k]);
+      });
+
+      // The top one on the biggest (first) present, smaller than it
+      const base = objs[0];
+      const top = objs[4];
+      const baseBox = new THREE.Box3().setFromObject(base);
+      top.scale.setScalar(1.15);
+      top.rotation.y = rand(ci + 0.5) * Math.PI;
+      top.position.set(base.position.x, baseBox.max.y - 0.02, base.position.z);
+      this.scene.add(top);
+      this.renderOnce();
+    } catch (err) {
+      console.warn('Heap failed', err);
+    }
   }
 
   private buildConeForest(): void {
@@ -1017,55 +1177,58 @@ export class TreeWorld {
   private async placeCourtyard(decor: { item: string; pad: number }[], version: number): Promise<void> {
     const items = decor.filter((d) => DECOR_KINDS[d.item]);
     const objects = await Promise.all(
-      items.map((d) => this.models.get(DECOR_KINDS[d.item][0]).catch(() => null)),
+      items.map((d) => this.models.get(DECOR_KINDS[d.item].model).catch(() => null)),
     );
     const previewKind = DECOR_KINDS[this.previewItem] ?? DECOR_KINDS['snowman'];
-    const previewProto = await this.models.get(previewKind[0], false).catch(() => null);
+    const previewProto = await this.models.get(previewKind.model, false).catch(() => null);
     if (version !== this.version) return;
 
-    // 1. Figures: footprints from their own size, then resolve overlaps together
-    const placed: { obj: THREE.Object3D; b: Body; pad: number; item: string }[] = [];
+    // Figures are placed one by one; each tries its allowed poses and keeps
+    // the one that moves it least, the placed ones become obstacles
+    const obstacles: Circle[] = [...STATIC_COLLIDERS];
+    const placedPads = new Set<number>();
     items.forEach((d, k) => {
       const obj = objects[k];
       if (!obj) return;
       const pad = d.pad % DECOR_PADS.length;
-      obj.scale.setScalar(DECOR_KINDS[d.item][1]);
-      const home = DECOR_PADS[pad].pos;
-      placed.push({ obj, b: body(home.x, home.z, footprint(obj)), pad, item: d.item });
-    });
-    resolve(placed.map((p) => p.b), STATIC_COLLIDERS, COURTYARD_RING);
-
-    for (const { obj, b, pad, item } of placed) {
+      const kind = DECOR_KINDS[d.item];
+      obj.scale.setScalar(kind.scale);
+      const { b, yaw } = this.fit(obj, kind, pad, obstacles);
       obj.position.set(b.x, 0, b.z);
-      obj.rotation.y = facing(b.x, b.z, DECOR_PADS[pad].corner, pad);
-      const hit = new THREE.Mesh(new THREE.CylinderGeometry(b.r, b.r, 1.4, 8), new THREE.MeshBasicMaterial({ visible: false }));
-      hit.position.set(b.x, 0.7, b.z);
-      hit.userData = { kind: 'pad', pad, item };
-      this.clickables.push(hit);
-      this.dynamic.add(obj, hit);
-    }
+      obj.rotation.y = yaw;
+      obstacles.push(...circlesOf(b));
+      placedPads.add(pad);
+      for (const c of circlesOf(b)) {
+        const hit = new THREE.Mesh(new THREE.CylinderGeometry(c.r, c.r, 1.4, 8), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.set(c.x, 0.7, c.z);
+        hit.userData = { kind: 'pad', pad, item: d.item };
+        this.clickables.push(hit);
+        this.dynamic.add(hit);
+      }
+      this.dynamic.add(obj);
+    });
 
-    // 2. Previews on free places: each fits between the figures and the obstacles
+    // Previews on free places, by the same rules, between the placed figures
     this.previews = [];
     if (previewProto) {
-      const occupied = new Set(placed.map((p) => p.pad));
-      const figures: Circle[] = placed.map((p) => p.b);
-      DECOR_PADS.forEach((place, i) => {
-        if (occupied.has(i)) return;
+      DECOR_PADS.forEach((_, i) => {
+        if (placedPads.has(i)) return;
         const ghost = this.ghost(previewProto);
-        ghost.scale.setScalar(previewKind[1]);
-        const b = body(place.pos.x, place.pos.z, footprint(ghost));
-        resolve([b], [...STATIC_COLLIDERS, ...figures], COURTYARD_RING);
+        ghost.scale.setScalar(previewKind.scale);
+        const { b, yaw } = this.fit(ghost, previewKind, i, obstacles);
         ghost.position.set(b.x, 0, b.z);
-        ghost.rotation.y = facing(b.x, b.z, place.corner, i);
-        const hit = new THREE.Mesh(new THREE.CylinderGeometry(b.r + 0.1, b.r + 0.1, 1.4, 8), new THREE.MeshBasicMaterial({ visible: false }));
-        hit.position.set(b.x, 0.7, b.z);
-        hit.userData = { kind: 'pad', pad: i, item: null };
+        ghost.rotation.y = yaw;
         const marker = new THREE.Group();
-        marker.add(ghost, hit);
+        marker.add(ghost);
+        for (const c of circlesOf(b)) {
+          const hit = new THREE.Mesh(new THREE.CylinderGeometry(c.r + 0.1, c.r + 0.1, 1.4, 8), new THREE.MeshBasicMaterial({ visible: false }));
+          hit.position.set(c.x, 0.7, c.z);
+          hit.userData = { kind: 'pad', pad: i, item: null };
+          this.clickables.push(hit);
+          marker.add(hit);
+        }
         marker.visible = this.decorMode;
         this.previews.push(marker);
-        this.clickables.push(hit);
         this.dynamic.add(marker);
       });
       // All previews breathe together: clearly "not real yet"
@@ -1079,12 +1242,36 @@ export class TreeWorld {
     this.renderOnce();
   }
 
+  /** Best allowed pose of an object on a place, not intersecting the obstacles */
+  private fit(obj: THREE.Object3D, kind: DecorKind, pad: number, obstacles: Circle[]): { b: Body; yaw: number } {
+    const home = DECOR_PADS[pad];
+    const base = facing(home.pos.x, home.pos.z, home.corner, pad);
+    let best: { b: Body; yaw: number; cost: number } | null = null;
+    kind.yaws.forEach((turn, k) => {
+      const yaw = base + turn;
+      const b = makeBody(home.pos.x, home.pos.z, shape(obj, yaw));
+      resolve([b], obstacles, COURTYARD_RING);
+      // Prefer earlier poses a little: the rule's order is its taste
+      const cost = displacement(b) + k * 0.08;
+      if (!best || cost < best.cost) best = { b, yaw, cost };
+    });
+    return best!;
+  }
+
   /** A translucent copy of a model (shared ghost materials) */
+  private readonly depthOnly = new THREE.MeshBasicMaterial({ colorWrite: false });
+
   private ghost(proto: THREE.Object3D): THREE.Object3D {
     const copy = proto.clone(true);
-    copy.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
+    const meshes: THREE.Mesh[] = [];
+    copy.traverse((o) => (o as THREE.Mesh).isMesh && meshes.push(o as THREE.Mesh));
+    for (const mesh of meshes) {
+      // 1st pass writes only depth, 2nd draws colour where it's the nearest
+      // surface: back and inner faces of the translucent figure stay hidden
+      const depth = new THREE.Mesh(mesh.geometry, this.depthOnly);
+      depth.renderOrder = 10;
+      mesh.add(depth);
+      mesh.renderOrder = 11;
       const src = mesh.material as THREE.MeshToonMaterial;
       let m = this.ghostMats.get(src.uuid);
       if (!m) {
@@ -1097,11 +1284,12 @@ export class TreeWorld {
           transparent: true,
           opacity: 0.5,
           depthWrite: false,
+          depthFunc: THREE.LessEqualDepth,
         });
         this.ghostMats.set(src.uuid, m);
       }
       mesh.material = m;
-    });
+    }
     return copy;
   }
 

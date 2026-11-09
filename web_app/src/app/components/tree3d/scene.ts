@@ -1225,6 +1225,7 @@ export class TreeWorld {
     // Previews on free places, by the same rules, between the placed figures
     this.previews = [];
     if (!previewKind || !previewProto) {
+      const small: THREE.Object3D[][] = CORNERS.map(() => []);
       // Nothing chosen yet: a floating arrow over every free place
       DECOR_PADS.forEach((home, i) => {
         if (placedPads.has(i)) return;
@@ -1240,6 +1241,41 @@ export class TreeWorld {
         marker.visible = this.decorMode;
         this.previews.push(marker);
         this.dynamic.add(marker);
+        small[home.corner].push(marker);
+      });
+
+      // From far away: one big arrow over the heap of every corner with free places
+      CORNERS.forEach((_, ci) => {
+        if (!small[ci].length) return;
+        const c = cornerCentre(ci);
+        // Tip right above the heap
+        const big = this.arrowMarker(ci + 0.5, 1.8);
+        big.position.set(c.x, 0.35, c.z);
+        const hit = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 3.5, 8), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.y = 1.8;
+        hit.userData = { kind: 'corner', corner: ci };
+        this.clickables.push(hit);
+        big.add(hit);
+        big.visible = this.decorMode;
+        this.previews.push(big);
+        this.dynamic.add(big);
+
+        // Crossfade by the distance of the camera to the corner
+        const group = small[ci];
+        this.animated.push({
+          update: () => {
+            const d = this.camera.position.distanceTo(c);
+            const near = THREE.MathUtils.smoothstep(d, 7, 9.5); // 0 near, 1 far
+            const k = this.decorMode ? near : 0;
+            big.scale.setScalar(Math.max(k, 0.001));
+            big.visible = this.decorMode && k > 0.02;
+            for (const m of group) {
+              const ks = this.decorMode ? 1 - near : 0;
+              m.scale.setScalar(Math.max(ks, 0.001));
+              m.visible = this.decorMode && ks > 0.02;
+            }
+          },
+        });
       });
     } else {
       DECOR_PADS.forEach((_, i) => {
@@ -1277,7 +1313,7 @@ export class TreeWorld {
   private arrowMat?: THREE.MeshToonMaterial;
 
   /** Golden arrow pointing down at a free place: bobs and turns slowly */
-  private arrowMarker(i: number): THREE.Group {
+  private arrowMarker(i: number, size = 1): THREE.Group {
     if (!this.arrowGeo) {
       // Shaft + head as one lathe profile: a round arrow, readable from any side
       const profile = [
@@ -1304,15 +1340,16 @@ export class TreeWorld {
     }
     const group = new THREE.Group();
     const arrow = new THREE.Mesh(this.arrowGeo, this.arrowMat);
+    arrow.scale.setScalar(size);
     arrow.renderOrder = 11;
     // Depth pre-pass: no back faces showing through
     const depth = new THREE.Mesh(this.arrowGeo, this.depthOnly);
     depth.renderOrder = 10;
     arrow.add(depth);
-    const glow = this.glow(0x5a9bff, 1.2, 0.8);
+    const glow = this.glow(0x5a9bff, 1.2 * size, 0.8);
     glow.material.blending = THREE.NormalBlending;
     glow.position.y = 0.05;
-    glow.scale.set(1.2, 0.4, 1);
+    glow.scale.set(1.2 * size, 0.4 * size, 1);
     // A halo around the arrow itself, bobbing with it: normal blending, so the
     // blue stays saturated on the white snow (additive glow would wash out)
     const halo = this.glow(0x4d8dff, 1.5, 0.75);
@@ -1321,11 +1358,11 @@ export class TreeWorld {
     this.animated.push({
       update: (t) => {
         const bob = Math.abs(Math.sin(t * 2.4 + i));
-        arrow.position.y = 1.0 + bob * 0.35;
+        arrow.position.y = (1.0 + bob * 0.35) * size;
         arrow.rotation.y = t * 0.8 + i;
         halo.position.y = arrow.position.y - 0.05;
         halo.material.opacity = 0.4 + 0.2 * Math.sin(t * 2.2 + i);
-        halo.scale.setScalar(1.35 + 0.2 * Math.sin(t * 2.2 + i));
+        halo.scale.setScalar((1.35 + 0.2 * Math.sin(t * 2.2 + i)) * size);
         glow.material.opacity = 0.3 + 0.3 * (1 - bob);
         this.arrowMat!.opacity = 0.78 + 0.08 * Math.sin(t * 2.2);
       },
@@ -1553,12 +1590,15 @@ export class TreeWorld {
     const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     const ray = new THREE.Raycaster();
     ray.setFromCamera(ndc, this.camera);
-    const hit = ray.intersectObjects(this.clickables, false)[0];
+    const shown = (o: THREE.Object3D | null): boolean => !o || (o.visible && shown(o.parent));
+    const hit = ray.intersectObjects(this.clickables, false).find((h) => shown(h.object.parent))
+      ?? null;
     if (!hit) return;
     const data = hit.object.userData;
     if (data['kind'] === 'ball') this.callbacks.ball(data['ball']);
     else if (data['kind'] === 'star') this.callbacks.star();
     else if (data['kind'] === 'add') this.callbacks.addBall();
+    else if (data['kind'] === 'corner') this.focusCorner(data['corner']);
     else if (data['kind'] === 'pad' && (this.decorMode || data['item'])) {
       const pad = data['pad'] as number;
       const corner = DECOR_PADS[pad].corner;

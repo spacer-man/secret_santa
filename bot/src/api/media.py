@@ -65,7 +65,7 @@ def media_type_by_mime(mime: str) -> MediaType | None:
         return MediaType.VIDEO
     if mime in ("audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/aac"):
         return MediaType.AUDIO
-    if mime in ("audio/ogg", "audio/webm"):
+    if mime == "audio/ogg":
         return MediaType.VOICE
     return None
 

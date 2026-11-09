@@ -2,6 +2,10 @@ networks:
   main_network:
     driver: bridge
 
+volumes:
+  caddy_data:
+  caddy_config:
+
 
 services:
   db:
@@ -49,8 +53,60 @@ services:
 
       WISH_VALIDATE_TG_IDS: ${WISH_VALIDATE_TG_IDS}
       AUTHOR_SUPPORT_LINK: ${AUTHOR_SUPPORT_LINK}
+
+      WEBAPP_URL: ${WEBAPP_URL}
+      WEBHOOK_URL: https://${DOMAIN}/telegram/webhook
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+    expose:
+      - "8080"
     volumes:
       - ./bot/logs:/app/logs
+    networks:
+      - main_network
+
+  api:
+    image: secret_santa_bot
+    container_name: secret_santa_api
+    hostname: api
+    restart: always
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    entrypoint: ["python", "api_main.py"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      BOT_TOKEN: ${BOT_TOKEN}
+      WISH_VALIDATE_TG_IDS: ${WISH_VALIDATE_TG_IDS}
+      AUTHOR_SUPPORT_LINK: ${AUTHOR_SUPPORT_LINK}
+      WEBAPP_URL: ${WEBAPP_URL}
+    expose:
+      - "8000"
+    volumes:
+      - ./bot/logs:/app/logs
+    networks:
+      - main_network
+
+  web:
+    build:
+      context: ./web_app
+      dockerfile: Dockerfile
+    container_name: secret_santa_web
+    restart: always
+    depends_on:
+      - api
+      - bot
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
     networks:
       - main_network
 

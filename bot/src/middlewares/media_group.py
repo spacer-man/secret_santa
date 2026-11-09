@@ -14,7 +14,7 @@ MEIDA_GROUP_ARG_KEY = "media_group"
 
 
 class MediaGroupMiddleware(BaseMiddleware):
-    def __init__(self, timeout: float = 0.1) -> None:
+    def __init__(self, timeout: float = 0.6) -> None:
         """
         Middleware for easy media group processing.
 

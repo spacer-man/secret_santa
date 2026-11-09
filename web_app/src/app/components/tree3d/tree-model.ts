@@ -44,14 +44,20 @@ const VALLEY_IN = 0.12;
 /** Rim droop: valleys and tips */
 const DROOP = 0.08;
 const DROOP_TIP = 0.12;
-/** Mean of lobeShape() over the circle (cos² ⇒ 3/8) */
-const LOBE_MEAN = 0.375;
+const LOBE_POW = 0.6;
 
-/** 0 in the valleys, 1 on the branch tips: rounded both ways */
+/** 0 in the valleys, 1 on the branch tips: broad round branch ends, narrow notches between */
 function lobeShape(i: number, theta: number): number {
   const c = 0.5 + 0.5 * Math.cos(lobeCount(i) * theta);
-  return c * c;
+  return Math.pow(c, LOBE_POW);
 }
+
+/** Mean of lobeShape() around the circle */
+const LOBE_MEAN = (() => {
+  let sum = 0;
+  for (let k = 0; k < 360; k++) sum += Math.pow(0.5 + 0.5 * Math.cos((k / 360) * Math.PI * 2), LOBE_POW);
+  return sum / 360;
+})();
 
 /** Slow, smooth variation of the tip length around the tier (no jitter) */
 function lobeAmp(i: number, theta: number): number {
@@ -181,18 +187,23 @@ const GREEN_DEEP = new THREE.Color(0x166b45);
 const GREEN_UNDER = new THREE.Color(0x0f4f37);
 
 /** Columns around tier i: several per lobe so the tips are round */
-const columns = (i: number) => lobeCount(i) * 6;
+const columns = (i: number) => lobeCount(i) * 7;
+/** Snow needs more columns: its wavy edge must stay round */
+const snowColumns = (i: number) => lobeCount(i) * 9;
 
 function buildTier(i: number): THREE.BufferGeometry {
   const [bottom, h] = TIERS[i];
   const m = columns(i);
-  const rows = 14;
   const rings: THREE.Vector3[][] = [];
   const colors: THREE.Color[][] = [];
   const p = new THREE.Vector3();
-  // Top slope: denser near the rim where the shape changes
-  for (let ri = 1; ri <= rows; ri++) {
-    const f = 1 - Math.pow(1 - ri / rows, 1.4);
+  // Top slope: a few rows under the tier above, dense rows on the visible band
+  const above = TIERS[i + 1];
+  const fVis = above ? Math.max(0.2, fractionAt(i, above[0] + 0.1)) : 0.12;
+  const fs: number[] = [];
+  for (let k = 1; k <= 2; k++) fs.push((fVis * k) / 2);
+  for (let k = 1; k <= 8; k++) fs.push(fVis + (1 - fVis) * (1 - Math.pow(1 - k / 8, 1.3)));
+  for (const f of fs) {
     const ring: THREE.Vector3[] = [];
     const cs: THREE.Color[] = [];
     for (let k = 0; k < m; k++) {
@@ -211,9 +222,8 @@ function buildTier(i: number): THREE.BufferGeometry {
   const under: [number, number, number][] = [
     // [radial scale of the rim, y offset (in h), colour blend to the underside]
     [0.985, 0.025, 0.4],
-    [0.93, 0.055, 0.85],
-    [0.7, 0.12, 1],
-    [0.4, 0.2, 1],
+    [0.92, 0.06, 0.85],
+    [0.55, 0.16, 1],
   ];
   const rim = rings[rings.length - 1];
   under.forEach(([s, dy, blend]) => {
@@ -231,40 +241,43 @@ function buildTier(i: number): THREE.BufferGeometry {
  */
 function buildSnow(i: number): THREE.BufferGeometry {
   const [, h, r] = TIERS[i];
-  const m = columns(i);
+  const m = snowColumns(i);
   const n = lobeCount(i);
   // Where the tier above hides the slope (snow starts under it)
   const above = TIERS[i + 1];
   const fHidden = above ? fractionAt(i, above[0] + 0.12) : 0.02;
   const fVisible = above ? fractionAt(i, above[0] - droop(1, 0)) : 0;
-  const thick = 0.045 + r * 0.025;
-  const rows = 12;
+  const thick = 0.06 + r * 0.03;
+  // Rows across the blanket: denser at the rounded edge
+  const ts = [0, 0.25, 0.45, 0.6, 0.72, 0.82, 0.89, 0.94, 0.975, 1];
   const rings: THREE.Vector3[][] = [];
   const p = new THREE.Vector3();
   const nrm = new THREE.Vector3();
-  for (let ri = 0; ri <= rows; ri++) {
-    const u = ri / rows;
+  for (const t of ts) {
     const ring: THREE.Vector3[] = [];
     for (let k = 0; k < m; k++) {
       const theta = (k / m) * Math.PI * 2;
       const lobe = lobeShape(i, theta);
       // Wavy edge: snow runs further down each branch; slow irregularity between tiers
       const wobble = 0.05 * Math.sin(2 * theta + i * 2.3) + 0.04 * Math.sin(3 * theta + i);
-      const reach = (above ? 0.12 : 0.3) + 0.42 * lobe + wobble;
+      const c = 0.5 + 0.5 * Math.cos(n * theta);
+      const bulge = 1 - (1 - c) * (1 - c); // wide round bulges, narrow cusps in the valleys
+      const reach = (above ? 0.2 : 0.32) + 0.36 * bulge + wobble;
       const fe = fVisible + (1 - fVisible) * Math.min(0.9, reach);
-      // Rows are denser near the edge for a round lip
-      const t = 1 - Math.pow(1 - u, 1.8);
       const f = fHidden + (fe - fHidden) * t;
       slope(i, f, theta, p);
       slopeNormal(i, f, theta, nrm);
-      // Profile: full thickness, then a quarter-circle lip that sinks under the needles
-      const lipStart = 0.62;
-      const lip = t < lipStart ? 1 : Math.sqrt(Math.max(0, 1 - Math.pow((t - lipStart) / (1 - lipStart), 2)));
-      const lump = 1 + 0.22 * Math.sin(n * theta + 0.8 + i) * Math.sin(f * 9 + i) + 0.12 * lobe;
-      const d = thick * lump * lip - 0.012 * (1 - lip);
-      // A bit of droop along the lip: soft, heavy snow
+      // Profile: an even blanket rolling into a plump rounded edge that drops steeply
+      const lipStart = 0.45;
+      const s = Math.max(0, (t - lipStart) / (1 - lipStart));
+      const edge = Math.sqrt(Math.max(0, 1 - Math.pow(s, 4)));
+      const roll = (0.75 + 0.45 * Math.sin(Math.PI * s * 0.85)) / 1.2;
+      const lump = 1 + 0.18 * Math.sin(n * theta + 0.8 + i) * Math.sin(f * 9 + i) + 0.12 * lobe;
+      // The very edge tucks just under the needles: no z-fighting, a clean outline
+      const d = thick * lump * roll * edge - 0.012 * (1 - edge);
       p.addScaledVector(nrm, d);
-      p.y -= 0.02 * (1 - lip);
+      // Heavy snow sags a little at the edge
+      p.y -= 0.025 * s * s;
       ring.push(p.clone());
     }
     rings.push(ring);

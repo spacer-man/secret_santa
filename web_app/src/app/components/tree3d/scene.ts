@@ -1176,7 +1176,8 @@ export class TreeWorld {
 
   // ====== Courtyard figures & decorate mode ====== //
   private decorMode = false;
-  private previewItem = 'snowman';
+  /** Figure shown on free places; null = nothing chosen yet: arrows */
+  private previewItem: string | null = null;
   private lastDecor: { item: string; pad: number }[] = [];
   private previews: THREE.Object3D[] = [];
   private readonly ghostMats = new Map<string, THREE.Material>();
@@ -1190,8 +1191,8 @@ export class TreeWorld {
     const objects = await Promise.all(
       items.map((d) => this.models.get(DECOR_KINDS[d.item].model).catch(() => null)),
     );
-    const previewKind = DECOR_KINDS[this.previewItem] ?? DECOR_KINDS['snowman'];
-    const previewProto = await this.models.get(previewKind.model, false).catch(() => null);
+    const previewKind = this.previewItem ? DECOR_KINDS[this.previewItem] : null;
+    const previewProto = previewKind ? await this.models.get(previewKind.model, false).catch(() => null) : null;
     // The heaps' real size matters: wait until they are built
     await Promise.race([this.heapsReady, new Promise((r) => setTimeout(r, 5000))]);
     if (version !== this.version) return;
@@ -1223,7 +1224,24 @@ export class TreeWorld {
 
     // Previews on free places, by the same rules, between the placed figures
     this.previews = [];
-    if (previewProto) {
+    if (!previewKind || !previewProto) {
+      // Nothing chosen yet: a floating arrow over every free place
+      DECOR_PADS.forEach((home, i) => {
+        if (placedPads.has(i)) return;
+        const b = makeBody(home.pos.x, home.pos.z, [{ dx: 0, dz: 0, r: 0.45 }]);
+        resolve([b], obstacles, COURTYARD_RING);
+        const marker = this.arrowMarker(i);
+        marker.position.set(b.x, 0, b.z);
+        const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 2.2, 8), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.y = 1.1;
+        hit.userData = { kind: 'pad', pad: i, item: null };
+        this.clickables.push(hit);
+        marker.add(hit);
+        marker.visible = this.decorMode;
+        this.previews.push(marker);
+        this.dynamic.add(marker);
+      });
+    } else {
       DECOR_PADS.forEach((_, i) => {
         if (placedPads.has(i)) return;
         const ghost = this.ghost(previewProto);
@@ -1253,6 +1271,40 @@ export class TreeWorld {
       });
     }
     this.renderOnce();
+  }
+
+  private arrowGeo?: THREE.BufferGeometry;
+  private arrowMat?: THREE.MeshToonMaterial;
+
+  /** Golden arrow pointing down at a free place: bobs and turns slowly */
+  private arrowMarker(i: number): THREE.Group {
+    if (!this.arrowGeo) {
+      // Shaft + head as one lathe profile: a round arrow, readable from any side
+      const profile = [
+        new THREE.Vector2(0, -0.42),
+        new THREE.Vector2(0.24, -0.08),
+        new THREE.Vector2(0.1, -0.08),
+        new THREE.Vector2(0.1, 0.32),
+        new THREE.Vector2(0, 0.32),
+      ];
+      this.arrowGeo = new THREE.LatheGeometry(profile, 16);
+      this.arrowMat = this.toon(0xffc94a, { emissive: 0xff9a20, emissiveIntensity: 0.45 });
+    }
+    const group = new THREE.Group();
+    const arrow = this.hull(new THREE.Mesh(this.arrowGeo, this.arrowMat), 0.02);
+    const glow = this.glow(0xffc850, 1.0, 0.6);
+    glow.position.y = 0.05;
+    glow.scale.set(1.0, 0.35, 1);
+    group.add(arrow, glow);
+    this.animated.push({
+      update: (t) => {
+        const bob = Math.abs(Math.sin(t * 2.4 + i));
+        arrow.position.y = 1.0 + bob * 0.35;
+        arrow.rotation.y = t * 0.8 + i;
+        glow.material.opacity = 0.35 + 0.35 * (1 - bob);
+      },
+    });
+    return group;
   }
 
   /** Best allowed pose of an object on a place, not intersecting the obstacles */
@@ -1306,10 +1358,11 @@ export class TreeWorld {
     return copy;
   }
 
-  /** Decorate mode; `previewItem` is the figure shown on free places */
-  setDecorMode(on: boolean, previewItem = 'snowman'): void {
+  /** Decorate mode; `previewItem` is the figure to place (null: arrows on free places) */
+  setDecorMode(on: boolean, previewItem: string | null = null): void {
     this.decorMode = on;
-    if (DECOR_KINDS[previewItem] && previewItem !== this.previewItem) {
+    if (previewItem && !DECOR_KINDS[previewItem]) previewItem = null;
+    if (previewItem !== this.previewItem) {
       this.previewItem = previewItem;
       this.previews.forEach((p) => this.dynamic.remove(p));
       this.placeCourtyard(this.lastDecor, this.version);

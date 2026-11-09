@@ -1506,13 +1506,15 @@ export class TreeWorld {
     tex.wrapS = THREE.RepeatWrapping;
 
     // Separate ribbons of different length, height and tilt
+    // The sky strip above the forest is narrow (~3-8 deg above the horizon):
+    // the lower edge stays just above the treetops, the upper part may leave the frame
     const ribbons = [
-      { start: 0.3, length: 2.2, radius: 52, base: 9.5, height: 11, tilt: 0.06, speed: 1 },
-      { start: 2.9, length: 1.6, radius: 56, base: 12, height: 8, tilt: -0.05, speed: -0.8 },
-      { start: 4.4, length: 2.0, radius: 50, base: 10.5, height: 10, tilt: 0.04, speed: 1.2 },
-      { start: 1.6, length: 1.3, radius: 58, base: 14, height: 6, tilt: -0.03, speed: -1.1 },
-      { start: 5.6, length: 1.7, radius: 55, base: 11, height: 9, tilt: -0.06, speed: 0.9 },
-      { start: 3.6, length: 1.1, radius: 49, base: 8.5, height: 7, tilt: 0.05, speed: -1.3 },
+      { start: 0.3, length: 2.2, radius: 52, base: 11.2, height: 10, tilt: 0.015, speed: 1 },
+      { start: 2.9, length: 1.6, radius: 56, base: 12.2, height: 8, tilt: -0.015, speed: -0.8 },
+      { start: 4.4, length: 2.0, radius: 50, base: 11.6, height: 9, tilt: 0.01, speed: 1.2 },
+      { start: 1.6, length: 1.3, radius: 58, base: 13, height: 6, tilt: -0.01, speed: -1.1 },
+      { start: 5.6, length: 1.7, radius: 55, base: 11.8, height: 8, tilt: -0.015, speed: 0.9 },
+      { start: 3.6, length: 1.1, radius: 49, base: 11, height: 7, tilt: 0.015, speed: -1.3 },
     ];
     const SEG = 140;
     const ROWS = 4;
@@ -1566,7 +1568,8 @@ export class TreeWorld {
           const fold =
             1 + 0.07 * Math.sin(a * 7 + t * 0.25 * rb.speed + i) + 0.035 * Math.sin(a * 19 - t * 0.4 * rb.speed);
           const r = rb.radius * fold;
-          const bottom = rb.base + 1.6 * Math.sin(a * 4 + t * 0.2 + i) + 0.7 * Math.sin(a * 11 - t * 0.3);
+          // Gentle waves of the lower edge: never dips behind the trees
+          const bottom = rb.base + 0.7 * Math.sin(a * 4 + t * 0.2 + i) + 0.3 * Math.sin(a * 11 - t * 0.3);
           const top = rb.height * (0.55 + 0.45 * (0.5 + 0.5 * Math.sin(a * 6 + t * 0.15 + i * 3)) * (0.6 + 0.4 * Math.sin(a * 17 + i)));
           pos.setXYZ(k, Math.cos(a) * r, bottom + v * top, Math.sin(a) * r);
         }

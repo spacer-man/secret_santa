@@ -40,32 +40,41 @@ const ZOOM_DEFAULT = 0.25;
 
 
 /**
- * Courtyard corners for figures from the shop. Each corner has a few places
- * set irregularly around a centre, so the courtyard doesn't look like a ring.
+ * Courtyard corners for figures from the shop, near the fence (background).
+ * In the middle of each corner lies a heap of presents; figures stand in a
+ * half-circle in front of it, facing away from the heap, towards the tree.
  * Angles are measured as in Math.atan2(z, x); the cabin is at ~4.28 rad.
  */
-export const CORNERS: { key: string; angle: number; radius: number; pads: [number, number][] }[] = [
-  // pads: [tangential offset, radial offset] around the corner centre
-  { key: 'porch', angle: 4.98, radius: 6.1, pads: [[-0.9, 0.2], [0.35, 0.65], [0.95, -0.35]] },
-  { key: 'lantern', angle: 0.33, radius: 6.3, pads: [[-0.8, -0.1], [0.2, 0.55], [0.9, -0.25]] },
-  { key: 'hill', angle: 1.85, radius: 5.9, pads: [[-1.0, 0.35], [-0.1, -0.3], [0.85, 0.4], [0.3, 0.95]] },
-  { key: 'rocks', angle: 3.3, radius: 6.2, pads: [[-0.7, 0.45], [0.25, -0.2], [1.0, 0.5]] },
-  { key: 'path', angle: 5.75, radius: 5.8, pads: [[-0.55, -0.25], [0.5, 0.35]] },
+export const CORNERS: { key: string; angle: number; radius: number; pads: number }[] = [
+  { key: 'porch', angle: 4.95, radius: 6.9, pads: 3 },
+  { key: 'lantern', angle: 0.4, radius: 7.0, pads: 3 },
+  { key: 'hill', angle: 1.75, radius: 6.9, pads: 4 },
+  { key: 'rocks', angle: 3.15, radius: 7.0, pads: 3 },
+  { key: 'path', angle: 5.85, radius: 6.9, pads: 2 },
 ];
 
-/** All places, in order: corner by corner */
-const DECOR_PADS = CORNERS.flatMap((c, ci) =>
-  c.pads.map(([t, r]) => {
-    const rr = c.radius + r;
-    const a = c.angle + t / rr;
-    return { corner: ci, pos: new THREE.Vector3(Math.cos(a) * rr, 0, Math.sin(a) * rr) };
-  }),
-);
+const PAD_SPREAD: Record<number, number[]> = {
+  2: [-0.75, 0.75],
+  3: [-1.35, 0, 1.35],
+  4: [-1.9, -0.65, 0.65, 1.9],
+};
 
 function cornerCentre(i: number): THREE.Vector3 {
   const c = CORNERS[i];
   return new THREE.Vector3(Math.cos(c.angle) * c.radius, 0, Math.sin(c.angle) * c.radius);
 }
+
+/** All places, corner by corner; `dir` is where the figure looks (away from the heap) */
+const DECOR_PADS = CORNERS.flatMap((c, ci) => {
+  const centre = cornerCentre(ci);
+  const inward = centre.clone().negate().normalize();
+  const tangent = new THREE.Vector3(-inward.z, 0, inward.x);
+  return PAD_SPREAD[c.pads].map((phi, k) => {
+    const dir = inward.clone().multiplyScalar(Math.cos(phi)).addScaledVector(tangent, Math.sin(phi));
+    const dist = 0.95 + ((k * 37) % 10) / 60;
+    return { corner: ci, pos: centre.clone().addScaledVector(dir, dist), dir };
+  });
+});
 
 function rand(seed: number): number {
   const x = Math.sin(seed * 9301 + 49297) * 233280;
@@ -496,10 +505,10 @@ export class TreeWorld {
     // Snow piles and rocks around the courtyard
     const decor: [ModelName, number, number, number, number][] = [
       // model, angle, radius, scale, rotation
-      ['snow-pile', 0.3, 7.6, 1.6, 0.2],
-      ['snow-pile', 1.9, 7.4, 1.3, 1.1],
-      ['snow-pile', 3.6, 7.7, 1.8, 2.2],
-      ['snow-pile', 5.2, 7.5, 1.4, 0.7],
+      ['snow-pile', 1.08, 7.6, 1.6, 0.2],
+      ['snow-pile', 2.45, 7.5, 1.3, 1.1],
+      ['snow-pile', 3.75, 7.7, 1.5, 2.2],
+      ['snow-pile', 5.4, 7.6, 1.4, 0.7],
       ['snow-flat-large', 2.6, 10.5, 1.4, 0.4],
       ['snow-flat-large', 5.8, 11, 1.6, 1.4],
       ['snow-bunker', 0.9, 10.5, 1.3, 2.0],
@@ -509,14 +518,39 @@ export class TreeWorld {
       ['rocks-medium', 5.6, 12.5, 1.0, 0.9],
       ['bench', ca + 0.35, 7.0, 1.4, 0],
     ];
-    for (const [name, a, r, sc, rot] of decor) {
-      const obj = await this.models.get(name);
-      obj.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
-      obj.scale.setScalar(sc);
-      obj.rotation.y = name === 'bench' ? -a - Math.PI / 2 : rot;
-      this.scene.add(obj);
+    // Everything loads in parallel; a failed model doesn't stop the others
+    const place = async (name: ModelName, pos: THREE.Vector3, scale: number, rotY: number) => {
+      try {
+        const obj = await this.models.get(name);
+        obj.position.copy(pos);
+        obj.scale.setScalar(scale);
+        obj.rotation.y = rotY;
+        this.scene.add(obj);
+        this.renderOnce();
+      } catch (err) {
+        console.warn('Model failed', name, err);
+      }
+    };
+    const jobs: Promise<void>[] = decor.map(([name, a, r, sc, rot]) =>
+      place(name, new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r), sc, name === 'bench' ? -a - Math.PI / 2 : rot),
+    );
+    // A heap of presents in the middle of every corner
+    const presents: ModelName[] = ['present-a-cube', 'present-b-rectangle', 'present-a-round', 'present-b-cube', 'present-a-rectangle', 'present-b-round'];
+    for (let ci = 0; ci < CORNERS.length; ci++) {
+      const c = cornerCentre(ci);
+      const heap: [number, number, number, number][] = [
+        // x, z (local), y, scale
+        [0, 0, 0, 2.0],
+        [0.42, 0.2, 0, 1.6],
+        [-0.38, 0.25, 0, 1.7],
+        [0.05, -0.35, 0, 1.5],
+        [0.05, 0.05, 0.55, 1.3],
+      ];
+      heap.forEach(([x, z, y, sc], k) =>
+        jobs.push(place(presents[(ci * 2 + k) % presents.length], new THREE.Vector3(c.x + x, y, c.z + z), sc, rand(ci * 10 + k) * Math.PI)),
+      );
     }
-    this.renderOnce();
+    await Promise.all(jobs);
   }
 
   private buildConeForest(): void {
@@ -946,8 +980,8 @@ export class TreeWorld {
     const p = place.pos;
     obj.scale.setScalar(kind[1]);
     obj.position.set(p.x, 0, p.z);
-    // Faces outwards (towards the camera passing by), a little turned for a natural look
-    obj.rotation.y = Math.atan2(p.x, p.z) + (rand(pad) - 0.5) * 0.9;
+    // Looks away from the heap of presents (towards the tree), slightly turned
+    obj.rotation.y = Math.atan2(place.dir.x, place.dir.z) + (rand(pad) - 0.5) * 0.35;
     const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.4, 8), new THREE.MeshBasicMaterial({ visible: false }));
     hit.position.set(p.x, 0.7, p.z);
     hit.userData = { kind: 'pad', pad: pad % DECOR_PADS.length, item };
@@ -1023,10 +1057,9 @@ export class TreeWorld {
 
   focusCorner(corner: number): void {
     const c = cornerCentre(corner);
-    // A bit towards the tree, so the tree peeks into the frame
-    this.focusTarget.set(c.x * 0.85, 0.5, c.z * 0.85);
-    // Look from outside the corner over the fence, with the tree in the background
-    this.focusAzimuth = Math.atan2(c.x, c.z);
+    this.focusTarget.set(c.x * 0.97, 0.55, c.z * 0.97);
+    // Look from the tree side: figures face the camera, the fence and the forest are behind them
+    this.focusAzimuth = Math.atan2(c.x, c.z) + Math.PI;
     this.focusTo = 1;
     this.velocity = 0;
     this.start();
@@ -1209,9 +1242,9 @@ export class TreeWorld {
     const lerp = THREE.MathUtils.lerp;
     const b = THREE.MathUtils.smoothstep(this.focusBlend, 0, 1);
     // Normal view around the tree, blended with the close view of a corner
-    // From above, over the fence: nothing blocks the corner
-    const d = lerp(lerp(ZOOM_NEAR.distance, ZOOM_FAR.distance, z), 6.6, b);
-    const e = lerp(lerp(ZOOM_NEAR.elevation, ZOOM_FAR.elevation, z), 0.72, b);
+    // Close to the corner, from the tree side and a bit above
+    const d = lerp(lerp(ZOOM_NEAR.distance, ZOOM_FAR.distance, z), 5.6, b);
+    const e = lerp(lerp(ZOOM_NEAR.elevation, ZOOM_FAR.elevation, z), 0.42, b);
     const ty = lerp(ZOOM_NEAR.target, ZOOM_FAR.target, z);
     const target = new THREE.Vector3(0, ty, 0).lerp(this.focusTarget, b);
     this.camera.position.set(

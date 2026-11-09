@@ -25,6 +25,8 @@ class WishDTO(BaseModel):
     text_entities: list[MessageEntity] | None = Field(default=None)
     effect_id: str | None = Field(default=None)
     timestamp: datetime
+    valid_status: ValidStatus = ValidStatus.ON_VALIDATION
+    recipients_count: int = 0
 
 
 class NewWishArgs(TypedDict, total=False):
@@ -48,16 +50,21 @@ class WishRepository(Protocol):
     async def get_with_min_recipients(
             self,
             recipient: Optional[UUID],
+            since: Optional[datetime] = None,
             ) -> Generator[WishDTO]:
         """
-        Get wishes with minimal recipients count exclude recipient.
+        Get approved wishes with minimal recipients count.
+        Wishes written by the recipient are excluded.
 
         :args:
             :param recipient: User recipient ID in DB.
             :type recipient: `Optional[UUID]`
+            :param since: Take only wishes written after this moment.
+            :type since: `Optional[datetime]`
         :returns: :class:`Generator[WishDTO]`
         """
         ...
+    async def increment_recipients(self, wish_id: UUID) -> None: ...
     async def get_one(self, wish_id: UUID) -> WishDTO | None: ...
     async def get_many(
             self,

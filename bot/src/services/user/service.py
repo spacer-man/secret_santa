@@ -1,19 +1,22 @@
+from typing import NotRequired
 from typing import Required
 from typing import TypedDict
 from typing import Unpack
 from uuid import UUID
 
 from db import new_db_session
-from repos.user.abc import UserRepository
+from repos.user.abc import UserDTO, UserRepository
 from .exceptions import (
     UserAlreadyRegisteredError,
     UserIsNotRegisteredError
 )
 
 
-class NewUserArgs(TypedDict):
+class NewUserArgs(TypedDict, total=False):
     timezone: Required[str]
     telegram_id: Required[int]
+    language: NotRequired[str | None]
+    referrer_id: NotRequired[UUID | None]
 
 
 class EditUserTZArgs(TypedDict):
@@ -62,10 +65,25 @@ class UserService(object):
                 raise UserAlreadyRegisteredError(
                     "User with telegram_id=%d already registered" % telegram_id)
 
+            referrer_id = kwargs.get("referrer_id")
+            if referrer_id and not await repo.get_one(
+                    filter_by={"id": referrer_id}):
+                kwargs.pop("referrer_id")
+
             user_id = await repo.create(**kwargs)
 
             await db_session.commit()
         return user_id
+
+    async def get(self, telegram_id: int) -> UserDTO | None:
+        async with new_db_session() as db_session:
+            repo = self.repo_type(session=db_session)
+            return await repo.get_one(filter_by={"telegram_id": telegram_id})
+
+    async def get_by_id(self, user_id: UUID) -> UserDTO | None:
+        async with new_db_session() as db_session:
+            repo = self.repo_type(session=db_session)
+            return await repo.get_one(filter_by={"id": user_id})
 
     async def edit_user(
             self,

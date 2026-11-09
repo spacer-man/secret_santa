@@ -11,6 +11,7 @@ from repos.user.abc import UserRepository
 from repos.user.sqlmodel import SQLModelUserRepository
 from repos.wish.abc import WishRepository
 from repos.wish.sqlmodel import SQLModelWishRepository
+from services.delivery import DeliveryService
 from services.notify import AiogramNotifyService, NotifyService
 from services.user import UserService
 from services.wish import WishService
@@ -36,3 +37,6 @@ notify_service: NotifyService = AiogramNotifyService(
 
 
 is_registered = IsRegistered(user_service=user_service)
+delivery_service: DeliveryService = DeliveryService(
+    wish_service=wish_service,
+    wish_repo_type=wish_repo_type)

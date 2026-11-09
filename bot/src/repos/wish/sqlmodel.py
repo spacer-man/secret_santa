@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from typing import (
     Any,
     Generator,
@@ -23,24 +24,32 @@ class SQLModelWishRepository(WishRepository):
     async def get_with_min_recipients(
             self,
             recipient: Optional[UUID],
+            since: Optional[datetime] = None,
             ) -> Generator[WishDTO]:
         """
-        Get wishes with minimal recipients count exclude recipient.
+        Get approved wishes with minimal recipients count.
+        Wishes written by the recipient are excluded.
 
         :args:
             :param recipient: User recipient ID in DB.
             :type recipient: `UUID`
+            :param since: Take only wishes written after this moment.
+            :type since: `datetime`
         :returns: :class:`Generator[WishDTO]`
         """
         stmt = select(Wish).filter_by(valid_status=ValidStatus.APPROVED)
-        if recipient: stmt = stmt.where(Wish.id != recipient)
-        stmt = stmt.order_by(Wish.recipients_count)
+        if recipient:
+            stmt = stmt.where(Wish.author_id != recipient)
+        if since:
+            stmt = stmt.where(Wish.timestamp >= since)  # type: ignore
+        stmt = stmt.order_by(Wish.recipients_count)  # type: ignore
 
         query_result = await self.session.execute(stmt)
         scalars = query_result.scalars().all()
-        min_recipients_count: int = min(
-            scalars, key=lambda w: w.recipients_count
-        ).recipients_count
+        if not scalars:
+            return (_ for _ in ())
+
+        min_recipients_count: int = scalars[0].recipients_count
         wishes = (
             WishDTO.model_validate({
                 **wish.model_dump(),
@@ -54,6 +63,14 @@ class SQLModelWishRepository(WishRepository):
         )
 
         return wishes
+
+    async def increment_recipients(self, wish_id: UUID) -> None:
+        stmt = (
+            update(Wish)
+            .filter_by(id=wish_id)
+            .values(recipients_count=Wish.recipients_count + 1)
+        )
+        await self.session.execute(stmt)
 
     async def get_one(self, wish_id: UUID) -> WishDTO | None:
         stmt = select(Wish).filter_by(id=wish_id)

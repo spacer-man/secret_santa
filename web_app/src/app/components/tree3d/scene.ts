@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import type { TreeBall, TreeData } from '../../core/api';
 import { buildCabin } from './cabin';
 import { ModelName, Models } from './models';
+import { Body, Circle, body, footprint, resolve } from './layout';
 import { TREE_TOP, buildFirTree, treeRadius } from './tree-model';
 
 export interface SceneCallbacks {
@@ -53,11 +54,67 @@ export const CORNERS: { key: string; angle: number; radius: number; pads: number
   { key: 'path', angle: 5.85, radius: 6.9, pads: 2 },
 ];
 
+// Angles (rad) around the heap, 0 = straight towards the tree; nobody stands
+// right in front of the heap, so it stays visible
 const PAD_SPREAD: Record<number, number[]> = {
-  2: [-0.75, 0.75],
-  3: [-1.35, 0, 1.35],
-  4: [-1.9, -0.65, 0.65, 1.9],
+  2: [-0.85, 0.85],
+  3: [-1.45, -0.5, 0.95],
+  4: [-1.85, -0.7, 0.55, 1.6],
 };
+
+/** Figures that can be bought for the courtyard: model and scale */
+const DECOR_KINDS: Record<string, [ModelName, number]> = {
+  snowman: ['snowman-hat', 1.3],
+  'snowman-classic': ['snowman', 1.3],
+  reindeer: ['reindeer', 1.25],
+  sled: ['sled', 1.6],
+  'sled-long': ['sled-long', 1.5],
+  'candy-cane': ['candy-cane-red', 2.2],
+  'candy-cane-green': ['candy-cane-green', 2.2],
+  gingerbread: ['gingerbread-man', 2.4],
+  nutcracker: ['nutcracker', 1.5],
+  lantern: ['lantern', 1.8],
+};
+
+/** Figures stand between the train track and the fence */
+const COURTYARD_RING = { min: 4.3, max: 8.25 };
+
+const CABIN_ANGLE = (14 / 20) * Math.PI * 2 - 0.12;
+
+/** Static courtyard objects: model, angle, radius, scale, rotation, footprint (0 = not an obstacle) */
+const STATIC_DECOR: [ModelName, number, number, number, number, number][] = [
+  ['snow-pile', 1.08, 7.6, 1.6, 0.2, 0.75],
+  ['snow-pile', 2.45, 7.5, 1.3, 1.1, 0.6],
+  ['snow-pile', 3.75, 7.7, 1.5, 2.2, 0.7],
+  ['snow-pile', 5.4, 7.6, 1.4, 0.7, 0.65],
+  ['snow-flat-large', 2.6, 10.5, 1.4, 0.4, 0],
+  ['snow-flat-large', 5.8, 11, 1.6, 1.4, 0],
+  ['snow-bunker', 0.9, 10.5, 1.3, 2.0, 0],
+  ['rocks-large', 1.3, 12, 1.0, 0.3, 0],
+  ['rocks-medium', 3.1, 11, 1.2, 1.5, 0],
+  ['rocks-small', 4.6, 10.2, 1.4, 2.6, 0],
+  ['rocks-medium', 5.6, 12.5, 1.0, 0.9, 0],
+  ['bench', CABIN_ANGLE + 0.35, 7.0, 1.4, 0, 0.85],
+];
+
+/** Obstacles for figures: snow piles, the bench and the present heaps */
+const STATIC_COLLIDERS: Circle[] = [
+  ...STATIC_DECOR.filter((d) => d[5] > 0).map(([, a, r, , , fr]) => ({ x: Math.cos(a) * r, z: Math.sin(a) * r, r: fr })),
+  ...CORNERS.map((c) => ({ x: Math.cos(c.angle) * c.radius, z: Math.sin(c.angle) * c.radius, r: 0.8 })),
+];
+
+/**
+ * Where a figure looks (rotation around Y; models face +Z), from its real
+ * position: away from the heap of its corner, but mostly towards the tree,
+ * so figures on the sides don't stare into nowhere.
+ */
+function facing(x: number, z: number, corner: number, seed: number): number {
+  const heap = cornerCentre(corner);
+  const away = new THREE.Vector2(x - heap.x, z - heap.z).normalize();
+  const toTree = new THREE.Vector2(-x, -z).normalize();
+  const dir = away.add(toTree.multiplyScalar(1.6));
+  return Math.atan2(dir.x, dir.y) + (rand(seed) - 0.5) * 0.2;
+}
 
 function cornerCentre(i: number): THREE.Vector3 {
   const c = CORNERS[i];
@@ -502,22 +559,8 @@ export class TreeWorld {
       this.scene.add(inst);
     });
 
-    // Snow piles and rocks around the courtyard
-    const decor: [ModelName, number, number, number, number][] = [
-      // model, angle, radius, scale, rotation
-      ['snow-pile', 1.08, 7.6, 1.6, 0.2],
-      ['snow-pile', 2.45, 7.5, 1.3, 1.1],
-      ['snow-pile', 3.75, 7.7, 1.5, 2.2],
-      ['snow-pile', 5.4, 7.6, 1.4, 0.7],
-      ['snow-flat-large', 2.6, 10.5, 1.4, 0.4],
-      ['snow-flat-large', 5.8, 11, 1.6, 1.4],
-      ['snow-bunker', 0.9, 10.5, 1.3, 2.0],
-      ['rocks-large', 1.3, 12, 1.0, 0.3],
-      ['rocks-medium', 3.1, 11, 1.2, 1.5],
-      ['rocks-small', 4.6, 10.2, 1.4, 2.6],
-      ['rocks-medium', 5.6, 12.5, 1.0, 0.9],
-      ['bench', ca + 0.35, 7.0, 1.4, 0],
-    ];
+    // Snow piles, rocks and the bench around the courtyard
+    const decor = STATIC_DECOR;
     // Everything loads in parallel; a failed model doesn't stop the others
     const place = async (name: ModelName, pos: THREE.Vector3, scale: number, rotY: number) => {
       try {
@@ -682,8 +725,8 @@ export class TreeWorld {
     const version = ++this.version;
     tree.balls.filter((b) => b.state === 'box').slice(0, 6).forEach((b, i) => this.addGift(b, i, version));
     if (tree.level >= 6) this.addTrain(version);
-    (tree.decor ?? []).forEach((d) => this.addDecor(d.item, d.pad, version));
-    this.addPadMarkers(new Set((tree.decor ?? []).map((d) => d.pad)));
+    this.lastDecor = tree.decor ?? [];
+    this.placeCourtyard(this.lastDecor, version);
     this.applyLevel(tree.level);
     this.renderOnce();
   }
@@ -793,10 +836,12 @@ export class TreeWorld {
     this.dynamic.add(ghost);
     this.animated.push({
       update: (t) => {
-        const k = Math.abs(Math.sin(t * 1.6 + i));
-        ghost.material.opacity = 0.55 + 0.45 * k;
-        halo.material.opacity = 0.35 + 0.55 * k;
-        halo.scale.setScalar(1.1 + 0.35 * k);
+        // Slow breathing: ~3 s per beat
+        const k = 0.5 + 0.5 * Math.sin(t * 2.1 + i * 1.3);
+        ghost.scale.setScalar(0.5 + 0.18 * k);
+        ghost.material.opacity = 0.6 + 0.4 * k;
+        halo.material.opacity = 0.3 + 0.6 * k;
+        halo.scale.setScalar(1.0 + 0.7 * k);
       },
     });
   }
@@ -879,7 +924,7 @@ export class TreeWorld {
     const size = 1.45 + rand(i + 4) * 0.35;
     gift.scale.setScalar(size);
 
-    // On the podium, around the tree
+    // On the podium, half under the branches: as if the tree covers them
     const a = 0.5 + i * 1.05;
     const holder = new THREE.Group();
     holder.position.set(Math.cos(a) * 1.95, 0.6, Math.sin(a) * 1.95);
@@ -958,92 +1003,117 @@ export class TreeWorld {
     this.renderOnce();
   }
 
-  /** Courtyard figures bought in the shop, standing on fixed pads */
-  private async addDecor(item: string, pad: number, version: number): Promise<void> {
-    const kinds: Record<string, [ModelName, number]> = {
-      snowman: ['snowman-hat', 1.3],
-      'snowman-classic': ['snowman', 1.3],
-      reindeer: ['reindeer', 1.25],
-      sled: ['sled', 1.6],
-      'sled-long': ['sled-long', 1.5],
-      'candy-cane': ['candy-cane-red', 2.2],
-      'candy-cane-green': ['candy-cane-green', 2.2],
-      gingerbread: ['gingerbread-man', 2.4],
-      nutcracker: ['nutcracker', 1.5],
-      lantern: ['lantern', 1.8],
-    };
-    const kind = kinds[item];
-    if (!kind) return;
-    const obj = await this.models.get(kind[0]);
+  // ====== Courtyard figures & decorate mode ====== //
+  private decorMode = false;
+  private previewItem = 'snowman';
+  private lastDecor: { item: string; pad: number }[] = [];
+  private previews: THREE.Object3D[] = [];
+  private readonly ghostMats = new Map<string, THREE.Material>();
+
+  /**
+   * Figures from the shop on their places, and (in decorate mode) translucent
+   * previews on free places. Positions are corrected so nothing intersects.
+   */
+  private async placeCourtyard(decor: { item: string; pad: number }[], version: number): Promise<void> {
+    const items = decor.filter((d) => DECOR_KINDS[d.item]);
+    const objects = await Promise.all(
+      items.map((d) => this.models.get(DECOR_KINDS[d.item][0]).catch(() => null)),
+    );
+    const previewKind = DECOR_KINDS[this.previewItem] ?? DECOR_KINDS['snowman'];
+    const previewProto = await this.models.get(previewKind[0], false).catch(() => null);
     if (version !== this.version) return;
-    const place = DECOR_PADS[pad % DECOR_PADS.length];
-    const p = place.pos;
-    obj.scale.setScalar(kind[1]);
-    obj.position.set(p.x, 0, p.z);
-    // Looks away from the heap of presents (towards the tree), slightly turned
-    obj.rotation.y = Math.atan2(place.dir.x, place.dir.z) + (rand(pad) - 0.5) * 0.35;
-    const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.4, 8), new THREE.MeshBasicMaterial({ visible: false }));
-    hit.position.set(p.x, 0.7, p.z);
-    hit.userData = { kind: 'pad', pad: pad % DECOR_PADS.length, item };
-    this.clickables.push(hit);
-    this.dynamic.add(obj, hit);
+
+    // 1. Figures: footprints from their own size, then resolve overlaps together
+    const placed: { obj: THREE.Object3D; b: Body; pad: number; item: string }[] = [];
+    items.forEach((d, k) => {
+      const obj = objects[k];
+      if (!obj) return;
+      const pad = d.pad % DECOR_PADS.length;
+      obj.scale.setScalar(DECOR_KINDS[d.item][1]);
+      const home = DECOR_PADS[pad].pos;
+      placed.push({ obj, b: body(home.x, home.z, footprint(obj)), pad, item: d.item });
+    });
+    resolve(placed.map((p) => p.b), STATIC_COLLIDERS, COURTYARD_RING);
+
+    for (const { obj, b, pad, item } of placed) {
+      obj.position.set(b.x, 0, b.z);
+      obj.rotation.y = facing(b.x, b.z, DECOR_PADS[pad].corner, pad);
+      const hit = new THREE.Mesh(new THREE.CylinderGeometry(b.r, b.r, 1.4, 8), new THREE.MeshBasicMaterial({ visible: false }));
+      hit.position.set(b.x, 0.7, b.z);
+      hit.userData = { kind: 'pad', pad, item };
+      this.clickables.push(hit);
+      this.dynamic.add(obj, hit);
+    }
+
+    // 2. Previews on free places: each fits between the figures and the obstacles
+    this.previews = [];
+    if (previewProto) {
+      const occupied = new Set(placed.map((p) => p.pad));
+      const figures: Circle[] = placed.map((p) => p.b);
+      DECOR_PADS.forEach((place, i) => {
+        if (occupied.has(i)) return;
+        const ghost = this.ghost(previewProto);
+        ghost.scale.setScalar(previewKind[1]);
+        const b = body(place.pos.x, place.pos.z, footprint(ghost));
+        resolve([b], [...STATIC_COLLIDERS, ...figures], COURTYARD_RING);
+        ghost.position.set(b.x, 0, b.z);
+        ghost.rotation.y = facing(b.x, b.z, place.corner, i);
+        const hit = new THREE.Mesh(new THREE.CylinderGeometry(b.r + 0.1, b.r + 0.1, 1.4, 8), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.set(b.x, 0.7, b.z);
+        hit.userData = { kind: 'pad', pad: i, item: null };
+        const marker = new THREE.Group();
+        marker.add(ghost, hit);
+        marker.visible = this.decorMode;
+        this.previews.push(marker);
+        this.clickables.push(hit);
+        this.dynamic.add(marker);
+      });
+      // All previews breathe together: clearly "not real yet"
+      this.animated.push({
+        update: (t) => {
+          const o = 0.5 + 0.15 * Math.sin(t * 2.2);
+          this.ghostMats.forEach((m) => (m.opacity = o));
+        },
+      });
+    }
     this.renderOnce();
   }
 
-  // ====== Decorate mode & corners ====== //
-  private decorMode = false;
-  private padMarkers: THREE.Object3D[] = [];
-  private ringTex?: THREE.CanvasTexture;
-
-  /** Glowing rings on free places (visible only in decorate mode) */
-  private addPadMarkers(occupied: Set<number>): void {
-    this.padMarkers = [];
-    const tex =
-      this.ringTex ??
-      (this.ringTex = canvasTexture(128, (ctx, s) => {
-        const g = ctx.createRadialGradient(s / 2, s / 2, s * 0.2, s / 2, s / 2, s / 2);
-        g.addColorStop(0, 'rgba(255,190,60,0.25)');
-        g.addColorStop(0.55, 'rgba(255,190,60,0.9)');
-        g.addColorStop(0.72, 'rgba(255,240,170,1)');
-        g.addColorStop(1, 'rgba(255,190,60,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, s, s);
-      }));
-    DECOR_PADS.forEach((place, i) => {
-      if (occupied.has(i)) return;
-      const ring = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.1, 1.1),
-        new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }),
-      );
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.set(place.pos.x, 0.03, place.pos.z);
-      // A soft column of light above the place: visible from far away
-      const column = this.glow(0xffc850, 1.1, 0.7);
-      column.scale.set(0.7, 1.8, 1);
-      column.position.set(place.pos.x, 0.8, place.pos.z);
-      const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.2, 8), new THREE.MeshBasicMaterial({ visible: false }));
-      hit.position.set(place.pos.x, 0.6, place.pos.z);
-      hit.userData = { kind: 'pad', pad: i, item: null };
-      const marker = new THREE.Group();
-      marker.add(ring, column, hit);
-      marker.visible = this.decorMode;
-      this.padMarkers.push(marker);
-      this.clickables.push(hit);
-      this.dynamic.add(marker);
-      this.animated.push({
-        update: (t) => {
-          const k = 1 + Math.sin(t * 2.5 + i) * 0.12;
-          ring.scale.set(k, k, 1);
-          (ring.material as THREE.MeshBasicMaterial).opacity = 0.75 + 0.25 * Math.sin(t * 2.5 + i);
-          column.material.opacity = 0.45 + 0.3 * Math.sin(t * 2.5 + i);
-        },
-      });
+  /** A translucent copy of a model (shared ghost materials) */
+  private ghost(proto: THREE.Object3D): THREE.Object3D {
+    const copy = proto.clone(true);
+    copy.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const src = mesh.material as THREE.MeshToonMaterial;
+      let m = this.ghostMats.get(src.uuid);
+      if (!m) {
+        m = new THREE.MeshToonMaterial({
+          map: src.map,
+          color: src.color,
+          gradientMap: this.gradient,
+          emissive: 0x7f9cff,
+          emissiveIntensity: 0.55,
+          transparent: true,
+          opacity: 0.5,
+          depthWrite: false,
+        });
+        this.ghostMats.set(src.uuid, m);
+      }
+      mesh.material = m;
     });
+    return copy;
   }
 
-  setDecorMode(on: boolean): void {
+  /** Decorate mode; `previewItem` is the figure shown on free places */
+  setDecorMode(on: boolean, previewItem = 'snowman'): void {
     this.decorMode = on;
-    this.padMarkers.forEach((m) => (m.visible = on));
+    if (DECOR_KINDS[previewItem] && previewItem !== this.previewItem) {
+      this.previewItem = previewItem;
+      this.previews.forEach((p) => this.dynamic.remove(p));
+      this.placeCourtyard(this.lastDecor, this.version);
+    }
+    this.previews.forEach((m) => (m.visible = on));
     if (!on) this.clearFocus();
     this.start();
     this.renderOnce();
@@ -1058,8 +1128,9 @@ export class TreeWorld {
   focusCorner(corner: number): void {
     const c = cornerCentre(corner);
     this.focusTarget.set(c.x * 0.97, 0.55, c.z * 0.97);
-    // Look from the tree side: figures face the camera, the fence and the forest are behind them
-    this.focusAzimuth = Math.atan2(c.x, c.z) + Math.PI;
+    // Look from the tree side (figures face the camera, the fence and the forest
+    // are behind them), a bit diagonally so the camera passes beside the tree
+    this.focusAzimuth = Math.atan2(c.x, c.z) + Math.PI + 0.55;
     this.focusTo = 1;
     this.velocity = 0;
     this.start();
@@ -1243,7 +1314,7 @@ export class TreeWorld {
     const b = THREE.MathUtils.smoothstep(this.focusBlend, 0, 1);
     // Normal view around the tree, blended with the close view of a corner
     // Close to the corner, from the tree side and a bit above
-    const d = lerp(lerp(ZOOM_NEAR.distance, ZOOM_FAR.distance, z), 5.6, b);
+    const d = lerp(lerp(ZOOM_NEAR.distance, ZOOM_FAR.distance, z), 6.0, b);
     const e = lerp(lerp(ZOOM_NEAR.elevation, ZOOM_FAR.elevation, z), 0.42, b);
     const ty = lerp(ZOOM_NEAR.target, ZOOM_FAR.target, z);
     const target = new THREE.Vector3(0, ty, 0).lerp(this.focusTarget, b);
@@ -1252,6 +1323,15 @@ export class TreeWorld {
       target.y + Math.sin(e) * d,
       target.z + Math.cos(this.azimuth) * Math.cos(e) * d,
     );
+    // Never inside the tree: push the camera out of its silhouette
+    const cam = this.camera.position;
+    const minR = treeRadius(cam.y) + 0.9;
+    const r = Math.hypot(cam.x, cam.z);
+    if (cam.y < TREE_TOP + 0.5 && r < minR) {
+      const k = minR / Math.max(r, 1e-3);
+      cam.x *= k;
+      cam.z *= k;
+    }
     this.camera.lookAt(target);
   }
 

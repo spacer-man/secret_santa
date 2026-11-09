@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+from uuid import UUID
 
 from aiogram import F
 from aiogram.fsm.scene import on
@@ -15,6 +16,7 @@ from handlers import keyboards as common_keyboards
 from handlers.common.cancellable import CancellableScene
 from handlers.consts import Scenes
 from handlers.depends import user_service
+from handlers.referral import invite_link
 from handlers.utils.timezone import ALL_TIMEZONES
 from handlers.utils.timezone import clock_emoji
 from handlers.utils.timezone import tz_from_timeshift
@@ -111,10 +113,14 @@ class ConfirmTimezoneScene(
         # Delete previous message
         await message.delete()
 
+        referrer_id = await self.wizard.get_value("referrer_id")
+        user_id = None
         if timezone:
-            await user_service.register(
+            user_id = await user_service.register(
                 telegram_id=message.chat.id,
-                timezone=timezone)
+                timezone=timezone,
+                language=call.from_user.language_code,
+                referrer_id=UUID(referrer_id) if referrer_id else None)
 
         # Messages
         alerts = (
@@ -126,9 +132,14 @@ class ConfirmTimezoneScene(
             to_delete.append(await message.answer(text=msg))
             await asyncio.sleep(.5)
 
+        share_text = messages.SHARE_REQUEST
+        if user_id and message.bot:
+            link = await invite_link(bot=message.bot, user_id=user_id)
+            share_text += messages.INVITE_LINK % {"link": link}
         await message.answer(
-            text=messages.SHARE_REQUEST,
-            reply_markup=common_keyboards.HIDE)
+            text=share_text,
+            reply_markup=common_keyboards.HIDE,
+            disable_web_page_preview=True)
         await asyncio.sleep(.5)
 
         await message.answer(

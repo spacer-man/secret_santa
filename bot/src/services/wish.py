@@ -1,6 +1,4 @@
 import json
-import random
-import time
 from datetime import datetime
 from typing import (
     AsyncGenerator,
@@ -15,9 +13,10 @@ from uuid import UUID
 
 from aiogram.types import MessageEntity
 from pydantic import BaseModel, Field
+from sqlmodel import update
 
 from db import new_db_session
-from db.models import MediaType, ValidStatus
+from db.models import Delivery, MediaType, ValidStatus
 from repos.user.abc import UserRepository
 from repos.wish.abc import WishRepository
 from repos.media.abc import MediaRepository
@@ -42,6 +41,8 @@ class WishDTO(BaseModel):
     text_entities: list[MessageEntity] | None = Field(default=None)
     effect_id: str | None = Field(default=None)
     timestamp: datetime
+    valid_status: ValidStatus = ValidStatus.ON_VALIDATION
+    recipients_count: int = 0
     media: Iterable[MediaDTO]
 
 
@@ -221,6 +222,11 @@ class WishService(object):
             wish_repo = self.wish_repo_type(session=db_session)
             media_repo = self.media_repo_type(session=db_session)
 
+            # Gifts that already contain the wish become empty
+            await db_session.execute(
+                update(Delivery)
+                .where(Delivery.wish_id == wish_id)  # type: ignore
+                .values(wish_id=None))
             await media_repo.delete(filter_by={"wish_id": wish_id})
             await wish_repo.delete(filter_by={"id": wish_id})
 
@@ -249,43 +255,3 @@ class WishService(object):
             await wish_repo.edit(id=wish_id, valid_status=valid_status)
 
             await db_session.commit()
-
-    async def wish_to_send(self, reciever: int) -> WishDTO | None:
-        """
-        Update valid wish status.
-        If wish with current id is not exist, than do nothing.
-
-        :args:
-            :param reciever: Reciever Telegram ID;
-            :type reciever: `int`
-
-        :return: `WishDTO | None`
-        """
-        async with new_db_session() as db_session:
-            user_repo = self.user_repo_type(session=db_session)
-            wish_repo = self.wish_repo_type(session=db_session)
-            media_repo = self.media_repo_type(session=db_session)
-            recipient = await user_repo.get_one(
-                filter_by={"telegram_id": reciever})
-
-            wishes = list(
-                await wish_repo.get_with_min_recipients(
-                    recipient=recipient.id if recipient else None))
-
-            if len(wishes) == 0:
-                return None
-
-            wish_author = None
-            random.seed(time.perf_counter())
-            wish = random.choice(wishes)
-            while not wish_author:
-                wish = random.choice(wishes)
-                wish_author = await user_repo.get_one(
-                    filter_by={"id": wish.author_id})
-
-            return WishDTO.model_validate(obj={
-                **wish.model_dump(),
-                "author_telegram_id": wish_author.telegram_id,
-                "media": await self._wish_medias(
-                    wish_id=wish.id, media_repo=media_repo),
-            })

@@ -1,19 +1,24 @@
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.types import InlineKeyboardButton
+from aiogram.types import WebAppInfo
 
 from configs.support import SupportConfig
 
 from . import buttons
-from handlers.utils.timezone import ALL_TIMEZONES
+from configs.webapp import WebAppConfig
+from handlers.utils.timezone import FRACTIONAL_TIMEZONES
+from handlers.utils.timezone import WHOLE_HOUR_TIMEZONES
 from handlers.utils.timezone import batch
 
 
+# Whole hour offsets first, then the rarer half/quarter hour ones
 _TIMEZONE_MENU_BUTTONS = [
     [
         InlineKeyboardButton(text=timezone, callback_data=timezone)
         for timezone in chunk
     ]
-    for chunk in batch(ALL_TIMEZONES, size=5)
+    for timezones, size in ((WHOLE_HOUR_TIMEZONES, 5), (FRACTIONAL_TIMEZONES, 4))
+    for chunk in batch(timezones, size=size)
 ]
 
 
@@ -66,3 +71,10 @@ OPEN_WISH = InlineKeyboardMarkup(inline_keyboard=[
         text=buttons.OPEN_WISH,
         callback_data=buttons.OPEN_WISH)],
 ])
+
+
+def open_app(path: str = "", text: str = buttons.OPEN_APP) -> list[InlineKeyboardButton]:
+    """A row with a button opening the mini app (empty if the app is not configured)"""
+    if url := WebAppConfig().url_for(path):
+        return [InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))]
+    return []

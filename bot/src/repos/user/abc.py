@@ -18,12 +18,16 @@ class UserDTO(BaseModel):
     id: UUID
     telegram_id: int
     timezone: str = Field(max_length=32)
+    language: str | None = None
+    referrer_id: UUID | None = None
     registered_at: datetime
 
 
 class NewUserArgs(TypedDict, total=False):
     timezone: Required[str]
     telegram_id: Required[int]
+    language: str | None
+    referrer_id: UUID | None
 
 
 class EditUserArgs(TypedDict, total=False):

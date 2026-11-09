@@ -11,6 +11,7 @@ from sqlmodel import Enum
 from sqlmodel import Field
 from sqlmodel import SQLModel
 from sqlmodel import TIMESTAMP
+from sqlmodel import UniqueConstraint
 from sqlmodel import Uuid
 
 
@@ -34,7 +35,10 @@ class ValidStatus(enum.StrEnum):
 class User(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
     telegram_id: int = Field(unique=True, sa_type=BigInteger)
-    timezone: str = Field(max_length=8)
+    timezone: str = Field(max_length=16)
+    language: str | None = Field(default=None, max_length=8)
+    referrer_id: UUID | None = Field(
+        default=None, foreign_key="user.id", sa_type=Uuid)
     registered_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(TIMESTAMP(timezone=True)))
@@ -60,3 +64,27 @@ class Media(SQLModel, table=True):
     wish_id: UUID = Field(foreign_key="wish.id")
     type: MediaType = Field(sa_column=Column(Enum(MediaType)))
     data: bytes = Field(max_length=10 * 2 ** 20)
+
+
+class Delivery(SQLModel, table=True):
+    """
+    New Year gift for a user: one per user per year.
+
+    Created when the New Year comes in the user's timezone (``notified_at``),
+    a wish is assigned when the user opens the gift (``opened_at``).
+    """
+    __table_args__ = (UniqueConstraint("recipient_id", "year"),)
+
+    id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
+    recipient_id: UUID = Field(foreign_key="user.id", index=True)
+    year: int
+    wish_id: UUID | None = Field(
+        default=None, foreign_key="wish.id", index=True)
+    notified_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(TIMESTAMP(timezone=True)))
+    opened_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(TIMESTAMP(timezone=True)))
+    reaction: str | None = Field(default=None, max_length=16)
+    reply: str | None = Field(default=None, max_length=1024)

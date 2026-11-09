@@ -1,36 +1,29 @@
-import datetime
 from typing import Generator
 from typing import Sequence
 
+from timezones import ALL_TIMEZONES
+from timezones import FRACTIONAL_TIMEZONES
+from timezones import WHOLE_HOUR_TIMEZONES
+from timezones import tz_from_timeshift
 
-ALL_TIMEZONES = [
-    "UTC" + ("+" if timeshift >= 0 else "") + str(timeshift)
-    for timeshift in range(-12, 13)
-]
 
-
-def tz_from_timeshift(timeshift: str) -> datetime.timezone:
-    assert timeshift in ALL_TIMEZONES, "timeshift is uncorrect" 
-
-    # Select value
-    shift_value = timeshift[3:]
-
-    # Convert to timedelta
-    timedelta = datetime.timedelta(hours=int(shift_value[1:]))
-    if shift_value[0] == '-':
-        timedelta *= -1
-
-    # Return result timezone
-    return datetime.timezone(timedelta)
+__all__ = (
+    "ALL_TIMEZONES",
+    "FRACTIONAL_TIMEZONES",
+    "WHOLE_HOUR_TIMEZONES",
+    "batch",
+    "clock_emoji",
+    "tz_from_timeshift",
+)
 
 
 def clock_emoji(hour: int) -> str:
     """
     Returns a clock emoji representation based on the given hour and minute.
-    
+
     :args:
         hour: :class:`int`     # The hour (0-23).
-    
+
     :returns: :class:`str`  # The corresponding clock emoji.
     """
     assert 0 <= hour <= 23, f"Uncorrect hour: hour can't be {hour}"
@@ -40,7 +33,7 @@ def clock_emoji(hour: int) -> str:
     # Dictionary mapping clock face number to emojis
     clock_emojis = {
         0: "🕛", 1: "🕐", 2: "🕑", 3: "🕒",
-        4: "🕓", 5: "🕔", 6: "🕕", 7: "🕖", 
+        4: "🕓", 5: "🕔", 6: "🕕", 7: "🕖",
         8: "🕗", 9: "🕘", 10: "🕙", 11: "🕚"
     }
     # Return the clock emoji

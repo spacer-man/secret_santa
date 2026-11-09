@@ -1,9 +1,15 @@
 /**
- * The fir tree: tiers with drooping branch tips, painted snow and soft snow clumps.
- * Ball slots and the garland use treeRadius(), so it must match the geometry.
+ * The fir tree: stacked smooth "skirts" with rounded scalloped branch tips,
+ * each topped with a soft snow cap that has a wavy rounded edge.
+ *
+ * Every tier is a closed, smooth (indexed) surface: a convex top slope that ends
+ * in a drooping scalloped rim, then rolls under and closes on the axis. The tier
+ * above always overhangs the tier below, so all intersections stay hidden under
+ * the skirts. Ball slots and the garland use treeRadius(), which is computed from
+ * the same profile functions, so it matches the geometry.
  */
 import * as THREE from 'three';
-import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export interface TreeKit {
   toon(color: number, extra?: Partial<THREE.MeshToonMaterialParameters>): THREE.MeshToonMaterial;
@@ -28,140 +34,257 @@ export const TIERS: [number, number, number][] = [
 ];
 export const TREE_TOP = 5.15;
 
+// ---- Shared tier profile (geometry and treeRadius use the same functions) ---- //
+
+/** Number of branch tips (lobes) around a tier */
+const lobeCount = (i: number) => [13, 12, 11, 10, 9, 8, 7][i] ?? 7;
+/** Branch tips stick out by this much, valleys pull in */
+const TIP_OUT = 0.07;
+const VALLEY_IN = 0.12;
+/** Rim droop: valleys and tips */
+const DROOP = 0.08;
+const DROOP_TIP = 0.12;
+/** Mean of lobeShape() over the circle (cos² ⇒ 3/8) */
+const LOBE_MEAN = 0.375;
+
+/** 0 in the valleys, 1 on the branch tips: rounded both ways */
+function lobeShape(i: number, theta: number): number {
+  const c = 0.5 + 0.5 * Math.cos(lobeCount(i) * theta);
+  return c * c;
+}
+
+/** Slow, smooth variation of the tip length around the tier (no jitter) */
+function lobeAmp(i: number, theta: number): number {
+  return 1 + 0.035 * Math.sin(3 * theta + i * 1.7) + 0.025 * Math.sin(5 * theta + i * 2.9);
+}
+
+/** Radial factor (1 = plain cone) at fraction f down the tier */
+function radialFactor(f: number, lobe: number, amp: number): number {
+  const w = f * f;
+  return 1 + w * (((1 + TIP_OUT) * lobe + (1 - VALLEY_IN) * (1 - lobe)) * amp - 1);
+}
+
+/** Downward droop of the slope towards the rim */
+function droop(f: number, lobe: number): number {
+  return (DROOP + DROOP_TIP * lobe) * f * f * f;
+}
+
+/** Point on the top slope of tier i: f = 0 at the apex, 1 at the rim */
+function slope(i: number, f: number, theta: number, out: THREE.Vector3): THREE.Vector3 {
+  const [bottom, h, r] = TIERS[i];
+  const lobe = lobeShape(i, theta);
+  const rad = r * Math.pow(f, 0.85) * radialFactor(f, lobe, lobeAmp(i, theta));
+  const y = bottom + h - h * f - droop(f, lobe);
+  return out.set(Math.cos(theta) * rad, y, Math.sin(theta) * rad);
+}
+
+/** Outward normal of the top slope (finite differences) */
+function slopeNormal(i: number, f: number, theta: number, out: THREE.Vector3): THREE.Vector3 {
+  const e = 1e-3;
+  const fa = Math.max(f - e, 1e-3);
+  const fb = Math.min(f + e, 1);
+  const a = slope(i, fa, theta, new THREE.Vector3());
+  const b = slope(i, fb, theta, new THREE.Vector3());
+  const c = slope(i, Math.max(f, 2e-3), theta - e, new THREE.Vector3());
+  const d = slope(i, Math.max(f, 2e-3), theta + e, new THREE.Vector3());
+  const df = b.sub(a);
+  const dt = d.sub(c);
+  return out.crossVectors(df, dt).normalize().multiplyScalar(-1);
+}
+
+/** Fraction down tier i at which its slope reaches height y (averaged around the tier) */
+function fractionAt(i: number, y: number): number {
+  const [bottom, h] = TIERS[i];
+  let lo = 0;
+  let hi = 1;
+  for (let k = 0; k < 30; k++) {
+    const mid = (lo + hi) / 2;
+    const ym = bottom + h - h * mid - droop(mid, LOBE_MEAN);
+    if (ym > y) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/** Outer radius of the silhouette at height y (mean over the branch tips and valleys) */
 export function treeRadius(y: number): number {
   let r = 0;
-  for (const [bottom, h, radius] of TIERS) {
-    if (y >= bottom && y <= bottom + h) r = Math.max(r, radius * (1 - (y - bottom) / h));
-  }
+  TIERS.forEach(([bottom, h, radius], i) => {
+    const rimY = bottom - droop(1, LOBE_MEAN);
+    if (y < rimY || y > bottom + h) return;
+    const f = fractionAt(i, y);
+    const mean = radialFactor(f, LOBE_MEAN, 1);
+    r = Math.max(r, radius * Math.pow(f, 0.85) * mean);
+  });
   return r;
 }
 
-export function buildFirTree(kit: TreeKit): THREE.Group {
-  // One material: needles and snow are painted per face (crisp toon look)
-  const mat = kit.toon(0xffffff, { vertexColors: true });
-  const pillowMat = kit.toon(0xf4f7ff);
-  const green = new THREE.Color(0x1f8a55);
-  const greenDark = new THREE.Color(0x17734a);
-  const white = new THREE.Color(0xf4f7ff);
-  const blueSnow = new THREE.Color(0xd5def7);
-  const tree = new THREE.Group();
+// ---- Geometry ---- //
 
-  const trunk = kit.hull(new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.6, 10), kit.toon(0x5b3a26)), 0.02);
-  trunk.position.y = 0.85;
-  tree.add(trunk);
-
-  TIERS.forEach(([bottom, h, r], i) => {
-    const segments = 28;
-    const geo = new THREE.ConeGeometry(r, h, segments, 9);
-    const pos = geo.attributes['position'] as THREE.BufferAttribute;
-    const segOf = (x: number, z: number) =>
-      Math.round(((Math.atan2(z, x) / (Math.PI * 2)) * segments + segments) % segments);
-    for (let v = 0; v < pos.count; v++) {
-      const y = pos.getY(v);
-      const f = (h / 2 - y) / h; // 0 at the apex, 1 at the bottom
-      if (f < 0.01) continue;
-      // Branch tips: every other segment sticks out and droops
-      const tip = segOf(pos.getX(v), pos.getZ(v)) % 2 === 0;
-      const k = (tip ? 1.1 : 0.84) + (rand(segOf(pos.getX(v), pos.getZ(v)) + i * 31) - 0.5) * 0.1;
-      const kk = 1 + (k - 1) * f * f;
-      pos.setX(v, pos.getX(v) * kk);
-      pos.setZ(v, pos.getZ(v) * kk);
-      if (f > 0.99) pos.setY(v, y - (tip ? 0.18 : 0) - rand(v + i * 17) * 0.05);
-      else if (f > 0.7 && tip) pos.setY(v, y - 0.05);
+/**
+ * Indexed grid of rings (wrapping around without a seam, so normals are smooth).
+ * Optional single apex vertices close the top and the bottom.
+ */
+function ringGeometry(
+  rings: THREE.Vector3[][],
+  colors: THREE.Color[][] | null,
+  topApex: THREE.Vector3 | null,
+  bottomApex: THREE.Vector3 | null,
+  apexColors?: [THREE.Color, THREE.Color],
+): THREE.BufferGeometry {
+  const m = rings[0].length;
+  const pos: number[] = [];
+  const col: number[] = [];
+  const idx: number[] = [];
+  rings.forEach((ring, ri) =>
+    ring.forEach((p, k) => {
+      pos.push(p.x, p.y, p.z);
+      if (colors) col.push(colors[ri][k].r, colors[ri][k].g, colors[ri][k].b);
+    }),
+  );
+  const at = (ri: number, k: number) => ri * m + (k % m);
+  for (let ri = 0; ri < rings.length - 1; ri++) {
+    for (let k = 0; k < m; k++) {
+      const a = at(ri, k);
+      const b = at(ri, k + 1);
+      const c = at(ri + 1, k);
+      const d = at(ri + 1, k + 1);
+      // Rings go from top to bottom, theta counter-clockwise seen from above: outward faces
+      idx.push(a, b, c, b, d, c);
     }
-    geo.computeVertexNormals();
+  }
+  if (topApex) {
+    const t = pos.length / 3;
+    pos.push(topApex.x, topApex.y, topApex.z);
+    if (colors && apexColors) col.push(apexColors[0].r, apexColors[0].g, apexColors[0].b);
+    for (let k = 0; k < m; k++) idx.push(t, at(0, k + 1), at(0, k));
+  }
+  if (bottomApex) {
+    const t = pos.length / 3;
+    const last = rings.length - 1;
+    pos.push(bottomApex.x, bottomApex.y, bottomApex.z);
+    if (colors && apexColors) col.push(apexColors[1].r, apexColors[1].g, apexColors[1].b);
+    for (let k = 0; k < m; k++) idx.push(t, at(last, k), at(last, k + 1));
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  if (colors) geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(idx);
+  // Winding check: make the faces point outwards whatever the ring direction is
+  geo.computeVertexNormals();
+  return geo;
+}
 
-    // Faceted copy with per-face colors: snow lies on top of the branches
-    const flat = geo.toNonIndexed();
-    const fp = flat.attributes['position'] as THREE.BufferAttribute;
-    const colors = new Float32Array(fp.count * 3);
-    const c = new THREE.Vector3();
-    for (let tri = 0; tri < fp.count; tri += 3) {
-      c.set(0, 0, 0);
-      for (let k = 0; k < 3; k++) c.add(new THREE.Vector3(fp.getX(tri + k), fp.getY(tri + k), fp.getZ(tri + k)));
-      c.divideScalar(3);
-      const f = (h / 2 - c.y) / h;
-      // Segment of the triangle (tips are on even radial lines)
-      const seg = Math.floor(((Math.atan2(c.z, c.x) / (Math.PI * 2)) * segments + segments) % segments);
-      const noise = rand(seg * 7.13 + i * 13);
-      // Snow lies on the visible outer part of the branches; the very edge stays green
-      const tipSeg = seg % 2 === 0;
-      const isSnow = f < 0.2 || (f > 0.58 && f < (tipSeg ? 0.86 : 0.72) - noise * 0.1);
-      const shade = rand(tri * 0.37 + i);
-      const color = isSnow ? (shade > 0.85 ? blueSnow : white) : shade > 0.5 ? green : greenDark;
-      for (let k = 0; k < 3; k++) colors.set([color.r, color.g, color.b], (tri + k) * 3);
+const GREEN = new THREE.Color(0x23935a);
+const GREEN_TIP = new THREE.Color(0x2ea866);
+const GREEN_DEEP = new THREE.Color(0x166b45);
+const GREEN_UNDER = new THREE.Color(0x0f4f37);
+
+/** Columns around tier i: several per lobe so the tips are round */
+const columns = (i: number) => lobeCount(i) * 6;
+
+function buildTier(i: number): THREE.BufferGeometry {
+  const [bottom, h] = TIERS[i];
+  const m = columns(i);
+  const rows = 14;
+  const rings: THREE.Vector3[][] = [];
+  const colors: THREE.Color[][] = [];
+  const p = new THREE.Vector3();
+  // Top slope: denser near the rim where the shape changes
+  for (let ri = 1; ri <= rows; ri++) {
+    const f = 1 - Math.pow(1 - ri / rows, 1.4);
+    const ring: THREE.Vector3[] = [];
+    const cs: THREE.Color[] = [];
+    for (let k = 0; k < m; k++) {
+      const theta = (k / m) * Math.PI * 2;
+      ring.push(slope(i, f, theta, p).clone());
+      const lobe = lobeShape(i, theta);
+      // Valleys are deeper in shade, tips catch light
+      const c = GREEN_DEEP.clone().lerp(GREEN, Math.min(1, lobe * 1.6 + (1 - f) * 0.5));
+      if (lobe > 0.6 && f > 0.8) c.lerp(GREEN_TIP, (lobe - 0.6) * 2.5 * (f - 0.8) * 5);
+      cs.push(c);
     }
-    flat.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    flat.computeVertexNormals();
-
-    const tier = kit.hull(new THREE.Mesh(flat, mat), 0.025, geo);
-    tier.position.y = bottom + h / 2;
-    tier.rotation.y = i * 0.7;
-    const pillows = snowPillows(geo, h, r, i);
-    if (pillows) tier.add(new THREE.Mesh(pillows, pillowMat));
-    tree.add(tier);
+    rings.push(ring);
+    colors.push(cs);
+  }
+  // Rounded rim roll and the underside closing towards the axis
+  const under: [number, number, number][] = [
+    // [radial scale of the rim, y offset (in h), colour blend to the underside]
+    [0.985, 0.025, 0.4],
+    [0.93, 0.055, 0.85],
+    [0.7, 0.12, 1],
+    [0.4, 0.2, 1],
+  ];
+  const rim = rings[rings.length - 1];
+  under.forEach(([s, dy, blend]) => {
+    rings.push(rim.map((q) => new THREE.Vector3(q.x * s, q.y + dy * h, q.z * s)));
+    colors.push(rim.map(() => GREEN_DEEP.clone().lerp(GREEN_UNDER, blend)));
   });
-  return tree;
+  const apex = slope(i, 0, 0, new THREE.Vector3());
+  return ringGeometry(rings, colors, apex, new THREE.Vector3(0, bottom + h * 0.3, 0), [GREEN, GREEN_UNDER]);
 }
 
 /**
- * Soft snow clumps lying across the branch ends (tilted with the slope):
- * together they form a wavy snow rim on every tier.
+ * Soft snow cap on tier i: a smooth blanket lying on the slope, from under the
+ * tier above down to a wavy edge (further down along every branch), ending in a
+ * rounded lip that tucks into the needles. Thickness varies slowly: lumpy, not noisy.
  */
-function snowPillows(geo: THREE.BufferGeometry, h: number, r: number, tierIndex: number): THREE.BufferGeometry | null {
-  const pos = geo.attributes['position'] as THREE.BufferAttribute;
-  const tips: THREE.Vector3[] = [];
-  const seen = new Set<string>();
-  for (let v = 0; v < pos.count; v++) {
-    const p = new THREE.Vector3(pos.getX(v), pos.getY(v), pos.getZ(v));
-    const radial = Math.hypot(p.x, p.z);
-    if (p.y > -h / 2 + 0.02 || radial < r * 1.02) continue; // bottom ring, sticking-out tips only
-    const key = `${p.x.toFixed(2)}:${p.z.toFixed(2)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    tips.push(p);
-  }
-  if (!tips.length) return null;
-
-  const apex = new THREE.Vector3(0, h / 2, 0);
-  const up = new THREE.Vector3(0, 1, 0);
-  const parts: THREE.BufferGeometry[] = [];
-  const m = new THREE.Matrix4();
-  tips.forEach((tip, k) => {
-    const seed = tierIndex * 100 + k;
-    const d = new THREE.Vector3(tip.x, 0, tip.z).normalize();
-    const u = tip.clone().sub(apex).normalize(); // along the branch, outwards and down
-    const side = new THREE.Vector3().crossVectors(up, d).normalize();
-    const n = new THREE.Vector3().crossVectors(u, side).normalize(); // surface normal, outwards and up
-    if (n.y < 0) n.negate();
-    const z = new THREE.Vector3().crossVectors(u, n).normalize();
-
-    // A clump lying across the branch near its end: neighbours almost join into a wavy rim
-    if (rand(seed + 9) < 0.06) return; // a rare gap: snow fell unevenly
-    const spacing = (Math.PI * 2 * r) / tips.length;
-    const across = spacing * (0.5 + rand(seed) * 0.12);
-    const along = Math.min(0.22, r * 0.12) * (0.85 + rand(seed + 1) * 0.3);
-    const height = 0.055 + rand(seed + 2) * 0.04;
-    const centre = apex.clone().lerp(tip, 0.8 + rand(seed + 4) * 0.08).addScaledVector(n, 0.012);
-
-    // Seam vertices are merged: no dark line across the clump
-    const raw = new THREE.SphereGeometry(1, 14, 5, 0, Math.PI * 2, 0, Math.PI / 2);
-    raw.deleteAttribute('uv');
-    raw.deleteAttribute('normal');
-    const dome = mergeVertices(raw);
-    const dp = dome.attributes['position'] as THREE.BufferAttribute;
-    for (let v = 0; v < dp.count; v++) {
-      const x = dp.getX(v);
-      const y = dp.getY(v);
-      const zz = dp.getZ(v);
-      // Bumps depend on the position (not the index), so seams stay closed
-      const bump = 1 + (rand(x * 12.9898 + zz * 78.233 + seed) - 0.5) * 0.3 * y;
-      dp.setXYZ(v, x * along, y * height * bump, zz * across);
+function buildSnow(i: number): THREE.BufferGeometry {
+  const [, h, r] = TIERS[i];
+  const m = columns(i);
+  const n = lobeCount(i);
+  // Where the tier above hides the slope (snow starts under it)
+  const above = TIERS[i + 1];
+  const fHidden = above ? fractionAt(i, above[0] + 0.12) : 0.02;
+  const fVisible = above ? fractionAt(i, above[0] - droop(1, 0)) : 0;
+  const thick = 0.045 + r * 0.025;
+  const rows = 12;
+  const rings: THREE.Vector3[][] = [];
+  const p = new THREE.Vector3();
+  const nrm = new THREE.Vector3();
+  for (let ri = 0; ri <= rows; ri++) {
+    const u = ri / rows;
+    const ring: THREE.Vector3[] = [];
+    for (let k = 0; k < m; k++) {
+      const theta = (k / m) * Math.PI * 2;
+      const lobe = lobeShape(i, theta);
+      // Wavy edge: snow runs further down each branch; slow irregularity between tiers
+      const wobble = 0.05 * Math.sin(2 * theta + i * 2.3) + 0.04 * Math.sin(3 * theta + i);
+      const reach = (above ? 0.12 : 0.3) + 0.42 * lobe + wobble;
+      const fe = fVisible + (1 - fVisible) * Math.min(0.9, reach);
+      // Rows are denser near the edge for a round lip
+      const t = 1 - Math.pow(1 - u, 1.8);
+      const f = fHidden + (fe - fHidden) * t;
+      slope(i, f, theta, p);
+      slopeNormal(i, f, theta, nrm);
+      // Profile: full thickness, then a quarter-circle lip that sinks under the needles
+      const lipStart = 0.62;
+      const lip = t < lipStart ? 1 : Math.sqrt(Math.max(0, 1 - Math.pow((t - lipStart) / (1 - lipStart), 2)));
+      const lump = 1 + 0.22 * Math.sin(n * theta + 0.8 + i) * Math.sin(f * 9 + i) + 0.12 * lobe;
+      const d = thick * lump * lip - 0.012 * (1 - lip);
+      // A bit of droop along the lip: soft, heavy snow
+      p.addScaledVector(nrm, d);
+      p.y -= 0.02 * (1 - lip);
+      ring.push(p.clone());
     }
-    m.makeBasis(u, n, z).setPosition(centre);
-    dome.applyMatrix4(m);
-    dome.computeVertexNormals();
-    parts.push(dome);
-  });
-  return parts.length ? mergeGeometries(parts) : null;
+    rings.push(ring);
+  }
+  const top = above ? null : slope(i, 0, 0, new THREE.Vector3()).add(new THREE.Vector3(0, thick, 0));
+  return ringGeometry(rings, null, top, null);
+}
+
+export function buildFirTree(kit: TreeKit): THREE.Group {
+  const tree = new THREE.Group();
+
+  const trunk = kit.hull(new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.6, 12), kit.toon(0x5b3a26)), 0.02);
+  trunk.position.y = 0.85;
+  tree.add(trunk);
+
+  const tiers = mergeGeometries(TIERS.map((_, i) => buildTier(i)));
+  tree.add(kit.hull(new THREE.Mesh(tiers, kit.toon(0xffffff, { vertexColors: true })), 0.025));
+
+  const snowParts = TIERS.map((_, i) => buildSnow(i));
+  const snow = mergeGeometries(snowParts);
+  tree.add(kit.hull(new THREE.Mesh(snow, kit.toon(0xf4f7ff)), 0.018));
+  return tree;
 }

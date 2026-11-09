@@ -49,6 +49,8 @@ export interface TreeData {
   points: number;
   level_from: number;
   level_to: number | null;
+  /** Courtyard figures from the shop: item key and pad index */
+  decor?: { item: string; pad: number }[];
 }
 
 export interface MandarinTx {

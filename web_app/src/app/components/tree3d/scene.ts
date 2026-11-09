@@ -1290,12 +1290,13 @@ export class TreeWorld {
       this.arrowGeo = new THREE.LatheGeometry(profile, 16);
       // Same look as figure previews: light blue, 70% opaque, breathing
       this.arrowMat = new THREE.MeshToonMaterial({
-        color: 0xbcd0ff,
+        color: 0x8ec0ff,
         gradientMap: this.gradient,
-        emissive: 0x7f9cff,
-        emissiveIntensity: 0.55,
+        // Glowing from inside: bright even in the shadow
+        emissive: 0x3d8bff,
+        emissiveIntensity: 1.2,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.78,
         depthWrite: false,
         depthFunc: THREE.LessEqualDepth,
       });
@@ -1308,17 +1309,25 @@ export class TreeWorld {
     const depth = new THREE.Mesh(this.arrowGeo, this.depthOnly);
     depth.renderOrder = 10;
     arrow.add(depth);
-    const glow = this.glow(0x9fb4ff, 1.0, 0.6);
+    const glow = this.glow(0x5a9bff, 1.2, 0.8);
+    glow.material.blending = THREE.NormalBlending;
     glow.position.y = 0.05;
-    glow.scale.set(1.0, 0.35, 1);
-    group.add(arrow, glow);
+    glow.scale.set(1.2, 0.4, 1);
+    // A halo around the arrow itself, bobbing with it: normal blending, so the
+    // blue stays saturated on the white snow (additive glow would wash out)
+    const halo = this.glow(0x4d8dff, 1.5, 0.75);
+    halo.material.blending = THREE.NormalBlending;
+    group.add(arrow, glow, halo);
     this.animated.push({
       update: (t) => {
         const bob = Math.abs(Math.sin(t * 2.4 + i));
         arrow.position.y = 1.0 + bob * 0.35;
         arrow.rotation.y = t * 0.8 + i;
+        halo.position.y = arrow.position.y - 0.05;
+        halo.material.opacity = 0.4 + 0.2 * Math.sin(t * 2.2 + i);
+        halo.scale.setScalar(1.35 + 0.2 * Math.sin(t * 2.2 + i));
         glow.material.opacity = 0.3 + 0.3 * (1 - bob);
-        this.arrowMat!.opacity = 0.7 + 0.08 * Math.sin(t * 2.2);
+        this.arrowMat!.opacity = 0.78 + 0.08 * Math.sin(t * 2.2);
       },
     });
     return group;

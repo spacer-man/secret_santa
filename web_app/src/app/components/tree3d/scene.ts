@@ -1288,11 +1288,27 @@ export class TreeWorld {
         new THREE.Vector2(0, 0.32),
       ];
       this.arrowGeo = new THREE.LatheGeometry(profile, 16);
-      this.arrowMat = this.toon(0xffc94a, { emissive: 0xff9a20, emissiveIntensity: 0.45 });
+      // Same look as figure previews: light blue, 70% opaque, breathing
+      this.arrowMat = new THREE.MeshToonMaterial({
+        color: 0xbcd0ff,
+        gradientMap: this.gradient,
+        emissive: 0x7f9cff,
+        emissiveIntensity: 0.55,
+        transparent: true,
+        opacity: 0.7,
+        depthWrite: false,
+        depthFunc: THREE.LessEqualDepth,
+      });
+      this.ghostMats.set('arrow', this.arrowMat);
     }
     const group = new THREE.Group();
-    const arrow = this.hull(new THREE.Mesh(this.arrowGeo, this.arrowMat), 0.02);
-    const glow = this.glow(0xffc850, 1.0, 0.6);
+    const arrow = new THREE.Mesh(this.arrowGeo, this.arrowMat);
+    arrow.renderOrder = 11;
+    // Depth pre-pass: no back faces showing through
+    const depth = new THREE.Mesh(this.arrowGeo, this.depthOnly);
+    depth.renderOrder = 10;
+    arrow.add(depth);
+    const glow = this.glow(0x9fb4ff, 1.0, 0.6);
     glow.position.y = 0.05;
     glow.scale.set(1.0, 0.35, 1);
     group.add(arrow, glow);
@@ -1301,7 +1317,8 @@ export class TreeWorld {
         const bob = Math.abs(Math.sin(t * 2.4 + i));
         arrow.position.y = 1.0 + bob * 0.35;
         arrow.rotation.y = t * 0.8 + i;
-        glow.material.opacity = 0.35 + 0.35 * (1 - bob);
+        glow.material.opacity = 0.3 + 0.3 * (1 - bob);
+        this.arrowMat!.opacity = 0.7 + 0.08 * Math.sin(t * 2.2);
       },
     });
     return group;

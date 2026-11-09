@@ -17,6 +17,8 @@ export interface Cabin {
   group: THREE.Group;
   windows: THREE.Mesh[];
   lights: THREE.Sprite[];
+  /** Roof edges (under the eaves) for the fringe lights */
+  roofEdges: [THREE.Vector3, THREE.Vector3][];
   update(t: number, dt: number): void;
 }
 
@@ -273,11 +275,26 @@ export function buildCabin(kit: Kit): Cabin {
   lights.push(pool);
   g.add(pool);
 
+  // Under the roof edges: front/back rakes and both side eaves
+  const eaveX = slabLen * Math.cos(slope) - 0.06;
+  const eaveY = top + RIDGE - slabLen * Math.sin(slope) - 0.13;
+  const ridgeY = top + RIDGE - 0.16;
+  const zEnd = D + OVER - 0.06;
+  const roofEdges: [THREE.Vector3, THREE.Vector3][] = [];
+  for (const z of [zEnd, -zEnd]) {
+    roofEdges.push([new THREE.Vector3(-eaveX, eaveY, z), new THREE.Vector3(0, ridgeY, z)]);
+    roofEdges.push([new THREE.Vector3(0, ridgeY, z), new THREE.Vector3(eaveX, eaveY, z)]);
+  }
+  for (const x of [-eaveX, eaveX]) {
+    roofEdges.push([new THREE.Vector3(x, eaveY, -zEnd), new THREE.Vector3(x, eaveY, zEnd)]);
+  }
+
   let smokeT = 0;
   return {
     group: g,
     windows,
     lights,
+    roofEdges,
     update(t: number, dt: number) {
       smokeT += dt;
       smoke.forEach((puff, i) => {

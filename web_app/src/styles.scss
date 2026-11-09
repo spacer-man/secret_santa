@@ -1011,3 +1011,33 @@ blockquote {
 .snow-icon {
   font-size: 1.6rem;
 }
+.snow-modes.lights {
+  grid-template-columns: repeat(3, 1fr);
+}
+.sheet-backdrop.clear {
+  background: transparent;
+}
+.sheet.compact {
+  gap: 0.5rem;
+  padding-top: 0.9rem;
+}
+.compact-title {
+  margin: 0;
+  text-align: center;
+  font-size: 1rem;
+}
+.skin-strip {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+  scrollbar-width: none;
+}
+.skin-strip .snow-mode {
+  flex: 0 0 5.6rem;
+  font-size: 0.8rem;
+  padding: 0.5rem 0.2rem;
+}
+.skin-strip .snow-icon {
+  font-size: 1.3rem;
+}

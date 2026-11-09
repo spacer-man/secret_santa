@@ -2,6 +2,7 @@ import { Component, ElementRef, OnDestroy, afterNextRender, effect, input, outpu
 import type { TreeBall, TreeData } from '../../core/api';
 import { TreeScene } from '../tree/tree-scene';
 import type { TreeWorld } from './scene';
+import type { LightSkin } from './cabin-lights';
 
 /** 3D tree (three.js is loaded lazily); falls back to the 2D tree without WebGL */
 @Component({
@@ -73,6 +74,9 @@ export class Tree3d implements OnDestroy {
   readonly decorMode = input(false);
   /** 0 clear (starry sky), 1 light, 2 snowfall, 3 blizzard */
   readonly snowfall = input(1);
+  /** Fringe lights under the cabin roof */
+  readonly cabinLights = input<string | null>(null);
+  readonly cabinClick = output<void>();
   readonly padClick = output<{ pad: number; corner: string; item: string | null }>();
   readonly focusLost = output<void>();
   readonly focused = output<number>();
@@ -98,6 +102,10 @@ export class Tree3d implements OnDestroy {
       const level = this.snowfall();
       this.world?.setSnowfall(level);
     });
+    effect(() => {
+      const skin = this.cabinLights() as LightSkin | null;
+      this.world?.setCabinLights(skin);
+    });
   }
 
   private async init(): Promise<void> {
@@ -113,9 +121,11 @@ export class Tree3d implements OnDestroy {
         pad: (pad, corner, item) => this.padClick.emit({ pad, corner, item }),
         focusLost: () => this.focusLost.emit(),
         focused: (corner) => this.focused.emit(corner),
+        cabin: () => this.cabinClick.emit(),
       });
       this.world.setDecorMode(this.decorMode());
       this.world.setSnowfall(this.snowfall());
+      this.world.setCabinLights(this.cabinLights() as LightSkin | null);
       // For screenshots/tests only: ?debug exposes the scene
       if (new URLSearchParams(location.search).has('debug')) (window as unknown as { santaTree: TreeWorld }).santaTree = this.world;
       this.world.setTree(this.tree(), this.newHung(), this.newLit());
@@ -124,6 +134,10 @@ export class Tree3d implements OnDestroy {
       console.warn('3D tree is unavailable, using 2D', err);
       this.fallback.set(true);
     }
+  }
+
+  focusCabin(): void {
+    this.world?.focusCabin();
   }
 
   /** Back from a corner to the whole tree */

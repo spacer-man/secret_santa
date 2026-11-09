@@ -823,13 +823,14 @@ export class TreeWorld {
     }
   }
 
+  private treeGroup?: THREE.Group;
+
   private buildTree(): void {
-    this.scene.add(
-      buildFirTree({
-        toon: (c, e) => this.toon(c, e),
-        hull: (m, t, smooth) => this.hull(m, t, smooth),
-      }),
-    );
+    this.treeGroup = buildFirTree({
+      toon: (c, e) => this.toon(c, e),
+      hull: (m, t, smooth) => this.hull(m, t, smooth),
+    });
+    this.scene.add(this.treeGroup);
   }
 
   /** Snowfall strength: light (free), snowfall, blizzard (unlocked for mandarins) */
@@ -872,9 +873,8 @@ export class TreeWorld {
     for (let i = 0; i < n; i++) {
       const y = 1.15 + ((i + 0.5) / n) * 3.55;
       const a = i * 2.39996;
-      const r = treeRadius(y) * 0.92 + 0.1;
-      if (r < 0.3) continue;
-      slots.push(new THREE.Vector3(Math.cos(a) * r, y - 0.05, Math.sin(a) * r));
+      const p = this.onBranch(y, a);
+      if (p) slots.push(p);
     }
     // Fill order: van der Corput sequence over heights, so any number of balls
     // is spread evenly from the bottom to the top (not bunched at one height)
@@ -889,8 +889,44 @@ export class TreeWorld {
       .map((x) => x.p);
   }
 
-  private slots = this.ballSlots();
+  private slotsCache?: THREE.Vector3[];
+  private get slots(): THREE.Vector3[] {
+    return (this.slotsCache ??= this.ballSlots());
+  }
   private ghostTex?: THREE.CanvasTexture;
+
+  /**
+   * Where a ball hangs at height y around angle a: on the real surface of the
+   * tree (rays from outside), on the most sticking-out branch tip nearby, so
+   * balls don't end up inside the notches between branches.
+   * Returns the slot point (ball centre is ~0.04 lower).
+   */
+  private onBranch(y: number, a: number): THREE.Vector3 | null {
+    const BALL_R = 0.25;
+    const ballY = y - 0.09;
+    if (!this.treeGroup) {
+      const r = treeRadius(y) * 0.92 + 0.1;
+      return r < 0.3 ? null : new THREE.Vector3(Math.cos(a) * r, y - 0.05, Math.sin(a) * r);
+    }
+    this.treeGroup.updateMatrixWorld(true);
+    const ray = new THREE.Raycaster();
+    let best: { r: number; a: number } | null = null;
+    for (const da of [-0.22, -0.11, 0, 0.11, 0.22]) {
+      const aa = a + da;
+      const dir = new THREE.Vector3(-Math.cos(aa), 0, -Math.sin(aa));
+      ray.set(new THREE.Vector3(Math.cos(aa) * 6, ballY, Math.sin(aa) * 6), dir);
+      const hit = ray
+        .intersectObject(this.treeGroup, true)
+        .find((h) => !((h.object as THREE.Mesh).material instanceof THREE.ShaderMaterial));
+      if (!hit) continue;
+      const r = Math.hypot(hit.point.x, hit.point.z);
+      if (!best || r > best.r) best = { r, a: aa };
+    }
+    if (!best || best.r < 0.3) return null;
+    // Ball touches the branch from outside (slightly nestled)
+    const r = best.r + BALL_R * 0.75;
+    return new THREE.Vector3(Math.cos(best.a) * r, y - 0.05, Math.sin(best.a) * r);
+  }
 
   private patternMap(pattern: string, color: number): THREE.CanvasTexture {
     const key = pattern + color;

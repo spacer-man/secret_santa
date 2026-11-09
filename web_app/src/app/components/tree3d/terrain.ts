@@ -68,13 +68,14 @@ export function terrainHeight(x: number, z: number): number {
 
 /** Terrain mesh: polar grid, denser near the courtyard */
 export function terrainGeometry(): THREE.BufferGeometry {
-  const rings = 70;
-  const segs = 180;
+  // Dense enough for smooth drifts (toon steps show every facet)
+  const rings = 120;
+  const segs = 320;
   const positions: number[] = [];
   const index: number[] = [];
   for (let i = 0; i <= rings; i++) {
     const t = i / rings;
-    const r = PLAZA - 0.05 + (70 - PLAZA) * Math.pow(t, 1.8);
+    const r = PLAZA - 0.05 + (70 - PLAZA) * Math.pow(t, 1.6);
     for (let j = 0; j < segs; j++) {
       const a = (j / segs) * Math.PI * 2;
       const x = Math.cos(a) * r;

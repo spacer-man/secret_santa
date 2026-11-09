@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three';
 import type { TreeBall, TreeData } from '../../core/api';
+import { buildCabin } from './cabin';
 
 export interface SceneCallbacks {
   ball(ball: TreeBall): void;
@@ -25,9 +26,10 @@ const BALL_COLORS: Record<string, number> = {
   orange: 0xff9330,
 };
 
-const TARGET = new THREE.Vector3(0, 3.5, 0);
-const CAMERA_DISTANCE = 14.5;
-const CAMERA_ELEVATION = 0.27; // radians above the horizon
+// Zoom: 0 = close to the tree, 1 = whole courtyard
+const ZOOM_NEAR = { distance: 8.5, elevation: 0.2, target: 2.9 };
+const ZOOM_FAR = { distance: 17, elevation: 0.34, target: 3.4 };
+const ZOOM_DEFAULT = 0.25;
 
 // Tree tiers: [bottom y, height, radius]
 const TIERS: [number, number, number][] = [
@@ -148,6 +150,7 @@ export class TreeWorld {
   private readonly levelGroup = new THREE.Group();
   private readonly clickables: THREE.Object3D[] = [];
   private readonly animated: Animated[] = [];
+  private readonly staticAnimated: Animated[] = [];
   private readonly patternCache = new Map<string, THREE.CanvasTexture>();
   private readonly treeLight = new THREE.PointLight(0xffb45a, 0, 9, 1.5);
   private snow!: THREE.Points;
@@ -420,47 +423,25 @@ export class TreeWorld {
   }
 
   private windows: THREE.Mesh[] = [];
-  private cabinGlow?: THREE.Sprite;
+  private cabinLights: THREE.Sprite[] = [];
 
   private buildCabin(): void {
-    const cabin = new THREE.Group();
-    const wood = this.toon(0x7a5040);
-    const body = this.outline(new THREE.Mesh(new THREE.BoxGeometry(4, 2.4, 3), wood), 1.03);
-    body.position.y = 1.2;
-    const roofShape = new THREE.Shape();
-    roofShape.moveTo(-2.5, 0);
-    roofShape.lineTo(0, 1.7);
-    roofShape.lineTo(2.5, 0);
-    roofShape.lineTo(-2.5, 0);
-    const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: 3.6, bevelEnabled: false });
-    roofGeo.translate(0, 0, -1.8);
-    const roof = this.outline(new THREE.Mesh(roofGeo, this.toon(0xf4f7ff)), 1.03);
-    roof.position.y = 2.4;
-    const chimney = this.outline(new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.1, 0.5), this.toon(0x8a5a4a)), 1.06);
-    chimney.position.set(1.1, 3.6, 0.6);
-    const door = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 1.4), this.toon(0x4a2e26));
-    door.position.set(0.9, 0.7, 1.51);
-    cabin.add(body, roof, chimney, door);
-    for (const [x, y, z, ry] of [
-      [-0.9, 1.35, 1.51, 0],
-      [-2.01, 1.35, 0, -Math.PI / 2],
-      [2.01, 1.35, -0.4, Math.PI / 2],
-    ] as [number, number, number, number][]) {
-      const w = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.7), new THREE.MeshBasicMaterial({ color: 0x1c1a33 }));
-      w.position.set(x, y, z);
-      w.rotation.y = ry;
-      this.windows.push(w);
-      cabin.add(w);
-    }
-    this.cabinGlow = this.glow(0xffb45a, 6, 0);
-    this.cabinGlow.position.set(0, 1.4, 2.2);
-    cabin.add(this.cabinGlow);
+    const cabin = buildCabin({
+      toon: (c, e) => this.toon(c, e),
+      hull: (m, t) => this.hull(m, t),
+      outline: (m, sc) => this.outline(m, sc),
+      glow: (c, sz, o) => this.glow(c, sz, o),
+      glowTex: this.glowTex,
+    });
+    this.windows = cabin.windows;
+    this.cabinLights = cabin.lights;
+    this.staticAnimated.push(cabin);
 
-    // Outside the fence, next to the entrance
+    // Outside the fence, next to the entrance, facing the tree
     const a = (14 / 20) * Math.PI * 2 - 0.12;
-    cabin.position.set(Math.cos(a) * 12.5, 0, Math.sin(a) * 12.5);
-    cabin.lookAt(0, 0, 0);
-    this.scene.add(cabin);
+    cabin.group.position.set(Math.cos(a) * 12.5, 0, Math.sin(a) * 12.5);
+    cabin.group.lookAt(0, 0, 0);
+    this.scene.add(cabin.group);
   }
 
   private buildForest(): void {
@@ -514,78 +495,67 @@ export class TreeWorld {
   }
 
   private buildTree(): void {
-    const needles = this.toon(0x1f8a55);
-    const snow = this.toon(0xf4f7ff);
-    // Faceted look: every face gets its own normal
-    const faceted = (g: THREE.BufferGeometry) => {
-      const f = g.toNonIndexed();
-      f.computeVertexNormals();
-      return f;
-    };
+    // One material: needles and snow are painted per face (crisp toon look)
+    const mat = this.toon(0xffffff, { vertexColors: true });
+    const green = new THREE.Color(0x1f8a55);
+    const greenDark = new THREE.Color(0x17734a);
+    const white = new THREE.Color(0xf4f7ff);
+    const blueSnow = new THREE.Color(0xd5def7);
     const tree = new THREE.Group();
 
     const trunk = this.hull(new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.6, 10), this.toon(0x5b3a26)), 0.02);
     trunk.position.y = 0.85;
     tree.add(trunk);
 
-    const tips: THREE.Vector3[] = [];
     TIERS.forEach(([bottom, h, r], i) => {
-      const segments = 20;
-      const geo = new THREE.ConeGeometry(r, h, segments, 3);
+      const segments = 28;
+      const geo = new THREE.ConeGeometry(r, h, segments, 9);
       const pos = geo.attributes['position'] as THREE.BufferAttribute;
+      const segOf = (x: number, z: number) =>
+        Math.round(((Math.atan2(z, x) / (Math.PI * 2)) * segments + segments) % segments);
       for (let v = 0; v < pos.count; v++) {
         const y = pos.getY(v);
-        const seg = Math.round(((Math.atan2(pos.getZ(v), pos.getX(v)) / (Math.PI * 2)) * segments + segments) % segments);
-        const f = (h / 2 - y) / h; // 0 at apex, 1 at the bottom
-        if (f > 0.01) {
-          // Branch tips: every other segment sticks out and droops
-          const tip = seg % 2 === 0;
-          const k = (tip ? 1.08 : 0.86) + (rand(seg + i * 31) - 0.5) * 0.1;
-          const kk = 1 + (k - 1) * f;
-          pos.setX(v, pos.getX(v) * kk);
-          pos.setZ(v, pos.getZ(v) * kk);
-          if (f > 0.99) pos.setY(v, y - (tip ? 0.16 : 0) - rand(seg + i * 17) * 0.06);
-        }
+        const f = (h / 2 - y) / h; // 0 at the apex, 1 at the bottom
+        if (f < 0.01) continue;
+        // Branch tips: every other segment sticks out and droops
+        const tip = segOf(pos.getX(v), pos.getZ(v)) % 2 === 0;
+        const k = (tip ? 1.1 : 0.84) + (rand(segOf(pos.getX(v), pos.getZ(v)) + i * 31) - 0.5) * 0.1;
+        const kk = 1 + (k - 1) * f * f;
+        pos.setX(v, pos.getX(v) * kk);
+        pos.setZ(v, pos.getZ(v) * kk);
+        if (f > 0.99) pos.setY(v, y - (tip ? 0.18 : 0) - rand(v + i * 17) * 0.05);
+        else if (f > 0.7 && tip) pos.setY(v, y - 0.05);
       }
       geo.computeVertexNormals();
-      const tier = this.hull(new THREE.Mesh(faceted(geo), needles), 0.025, geo);
-      // Snow lying on the branch tips
-      for (let k = 0; k < segments; k += 2) {
-        const a = (k / segments) * Math.PI * 2 + i * 0.7;
-        const rr = r * 0.9;
-        tips.push(new THREE.Vector3(Math.cos(a) * rr, bottom + 0.12, -Math.sin(a) * rr));
+
+      // Faceted copy with per-face colors: snow lies on top of the branches
+      const flat = geo.toNonIndexed();
+      const fp = flat.attributes['position'] as THREE.BufferAttribute;
+      const colors = new Float32Array(fp.count * 3);
+      const c = new THREE.Vector3();
+      for (let tri = 0; tri < fp.count; tri += 3) {
+        c.set(0, 0, 0);
+        for (let k = 0; k < 3; k++) c.add(new THREE.Vector3(fp.getX(tri + k), fp.getY(tri + k), fp.getZ(tri + k)));
+        c.divideScalar(3);
+        const f = (h / 2 - c.y) / h;
+        // Segment of the triangle (tips are on even radial lines)
+        const seg = Math.floor(((Math.atan2(c.z, c.x) / (Math.PI * 2)) * segments + segments) % segments);
+        const noise = rand(seg * 7.13 + i * 13);
+        // Snow lies on the visible outer part of the branches; the very edge stays green
+        const tipSeg = seg % 2 === 0;
+        const isSnow = f < 0.2 || (f > 0.56 && f < (tipSeg ? 0.92 : 0.78) - noise * 0.1);
+        const shade = rand(tri * 0.37 + i);
+        const color = isSnow ? (shade > 0.85 ? blueSnow : white) : shade > 0.5 ? green : greenDark;
+        for (let k = 0; k < 3; k++) colors.set([color.r, color.g, color.b], (tri + k) * 3);
       }
+      flat.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      flat.computeVertexNormals();
+
+      const tier = this.hull(new THREE.Mesh(flat, mat), 0.025, geo);
       tier.position.y = bottom + h / 2;
       tier.rotation.y = i * 0.7;
-
-      // Snow cap on the upper part of the tier
-      const capH = h * 0.5;
-      const capGeo = new THREE.ConeGeometry(r * 0.64, capH, segments, 1);
-      const cpos = capGeo.attributes['position'] as THREE.BufferAttribute;
-      for (let v = 0; v < cpos.count; v++) {
-        if (cpos.getY(v) < -capH / 2 + 0.01) {
-          const seg = Math.round(((Math.atan2(cpos.getZ(v), cpos.getX(v)) / (Math.PI * 2)) * segments + segments) % segments);
-          // Snow drips on the branch tips
-          const tip = seg % 2 === 0;
-          cpos.setX(v, cpos.getX(v) * (tip ? 1.1 : 0.92));
-          cpos.setZ(v, cpos.getZ(v) * (tip ? 1.1 : 0.92));
-          cpos.setY(v, cpos.getY(v) - (tip ? 0.1 : 0) - rand(seg + i) * 0.05);
-        }
-      }
-      capGeo.computeVertexNormals();
-      const capMesh = new THREE.Mesh(faceted(capGeo), snow);
-      capMesh.position.y = bottom + h - capH / 2 + 0.02;
-      capMesh.rotation.y = i * 0.7;
-      tree.add(tier, capMesh);
+      tree.add(tier);
     });
-    const blobs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.12, 1), snow, tips.length);
-    const m = new THREE.Matrix4();
-    tips.forEach((p, k) => {
-      const s = 0.8 + rand(k) * 0.5;
-      m.compose(p, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(p.x, p.z)), new THREE.Vector3(s * 1.5, s * 0.45, s));
-      blobs.setMatrixAt(k, m);
-    });
-    tree.add(blobs);
     this.scene.add(tree);
   }
 
@@ -872,8 +842,14 @@ export class TreeWorld {
       m.emissive.set(lampsOn ? 0xffa040 : 0x000000);
     });
     this.lanternGlows.forEach((g) => (g.material.opacity = lampsOn ? 0.9 : 0));
-    this.windows.forEach((w) => (w.material as THREE.MeshBasicMaterial).color.set(lampsOn ? 0xffd27a : 0x1c1a33));
-    if (this.cabinGlow) this.cabinGlow.material.opacity = lampsOn ? 0.6 : 0;
+    this.windows.forEach((w) => {
+      const m = w.material as THREE.MeshBasicMaterial | THREE.MeshToonMaterial;
+      if (m instanceof THREE.MeshToonMaterial) {
+        m.color.set(lampsOn ? 0xffd27a : 0x3a3550);
+        m.emissive.set(lampsOn ? 0xffa040 : 0x000000);
+      } else m.color.set(lampsOn ? 0xffd27a : 0x1c1a33);
+    });
+    this.cabinLights.forEach((l) => (l.material.opacity = lampsOn ? 0.7 : 0));
     if (this.fenceBulbs) this.fenceBulbs.visible = level >= 5;
 
     this.levelGroup.clear();
@@ -902,23 +878,46 @@ export class TreeWorld {
 
   // ====== Input ====== //
   private bindInput(): void {
+    const pointers = new Map<number, { x: number; y: number }>();
     let startX = 0;
     let startY = 0;
     let lastX = 0;
     let lastT = 0;
     let moved = false;
+    let pinchDist = 0;
+
+    const pinchDistance = () => {
+      const [a, b] = [...pointers.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
 
     const down = (e: PointerEvent) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      this.lastInteraction = this.clock.getElapsedTime();
+      this.start();
+      if (pointers.size === 2) {
+        // Second finger: pinch zoom instead of rotation
+        pinchDist = pinchDistance();
+        moved = true;
+        return;
+      }
       this.dragging = true;
       moved = false;
       startX = lastX = e.clientX;
       startY = e.clientY;
       lastT = performance.now();
       this.velocity = 0;
-      this.lastInteraction = this.clock.getElapsedTime();
-      this.start();
     };
     const move = (e: PointerEvent) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      this.lastInteraction = this.clock.getElapsedTime();
+      if (pointers.size === 2) {
+        const d = pinchDistance();
+        if (pinchDist > 0) this.zoomBy(((pinchDist - d) / this.canvas.clientWidth) * 1.6);
+        pinchDist = d;
+        return;
+      }
       if (!this.dragging) return;
       const dx = e.clientX - lastX;
       if (Math.abs(e.clientX - startX) > 6 || Math.abs(e.clientY - startY) > 6) moved = true;
@@ -928,23 +927,33 @@ export class TreeWorld {
       this.velocity = -rot / Math.max(1, now - lastT);
       lastX = e.clientX;
       lastT = now;
-      this.lastInteraction = this.clock.getElapsedTime();
     };
     const up = (e: PointerEvent) => {
-      if (!this.dragging) return;
-      this.dragging = false;
+      if (!pointers.delete(e.pointerId)) return;
       this.lastInteraction = this.clock.getElapsedTime();
-      if (!moved) this.tap(e);
+      if (pointers.size > 0) {
+        this.dragging = false; // after a pinch, don't rotate with the remaining finger
+        return;
+      }
+      if (this.dragging && !moved) this.tap(e);
+      this.dragging = false;
+    };
+    const wheel = (e: WheelEvent) => {
+      e.preventDefault();
+      this.zoomBy(e.deltaY * 0.0015);
     };
 
     this.canvas.addEventListener('pointerdown', down);
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', () => (this.dragging = false));
+    window.addEventListener('pointercancel', up);
+    this.canvas.addEventListener('wheel', wheel, { passive: false });
     this.cleanup.push(() => {
       this.canvas.removeEventListener('pointerdown', down);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      this.canvas.removeEventListener('wheel', wheel);
     });
   }
 
@@ -972,14 +981,24 @@ export class TreeWorld {
     this.renderOnce();
   }
 
+  private zoom = ZOOM_DEFAULT;
+  private zoomTarget = ZOOM_DEFAULT;
+
+  /** Zoom in (negative) or out (positive) */
+  zoomBy(delta: number): void {
+    this.zoomTarget = THREE.MathUtils.clamp(this.zoomTarget + delta, 0, 1);
+    this.lastInteraction = this.clock.getElapsedTime();
+    this.start();
+  }
+
   private placeCamera(): void {
-    const d = CAMERA_DISTANCE;
-    this.camera.position.set(
-      TARGET.x + Math.sin(this.azimuth) * Math.cos(CAMERA_ELEVATION) * d,
-      TARGET.y + Math.sin(CAMERA_ELEVATION) * d,
-      TARGET.z + Math.cos(this.azimuth) * Math.cos(CAMERA_ELEVATION) * d,
-    );
-    this.camera.lookAt(TARGET);
+    const z = this.zoom;
+    const lerp = THREE.MathUtils.lerp;
+    const d = lerp(ZOOM_NEAR.distance, ZOOM_FAR.distance, z);
+    const e = lerp(ZOOM_NEAR.elevation, ZOOM_FAR.elevation, z);
+    const ty = lerp(ZOOM_NEAR.target, ZOOM_FAR.target, z);
+    this.camera.position.set(Math.sin(this.azimuth) * Math.cos(e) * d, ty + Math.sin(e) * d, Math.cos(this.azimuth) * Math.cos(e) * d);
+    this.camera.lookAt(0, ty, 0);
   }
 
   private start(): void {
@@ -1003,6 +1022,7 @@ export class TreeWorld {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const t = this.clock.getElapsedTime();
 
+    this.zoom += (this.zoomTarget - this.zoom) * Math.min(1, dt * 8);
     if (!this.dragging) {
       // Inertia, then a slow auto-rotation when nobody touches the scene
       this.azimuth += this.velocity * dt * 1000;
@@ -1019,6 +1039,7 @@ export class TreeWorld {
     }
     pos.needsUpdate = true;
 
+    for (const a of this.staticAnimated) a.update(t, dt);
     for (const a of this.animated) a.update(t, dt);
     this.placeCamera();
     this.renderer.render(this.scene, this.camera);

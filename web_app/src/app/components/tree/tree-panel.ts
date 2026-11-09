@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { KeyValuePipe } from '@angular/common';
 import { Router } from '@angular/router';
 import { Api, MandarinTx, MyWish, TreeBall, TreeData } from '../../core/api';
@@ -15,6 +15,7 @@ type Sheet =
   | { kind: 'ball'; ball: TreeBall; wish?: MyWish }
   | { kind: 'star' }
   | { kind: 'wallet'; history?: MandarinTx[] }
+  | { kind: 'pad'; pad: number; corner: string; item: string | null }
   | null;
 
 function readSeen(): Record<string, string> | null {
@@ -36,15 +37,26 @@ function readSeen(): Record<string, string> | null {
           <span class="hud-title">🎄 {{ i18n.t('myTree') }}</span>
           <button class="mandarin-chip" (click)="openWallet()">🍊 {{ t.mandarins }}</button>
         </div>
+        <div class="scene-wrap">
         <tree-3d
+          #scene3d
           [tree]="t"
+          [decorMode]="decorMode()"
+          (padClick)="openPad($event)"
           [newHung]="newHung()"
           [newLit]="newLit()"
           (ballClick)="openBall($event)"
           (addBall)="router.navigateByUrl('/new')"
           (starClick)="sheet.set({ kind: 'star' })"
         />
-        <p class="drag-hint">↔ {{ i18n.t('dragHint') }}</p>
+        @if (decorMode()) {
+          <p class="drag-hint decor-hint">✨ {{ i18n.t('decorHint') }}</p>
+          <button class="decor-btn active" (click)="toggleDecor()">✓ {{ i18n.t('decorDone') }}</button>
+        } @else {
+          <p class="drag-hint">↔ {{ i18n.t('dragHint') }}</p>
+          <button class="decor-btn" (click)="toggleDecor()">⛄ {{ i18n.t('decorate') }}</button>
+        }
+        </div>
         <div class="level">
           <div class="row between small">
             <b>✨ {{ i18n.t('festiveLevel') }}: {{ t.level }}/10</b>
@@ -94,6 +106,13 @@ function readSeen(): Record<string, string> | null {
             <div class="sheet-emoji">{{ tree()?.star ? '🌟' : '⭐' }}</div>
             <p>{{ tree()?.star ? i18n.t('starOn') : i18n.t('starOff') }}</p>
           }
+          @case ('pad') {
+            @if (s.kind === 'pad') {
+              <div class="sheet-emoji">{{ s.item ? '⛄' : '✨' }}</div>
+              <h2>{{ cornerName(s.corner) }}</h2>
+              <p class="muted">{{ s.item ? i18n.t('padTaken') : i18n.t('padFree') }}</p>
+            }
+          }
           @case ('wallet') {
             <div class="sheet-emoji">🍊</div>
             <h2>{{ i18n.t('mandarins') }}: {{ tree()?.mandarins }}</h2>
@@ -130,6 +149,8 @@ export class TreePanel {
   protected readonly newHung = signal<string[]>([]);
   protected readonly newLit = signal<string[]>([]);
   protected readonly sheet = signal<Sheet>(null);
+  protected readonly decorMode = signal(false);
+  private readonly scene3d = viewChild<Tree3d>('scene3d');
 
   protected readonly progress = computed(() => {
     const t = this.tree();
@@ -187,6 +208,22 @@ export class TreePanel {
       const current = this.sheet();
       if (current?.kind === 'ball' && current.ball.id === ball.id) this.sheet.set({ kind: 'ball', ball, wish });
     } catch {}
+  }
+
+  toggleDecor(): void {
+    this.tg.haptic('light');
+    this.decorMode.update((v) => !v);
+    if (!this.decorMode()) this.scene3d()?.clearFocus();
+  }
+
+  openPad(e: { pad: number; corner: string; item: string | null }): void {
+    this.tg.haptic('light');
+    // Let the camera fly first, then show the sheet
+    setTimeout(() => this.sheet.set({ kind: 'pad', ...e }), 650);
+  }
+
+  cornerName(key: string): string {
+    return this.i18n.dict.corners[key] ?? key;
   }
 
   async openWallet(): Promise<void> {

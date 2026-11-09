@@ -8,9 +8,19 @@ import { Telegram } from '../../core/telegram';
 import { confetti } from '../fx/confetti';
 import { BallArt, BallDefs } from './ball-art';
 import { Tree3d } from '../tree3d/tree-3d';
+import { LIGHT_SKINS } from '../tree3d/skins';
 
 const SEEN_KEY = 'santa.tree.seen';
 const SNOW_KEY = 'santa.snowfall.v2';
+const LIGHTS_KEY = 'santa.cabinLights';
+
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
 
 function readSnow(): number {
   try {
@@ -27,6 +37,7 @@ type Sheet =
   | { kind: 'wallet'; history?: MandarinTx[] }
   | { kind: 'pad'; pad: number; corner: string; item: string | null }
   | { kind: 'snow' }
+  | { kind: 'lights' }
   | null;
 
 function readSeen(): Record<string, string> | null {
@@ -54,6 +65,8 @@ function readSeen(): Record<string, string> | null {
           [tree]="t"
           [decorMode]="decorMode()"
           [snowfall]="snowfall()"
+          [cabinLights]="shownLights()"
+          (cabinClick)="openLights()"
           (padClick)="openPad($event)"
           (focused)="cornerFocused.set(true)"
           (focusLost)="cornerFocused.set(false)"
@@ -94,8 +107,8 @@ function readSeen(): Record<string, string> | null {
     }
 
     @if (sheet(); as s) {
-      <div class="sheet-backdrop" (click)="sheet.set(null)"></div>
-      <div class="sheet" role="dialog">
+      <div class="sheet-backdrop" [class.clear]="s.kind === 'lights'" (click)="closeSheet()"></div>
+      <div class="sheet" [class.compact]="s.kind === 'lights'" role="dialog">
         @switch (s.kind) {
           @case ('ball') {
             @if (s.kind === 'ball') {
@@ -148,6 +161,27 @@ function readSeen(): Record<string, string> | null {
               <p class="small muted">{{ snowNote() }}</p>
             }
           }
+          @case ('lights') {
+            <h3 class="compact-title">🏠 {{ i18n.t('cabinLights') }}</h3>
+            <div class="skin-strip">
+              <button class="snow-mode" [class.selected]="!shownLights()" (click)="pickLights(null)">
+                <span class="snow-icon">🌑</span>
+                <span>{{ i18n.dict.lightSkins['none'] }}</span>
+              </button>
+              @for (l of lightSkins; track l.key) {
+                <button class="snow-mode" [class.selected]="shownLights() === l.key" [class.locked]="!ownsLights(l.key)" (click)="pickLights(l.key)">
+                  <span class="snow-icon">{{ lightIcons[l.key] }}</span>
+                  <span>{{ i18n.dict.lightSkins[l.key] }}</span>
+                  @if (!ownsLights(l.key)) {
+                    <small>🔒 {{ l.price }} 🍊</small>
+                  }
+                </button>
+              }
+            </div>
+            @if (lightsNote()) {
+              <p class="small muted">{{ lightsNote() }}</p>
+            }
+          }
           @case ('wallet') {
             <div class="sheet-emoji">🍊</div>
             <h2>{{ i18n.t('mandarins') }}: {{ tree()?.mandarins }}</h2>
@@ -168,7 +202,7 @@ function readSeen(): Record<string, string> | null {
             }
           }
         }
-        <button class="btn btn-secondary wide" (click)="sheet.set(null)">{{ i18n.t('close') }}</button>
+        <button class="btn btn-secondary wide" (click)="closeSheet()">{{ i18n.t('close') }}</button>
       </div>
     }
   `,
@@ -196,6 +230,18 @@ export class TreePanel {
   ];
   protected readonly snowfall = signal(readSnow());
   protected readonly snowNote = signal('');
+  // Fringe lights under the cabin roof: skins for mandarins (try on = preview)
+  protected readonly lightSkins = LIGHT_SKINS;
+  protected readonly lightIcons: Record<string, string> = { multi: '🌈', warm: '🤍', gold: '✨', icy: '🧊', candy: '🍭' };
+  private readonly ownLights = signal<string | null>(readStored(LIGHTS_KEY));
+  private readonly ownedLightSkins = signal<string[]>([]); // filled by the shop
+  private readonly previewLights = signal<string | null | undefined>(undefined);
+  protected readonly lightsNote = signal('');
+  protected readonly shownLights = computed(() => {
+    const preview = this.previewLights();
+    return this.sheet()?.kind === 'lights' && preview !== undefined ? preview : this.ownLights();
+  });
+
   /** Unlocked snowfall modes (filled by the shop when it opens) */
   private readonly unlockedSnow = signal<number[]>([0, 1]);
   private readonly scene3d = viewChild<Tree3d>('scene3d');
@@ -255,6 +301,39 @@ export class TreePanel {
       const wish = (await this.api.wishes()).find((w) => w.id === ball.id);
       const current = this.sheet();
       if (current?.kind === 'ball' && current.ball.id === ball.id) this.sheet.set({ kind: 'ball', ball, wish });
+    } catch {}
+  }
+
+  ownsLights(key: string): boolean {
+    return this.ownedLightSkins().includes(key);
+  }
+
+  closeSheet(): void {
+    if (this.sheet()?.kind === 'lights') this.scene3d()?.clearFocus();
+    this.sheet.set(null);
+  }
+
+  openLights(): void {
+    this.tg.haptic('light');
+    this.scene3d()?.focusCabin();
+    this.previewLights.set(undefined);
+    this.lightsNote.set('');
+    this.sheet.set({ kind: 'lights' });
+  }
+
+  pickLights(key: string | null): void {
+    this.tg.haptic('light');
+    this.previewLights.set(key);
+    if (key && !this.ownsLights(key)) {
+      const price = LIGHT_SKINS.find((l) => l.key === key)?.price ?? 0;
+      this.lightsNote.set(this.i18n.t('lightsLocked').replace('%s', String(price)));
+      return;
+    }
+    this.lightsNote.set('');
+    this.ownLights.set(key);
+    try {
+      if (key) localStorage.setItem(LIGHTS_KEY, key);
+      else localStorage.removeItem(LIGHTS_KEY);
     } catch {}
   }
 

@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import type { TreeBall, TreeData } from '../../core/api';
 import { buildCabin } from './cabin';
+import { CabinLights, LightSkin } from './cabin-lights';
 import { instancedOutline, withOutline } from './outline';
 import { terrainGeometry, terrainHeight, terrainOutline } from './terrain';
 import { ModelName, Models } from './models';
@@ -30,6 +31,8 @@ export interface SceneCallbacks {
   focusLost(): void;
   /** The camera flies to a corner */
   focused?(corner: number): void;
+  /** The cabin was tapped */
+  cabin?(): void;
 }
 
 const BALL_COLORS: Record<string, number> = {
@@ -693,6 +696,15 @@ export class TreeWorld {
 
   private windows: THREE.Mesh[] = [];
   private cabinLights: THREE.Sprite[] = [];
+  private fringe?: CabinLights;
+  private readonly staticClickables: THREE.Object3D[] = [];
+
+  /** Fringe lights under the cabin roof (null: none) */
+  setCabinLights(skin: LightSkin | null): void {
+    this.fringe?.setSkin(skin);
+    this.start();
+    this.renderOnce();
+  }
 
   private buildCabin(): void {
     const cabin = buildCabin({
@@ -705,6 +717,18 @@ export class TreeWorld {
     this.windows = cabin.windows;
     this.cabinLights = cabin.lights;
     this.staticAnimated.push(cabin);
+
+    // Fringe lights under the roof (a skin from the shop)
+    this.fringe = new CabinLights(cabin.roofEdges, this.glowTex, new THREE.Vector3(0, 2.6, 3.4));
+    cabin.group.add(this.fringe.group);
+    this.staticAnimated.push({ update: (t) => this.fringe?.update(t) });
+
+    // Tap on the cabin: choose its lights
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(5.8, 4.8, 4.6), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = 2.4;
+    hit.userData = { kind: 'cabin' };
+    cabin.group.add(hit);
+    this.staticClickables.push(hit);
 
     // Outside the fence, next to the entrance, facing the tree
     const a = (14 / 20) * Math.PI * 2 - 0.12;
@@ -1585,13 +1609,31 @@ export class TreeWorld {
   private focusTo = 0;
   private focusBlend = 0;
 
+  private focusDist = 6.0;
+  private focusElev = 0.42;
+
   focusCorner(corner: number): void {
+    this.focusDist = 6.0;
+    this.focusElev = 0.42;
     this.callbacks.focused?.(corner);
     const c = cornerCentre(corner);
     this.focusTarget.set(c.x * 0.97, 0.55, c.z * 0.97);
     // Look from the tree side (figures face the camera, the fence and the forest
     // are behind them), a bit diagonally so the camera passes beside the tree
     this.focusAzimuth = Math.atan2(c.x, c.z) + Math.PI + 0.55;
+    this.focusTo = 1;
+    this.velocity = 0;
+    this.start();
+  }
+
+  /** Fly to the cabin (to see its lights) */
+  focusCabin(): void {
+    const c = new THREE.Vector3(Math.cos(CABIN_ANGLE) * 12.5, 0, Math.sin(CABIN_ANGLE) * 12.5);
+    // From the courtyard, a bit to the side: the whole front with the roof
+    this.focusTarget.set(c.x * 0.97, 2.3, c.z * 0.97);
+    this.focusAzimuth = Math.atan2(c.x, c.z) + Math.PI + 0.3;
+    this.focusDist = 9.5;
+    this.focusElev = 0.12;
     this.focusTo = 1;
     this.velocity = 0;
     this.start();
@@ -1825,7 +1867,7 @@ export class TreeWorld {
     const ray = new THREE.Raycaster();
     ray.setFromCamera(ndc, this.camera);
     const shown = (o: THREE.Object3D | null): boolean => !o || (o.visible && shown(o.parent));
-    const hit = ray.intersectObjects(this.clickables, false).find((h) => shown(h.object.parent))
+    const hit = ray.intersectObjects([...this.clickables, ...this.staticClickables], false).find((h) => shown(h.object.parent))
       ?? null;
     if (!hit) return;
     const data = hit.object.userData;
@@ -1833,6 +1875,7 @@ export class TreeWorld {
     else if (data['kind'] === 'star') this.callbacks.star();
     else if (data['kind'] === 'add') this.callbacks.addBall();
     else if (data['kind'] === 'corner') this.focusCorner(data['corner']);
+    else if (data['kind'] === 'cabin') this.callbacks.cabin?.();
     else if (data['kind'] === 'pad' && (this.decorMode || data['item'])) {
       const pad = data['pad'] as number;
       const corner = DECOR_PADS[pad].corner;
@@ -1868,8 +1911,8 @@ export class TreeWorld {
     const b = THREE.MathUtils.smoothstep(this.focusBlend, 0, 1);
     // Normal view around the tree, blended with the close view of a corner
     // Close to the corner, from the tree side and a bit above
-    const d = lerp(lerp(ZOOM_NEAR.distance, ZOOM_FAR.distance, z), 6.0, b);
-    const e = lerp(lerp(ZOOM_NEAR.elevation, ZOOM_FAR.elevation, z), 0.42, b);
+    const d = lerp(lerp(ZOOM_NEAR.distance, ZOOM_FAR.distance, z), this.focusDist, b);
+    const e = lerp(lerp(ZOOM_NEAR.elevation, ZOOM_FAR.elevation, z), this.focusElev, b);
     const ty = lerp(ZOOM_NEAR.target, ZOOM_FAR.target, z);
     const target = new THREE.Vector3(0, ty, 0).lerp(this.focusTarget, b);
     this.camera.position.set(

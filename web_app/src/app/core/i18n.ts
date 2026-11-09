@@ -16,7 +16,8 @@ const ru = {
   dragHint: 'Покрути ёлку пальцем',
   decorate: 'Украсить двор',
   decorDone: 'Готово',
-  decorHint: 'Выбери светящееся место во дворе',
+  decorHint: 'Нажми на стрелку над подарками',
+  decorHintPlace: 'Выбери место для фигуры',
   padFree: 'Здесь можно поставить фигуру: снеговика, оленя, сани… Лавка с фигурами откроется совсем скоро — копи мандаринки 🍊',
   padTaken: 'Это место уже украшено. Скоро фигуры можно будет менять местами',
   corners: {
@@ -154,7 +155,8 @@ const en: Dict = {
   dragHint: 'Drag to spin the tree',
   decorate: 'Decorate',
   decorDone: 'Done',
-  decorHint: 'Pick a glowing place in the courtyard',
+  decorHint: 'Tap an arrow above the presents',
+  decorHintPlace: 'Pick a place for a figure',
   padFree: 'You can put a figure here: a snowman, a reindeer, a sled… The figure shop opens very soon — save your mandarins 🍊',
   padTaken: 'This place is already decorated. Soon you’ll be able to move figures around',
   corners: {

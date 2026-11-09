@@ -20,6 +20,8 @@ export interface SceneCallbacks {
   pad(pad: number, corner: string, item: string | null): void;
   /** The camera left the focused corner (the user started rotating) */
   focusLost(): void;
+  /** The camera flies to a corner */
+  focused?(corner: number): void;
 }
 
 const BALL_COLORS: Record<string, number> = {
@@ -1443,6 +1445,7 @@ export class TreeWorld {
   private focusBlend = 0;
 
   focusCorner(corner: number): void {
+    this.callbacks.focused?.(corner);
     const c = cornerCentre(corner);
     this.focusTarget.set(c.x * 0.97, 0.55, c.z * 0.97);
     // Look from the tree side (figures face the camera, the fence and the forest
@@ -1454,6 +1457,7 @@ export class TreeWorld {
   }
 
   clearFocus(): void {
+    if (this.focusTo === 1) this.callbacks.focusLost();
     this.focusTo = 0;
     this.start();
   }

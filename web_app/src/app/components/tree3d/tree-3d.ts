@@ -19,10 +19,37 @@ import type { TreeWorld } from './scene';
       />
     } @else {
       <canvas #canvas class="scene3d" [class.ready]="ready()"></canvas>
+      @if (ready()) {
+        <div class="zoom">
+          <button (click)="zoom(-0.25)" aria-label="Zoom in">＋</button>
+          <button (click)="zoom(0.25)" aria-label="Zoom out">−</button>
+        </div>
+      }
     }
   `,
   styles: `
-    :host { display: block; }
+    :host { display: block; position: relative; }
+    .zoom {
+      position: absolute;
+      right: 0.7rem;
+      bottom: 2.6rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .zoom button {
+      width: 2.4rem;
+      height: 2.4rem;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(12, 11, 34, 0.55);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      color: #fff;
+      font-size: 1.3rem;
+      line-height: 1;
+      cursor: pointer;
+    }
     .scene3d {
       display: block;
       width: 100%;
@@ -75,6 +102,10 @@ export class Tree3d implements OnDestroy {
       console.warn('3D tree is unavailable, using 2D', err);
       this.fallback.set(true);
     }
+  }
+
+  protected zoom(delta: number): void {
+    this.world?.zoomBy(delta);
   }
 
   ngOnDestroy(): void {

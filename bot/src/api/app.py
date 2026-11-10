@@ -26,7 +26,7 @@ from handlers.referral import parse_ref_code, ref_code
 from repos.media.sqlmodel import SQLModelMediaRepository
 from repos.user.sqlmodel import SQLModelUserRepository
 from repos.wish.sqlmodel import SQLModelWishRepository
-from services import mandarins
+from services import mandarins, shop
 from services.delivery import (
     REACTIONS,
     DeliveryDTO,
@@ -73,6 +73,7 @@ state: dict = {}
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await db.setup_relations()
+    await shop.seed_catalog()
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
     state["bot"] = bot
     state["bot_username"] = (await bot.me()).username
@@ -324,6 +325,53 @@ async def mandarins_history(user=Depends(registered_user)) -> dict:
                 for tx in await mandarins.history(session, user.id)
             ],
         }
+
+
+# ====== Shop ====== #
+SHOP_ERRORS: dict[type[shop.ShopError], int] = {
+    shop.UnknownItem: 404,
+    shop.NotForSale: 403,
+    shop.NotOwned: 403,
+    shop.AlreadyOwned: 409,
+    shop.NotEnoughMandarins: 402,
+    shop.InvalidPlacement: 400,
+}
+
+
+def shop_http_error(err: shop.ShopError) -> HTTPException:
+    return HTTPException(status_code=SHOP_ERRORS.get(type(err), 400), detail=str(err))
+
+
+class BuyIn(BaseModel):
+    item: str
+
+
+class PlaceIn(BaseModel):
+    item: str
+    pad: int | None = None
+
+
+@app.get("/api/shop")
+async def shop_items(user=Depends(registered_user)) -> dict:
+    return (await shop.shop_payload(user.id)).model_dump(mode="json")
+
+
+@app.post("/api/shop/buy")
+async def shop_buy(body: BuyIn, user=Depends(registered_user)) -> dict:
+    try:
+        bonus = await shop.buy(user.id, body.item)
+    except shop.ShopError as err:
+        raise shop_http_error(err) from err
+    return {**(await shop.shop_payload(user.id)).model_dump(mode="json"), "bonus": bonus}
+
+
+@app.put("/api/shop/place")
+async def shop_place(body: PlaceIn, user=Depends(registered_user)) -> dict:
+    try:
+        await shop.place(user.id, body.item, body.pad)
+    except shop.ShopError as err:
+        raise shop_http_error(err) from err
+    return (await shop.shop_payload(user.id)).model_dump(mode="json")
 
 
 # ====== Gifts ====== #

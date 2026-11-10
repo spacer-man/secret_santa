@@ -20,6 +20,9 @@ class Reason(enum.StrEnum):
     FRIEND_JOINED = "friend_joined"  # ref: friend user id
     FRIEND_WISH = "friend_wish"  # ref: friend user id (first approved wish)
     GIFT_OPENED = "gift_opened"  # ref: delivery id
+    # Not rewards for actions (not listed in REWARDS): the amount is passed explicitly
+    PURCHASE = "purchase"  # ref: item key, negative amount
+    SET_BONUS = "set_bonus"  # ref: set key
 
 
 REWARDS: dict[Reason, int] = {
@@ -38,9 +41,11 @@ async def award(
     user_id: UUID,
     reason: Reason,
     ref: UUID | str,
+    amount: int | None = None,
 ) -> int:
     """
     Give mandarins (once per user/reason/ref). Caller commits.
+    The amount is ``REWARDS[reason]`` unless given explicitly.
     Returns the awarded amount (0 if it was already awarded).
     """
     ref = str(ref)
@@ -52,7 +57,7 @@ async def award(
     )
     if exists:
         return 0
-    amount = REWARDS[reason]
+    amount = REWARDS[reason] if amount is None else amount
     session.add(MandarinTx(user_id=user_id, amount=amount, reason=reason, ref=ref))
     return amount
 

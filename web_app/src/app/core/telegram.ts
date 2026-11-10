@@ -5,6 +5,8 @@ interface TgWebApp {
   initData: string;
   initDataUnsafe: { start_param?: string; user?: { language_code?: string; first_name?: string } };
   platform: string;
+  colorScheme?: 'light' | 'dark';
+  onEvent?(event: string, cb: () => void): void;
   ready(): void;
   expand(): void;
   setHeaderColor(color: string): void;
@@ -55,8 +57,22 @@ export class Telegram {
     this.app.ready();
     this.app.expand();
     this.app.disableVerticalSwipes?.();
-    this.app.setHeaderColor('#0a0a11');
-    this.app.setBackgroundColor('#0a0a11');
+  }
+
+  /** Telegram's own theme (undefined outside of the Mini App) */
+  get colorScheme(): 'light' | 'dark' | undefined {
+    return this.isMiniApp ? this.app?.colorScheme : undefined;
+  }
+
+  onThemeChanged(cb: () => void): void {
+    if (this.isMiniApp) this.app?.onEvent?.('themeChanged', cb);
+  }
+
+  /** Colour of the Telegram header and of the area behind the app */
+  setColors(color: string): void {
+    if (!this.isMiniApp || !this.app) return;
+    this.app.setHeaderColor(color);
+    this.app.setBackgroundColor(color);
   }
 
   haptic(kind: 'light' | 'medium' | 'heavy' | 'success' | 'error' = 'light'): void {

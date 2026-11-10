@@ -140,13 +140,13 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     .shop-balance {
       margin: 0;
       font-weight: 800;
-      color: #ffa040;
+      color: var(--orange);
     }
     .shop-tabs {
       display: flex;
       gap: 0.4rem;
-      background: #0f0e22;
-      border-radius: 0.9rem;
+      background: var(--paper-3);
+      border-radius: 2px;
       padding: 0.25rem;
     }
     .shop-tab {
@@ -158,12 +158,13 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       color: var(--second-text-color);
       background: transparent;
       border: 0;
-      border-radius: 0.7rem;
+      border-radius: 2px;
+      font-family: var(--slab);
       cursor: pointer;
     }
     .shop-tab.active {
-      color: #1a1a21;
-      background: var(--gold-color);
+      color: var(--paper);
+      background: var(--ink);
     }
     .shop-grid {
       display: grid;
@@ -171,30 +172,30 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       gap: 0.6rem;
     }
     .shop-card {
-      --accent: #8b8ba0;
+      --accent: var(--rarity-common);
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 0.25rem;
       padding: 0.8rem 0.5rem 0.6rem;
-      background: #1c1b2b;
+      background: var(--paper-2);
       border: 2px solid var(--border-color);
       border-top: 3px solid var(--accent);
-      border-radius: 1rem;
+      border-radius: 2px;
       min-width: 0;
     }
     .shop-card[data-rarity='rare'] {
-      --accent: #4cc9f0;
+      --accent: var(--rarity-rare);
     }
     .shop-card[data-rarity='epic'] {
-      --accent: #c77dff;
+      --accent: var(--rarity-epic);
     }
     .shop-card[data-rarity='legendary'] {
-      --accent: #ffd166;
+      --accent: var(--rarity-legendary);
       box-shadow: 0 0 18px rgba(255, 209, 102, 0.3);
     }
     .shop-card.owned {
-      background: #181a2a;
+      background: var(--paper-3);
     }
     .card-icon {
       font-size: 2.3rem;
@@ -256,22 +257,24 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       font: inherit;
       font-weight: 700;
       font-size: 0.88rem;
-      color: #fff;
-      background: #2a2a36;
-      border: 0;
-      border-radius: 0.7rem;
+      font-family: var(--slab);
+      color: var(--ink);
+      background: transparent;
+      border: 1.5px solid var(--rule);
+      border-radius: 2px;
       padding: 0.4rem 0.3rem;
       cursor: pointer;
     }
     .card-btn.price,
     .card-btn.primary {
-      color: #1a1a21;
-      background: #ffa040;
+      color: var(--on-stamp);
+      background: var(--orange);
+      border-color: transparent;
+      box-shadow: 0 2px 0 color-mix(in srgb, var(--orange) 60%, #000);
     }
     .card-btn.quiet {
       color: var(--second-text-color);
-      background: transparent;
-      border: 1px solid var(--border-color);
+      border: 1px dashed var(--rule-soft);
     }
     .card-btn:disabled {
       opacity: 0.45;
@@ -280,7 +283,7 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     .confirm-q {
       font-weight: 700;
       font-size: 0.85rem;
-      color: #ffa040;
+      color: var(--orange);
     }
     .confirm-row {
       width: 100%;
@@ -289,7 +292,7 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       gap: 0.3rem;
     }
     .lack {
-      color: #ff7a8a;
+      color: var(--stamp);
     }
     .mark {
       color: var(--green-color);
@@ -304,7 +307,7 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     .friends-bar {
       width: 100%;
       height: 0.4rem;
-      background: #24223f;
+      background: var(--paper-3);
       border-radius: 1rem;
       overflow: hidden;
     }
@@ -356,7 +359,7 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       grid-column: 2;
       grid-row: 1 / span 2;
       font-weight: 800;
-      color: #ffa040;
+      color: var(--orange);
       white-space: nowrap;
     }
     .done .set-bonus {

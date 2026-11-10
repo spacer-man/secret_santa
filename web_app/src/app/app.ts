@@ -1,9 +1,10 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { I18n } from './core/i18n';
 import { Store } from './core/store';
 import { Telegram } from './core/telegram';
+import { Theme } from './core/theme';
 import { Snow } from './components/fx/snow';
 
 @Component({
@@ -13,6 +14,13 @@ import { Snow } from './components/fx/snow';
     <snow />
     <main class="page" [class.with-tabs]="showTabs()">
       <router-outlet />
+      <footer class="imprint">
+        <span class="seal" aria-hidden="true"><i>❄</i></span>
+        <span class="imprint-text">{{ i18n.t('appName') }} · {{ i18n.t('imprint') }}</span>
+        <button class="theme-toggle" (click)="theme.cycle()">
+          {{ themeIcon() }} {{ i18n.t(themeLabel()) }}
+        </button>
+      </footer>
     </main>
 
     @if (showTabs()) {
@@ -44,11 +52,23 @@ export class App {
   private readonly tg = inject(Telegram);
   private readonly router = inject(Router);
 
+  protected readonly theme = inject(Theme);
   protected readonly showTabs = signal(false);
+  protected readonly themeIcon = computed(() =>
+    this.theme.mode() === 'auto' ? '◐' : this.theme.mode() === 'light' ? '☀' : '☾',
+  );
+  protected readonly themeLabel = computed(() =>
+    this.theme.mode() === 'auto'
+      ? 'themeAuto'
+      : this.theme.mode() === 'light'
+        ? 'themeLight'
+        : 'themeDark',
+  );
   private hideBack = () => {};
 
   constructor() {
     this.tg.init();
+    this.theme.init();
     document.documentElement.lang = this.i18n.lang();
     document.title = this.i18n.t('appName');
 

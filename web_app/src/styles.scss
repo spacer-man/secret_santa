@@ -1,20 +1,75 @@
+@import '@fontsource-variable/roboto-slab/wght.css';
+
 * {
   box-sizing: border-box;
 }
 
+/*
+ * "Paper sheet" look: a printed calendar page (light) and the same page at night (dark).
+ * Thin rules, slab numerals, red stamp frames. The 3D scene is the illustration on the page.
+ */
 :root {
-  --bg-color: #0a0a11;
-  --light-color: #fff;
-  --dark-color: #1a1a21;
-  --card-color: rgba(26, 26, 33, 0.82);
-  --border-color: #2c2c36;
-  --primary-color: #ff0060;
-  --primary-color-hovered: #cf0040;
-  --primary-color-active: #af0030;
-  --gold-color: #ffd166;
-  --green-color: #06d6a0;
-  --second-text-color: #a3a3b2;
-  --radius: 1.1rem;
+  --paper: #ebe6d8;
+  --paper-2: #e2dbc9;
+  --paper-3: #d7ceb9;
+  --ink: #2a2927;
+  --ink-2: #6c675d;
+  --rule: rgba(42, 41, 39, 0.85);
+  --rule-soft: rgba(42, 41, 39, 0.22);
+  --stamp: #b3372c;
+  --stamp-soft: rgba(179, 55, 44, 0.08);
+  --on-stamp: #f6f1e4;
+  --backdrop-top: #dcdad4;
+  --backdrop: #3d8a9e;
+  --gold: #a87618;
+  --green: #2d7a57;
+  --orange: #bd5f10;
+  --wash: rgba(104, 138, 164, 0.3);
+  --rarity-common: #7d7d8c;
+  --rarity-rare: #1f86ad;
+  --rarity-epic: #8748bd;
+  --rarity-legendary: #b07f08;
+  --grain-opacity: 0.5;
+  --slab: 'Roboto Slab Variable', 'Roboto Slab', Georgia, 'Times New Roman', serif;
+
+  /* Names used across the app */
+  --bg-color: var(--backdrop-top);
+  --light-color: var(--ink);
+  --dark-color: var(--on-stamp);
+  --card-color: transparent;
+  --border-color: var(--rule-soft);
+  --primary-color: var(--stamp);
+  --primary-color-hovered: color-mix(in srgb, var(--stamp) 85%, #000);
+  --primary-color-active: color-mix(in srgb, var(--stamp) 72%, #000);
+  --gold-color: var(--gold);
+  --green-color: var(--green);
+  --second-text-color: var(--ink-2);
+  --radius: 3px;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --paper: #20222a;
+  --paper-2: #2a2d37;
+  --paper-3: #353945;
+  --ink: #ebe5d6;
+  --ink-2: #a39d90;
+  --rule: rgba(235, 229, 214, 0.75);
+  --rule-soft: rgba(235, 229, 214, 0.18);
+  --stamp: #e25a4c;
+  --stamp-soft: rgba(226, 90, 76, 0.12);
+  --on-stamp: #1b1c22;
+  --backdrop-top: #0c0d12;
+  --backdrop: #10323c;
+  --gold: #e3b55b;
+  --green: #4fc79a;
+  --orange: #ffa040;
+  --wash: rgba(120, 160, 200, 0.22);
+  --rarity-common: #8b8ba0;
+  --rarity-rare: #4cc9f0;
+  --rarity-epic: #c77dff;
+  --rarity-legendary: #ffd166;
+  --grain-opacity: 0.35;
   color-scheme: dark;
 }
 
@@ -33,9 +88,8 @@ body {
     Roboto,
     Arial,
     sans-serif;
-  background:
-    radial-gradient(120% 60% at 50% 0%, #1b1030 0%, var(--bg-color) 60%) fixed,
-    var(--bg-color);
+  /* A wall and a painted band behind the sheet */
+  background: linear-gradient(var(--backdrop-top) 0 32vh, var(--backdrop) 32vh 100%) fixed;
   color: var(--light-color);
   line-height: 1.45;
   -webkit-tap-highlight-color: transparent;
@@ -99,7 +153,7 @@ p {
 }
 .festive {
   background:
-    radial-gradient(80% 120% at 50% 0%, rgba(255, 0, 96, 0.18), transparent 70%), var(--card-color);
+    radial-gradient(80% 120% at 50% 0%, var(--stamp-soft), transparent 70%), var(--card-color);
 }
 
 .row {
@@ -121,7 +175,7 @@ p {
   font-size: 0.85rem;
 }
 .error {
-  color: #ff6b81;
+  color: var(--stamp);
 }
 
 .hero {
@@ -209,7 +263,7 @@ p {
   background-color: var(--primary-color-active);
 }
 .btn-secondary {
-  background: #2a2a36;
+  background: var(--paper-3);
 }
 .btn-ghost {
   background: transparent;
@@ -228,7 +282,7 @@ p {
   text-decoration: none;
 }
 .link.danger {
-  color: #ff6b81;
+  color: var(--stamp);
   align-self: flex-start;
 }
 
@@ -238,7 +292,7 @@ p {
   width: 100%;
   font: inherit;
   color: var(--light-color);
-  background: #12121a;
+  background: var(--paper-2);
   border: 1px solid var(--border-color);
   border-radius: 0.8rem;
   padding: 0.8rem 0.9rem;
@@ -279,7 +333,7 @@ p {
   aspect-ratio: 1;
   border-radius: 0.7rem;
   overflow: hidden;
-  background: #12121a;
+  background: var(--paper-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -387,7 +441,7 @@ p {
   font-size: 0.85rem;
 }
 .wave li.mine {
-  background: rgba(255, 0, 96, 0.12);
+  background: var(--stamp-soft);
 }
 .wave .tz {
   grid-area: tz;
@@ -397,14 +451,14 @@ p {
 .wave .bar {
   grid-area: bar;
   height: 0.45rem;
-  background: #22222c;
+  background: var(--paper-3);
   border-radius: 1rem;
   overflow: hidden;
 }
 .wave .bar span {
   display: block;
   height: 100%;
-  background: #4a4a5c;
+  background: var(--ink-2);
   border-radius: inherit;
 }
 .wave li.done .bar span {
@@ -516,7 +570,7 @@ p {
   border-radius: 1rem;
   font-weight: 700;
   font-size: 0.75rem;
-  background: #2a2a36;
+  background: var(--paper-3);
 }
 .badge.approved {
   background: rgba(6, 214, 160, 0.15);
@@ -524,7 +578,7 @@ p {
 }
 .badge.rejected {
   background: rgba(255, 107, 129, 0.15);
-  color: #ff6b81;
+  color: var(--stamp);
 }
 .badge.on_validation {
   background: rgba(255, 209, 102, 0.15);
@@ -573,7 +627,7 @@ p {
   font-size: 0.9rem;
 }
 .chip {
-  background: #2a2a36;
+  background: var(--paper-3);
   border-radius: 1rem;
   padding: 0.1rem 0.55rem;
 }
@@ -581,7 +635,7 @@ blockquote {
   margin: 0;
   padding: 0.5rem 0.8rem;
   border-left: 3px solid var(--primary-color);
-  background: rgba(255, 0, 96, 0.07);
+  background: var(--stamp-soft);
   border-radius: 0.4rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -598,7 +652,7 @@ blockquote {
   padding: 0.4rem 0;
   border-radius: 0.8rem;
   border: 1px solid var(--border-color);
-  background: #15151d;
+  background: var(--paper-2);
   cursor: pointer;
   transition: transform 0.15s;
 }
@@ -607,7 +661,7 @@ blockquote {
 }
 .reaction.selected {
   border-color: var(--primary-color);
-  background: rgba(255, 0, 96, 0.18);
+  background: var(--stamp-soft);
   transform: scale(1.08);
 }
 .reply {
@@ -649,7 +703,7 @@ blockquote {
 }
 .tabs a.active {
   color: var(--light-color);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--paper-2);
 }
 .dot {
   position: absolute;
@@ -669,7 +723,7 @@ blockquote {
   bottom: calc(6rem + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   max-width: calc(100% - 2rem);
-  background: #2a2a36;
+  background: var(--paper-3);
   border: 1px solid var(--border-color);
   padding: 0.7rem 1.1rem;
   border-radius: 1rem;
@@ -787,7 +841,7 @@ blockquote {
 .level-bar {
   height: 0.55rem;
   margin-top: 0.4rem;
-  background: #24223f;
+  background: var(--paper-3);
   border-radius: 1rem;
   overflow: hidden;
 }
@@ -817,7 +871,7 @@ blockquote {
   width: min(36rem, 100%);
   max-height: 85vh;
   overflow-y: auto;
-  background: #16152b;
+  background: var(--paper);
   border: 1px solid var(--border-color);
   border-bottom: none;
   border-radius: 1.4rem 1.4rem 0 0;
@@ -845,7 +899,7 @@ blockquote {
 }
 .quote {
   text-align: left;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--paper-2);
   border-radius: 0.8rem;
   padding: 0.7rem 0.9rem;
 }
@@ -864,7 +918,7 @@ blockquote {
   font-size: 0.92rem;
 }
 .earn b {
-  color: #ffa040;
+  color: var(--orange);
   white-space: nowrap;
 }
 
@@ -874,7 +928,7 @@ blockquote {
   gap: 1rem;
   align-items: center;
   background:
-    radial-gradient(circle at 20% 50%, rgba(255, 209, 102, 0.12), transparent 60%), #12121a;
+    radial-gradient(circle at 20% 50%, rgba(255, 209, 102, 0.12), transparent 60%), var(--paper-2);
   border-radius: 1rem;
   padding: 0.8rem;
 }
@@ -907,8 +961,8 @@ blockquote {
 }
 .swatch.selected,
 .pattern-btn.selected {
-  border-color: #fff;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px var(--rule-soft);
 }
 .pattern-btn {
   width: 2.3rem;
@@ -916,7 +970,7 @@ blockquote {
   padding: 0.15rem;
   border-radius: 0.6rem;
   border: 2px solid var(--border-color);
-  background: #1c1b2b;
+  background: var(--paper-2);
   cursor: pointer;
 }
 .pattern-btn svg {
@@ -1002,8 +1056,8 @@ blockquote {
 }
 .snow-mode {
   font: inherit;
-  color: #fff;
-  background: #1c1b2b;
+  color: var(--ink);
+  background: var(--paper-2);
   border: 2px solid var(--border-color);
   border-radius: 0.9rem;
   padding: 0.7rem 0.3rem;
@@ -1014,13 +1068,14 @@ blockquote {
   cursor: pointer;
 }
 .snow-mode.selected {
-  border-color: #fff;
+  border-color: var(--stamp);
+  background: var(--stamp-soft);
 }
 .snow-mode.locked {
   opacity: 0.6;
 }
 .snow-mode small {
-  color: #ffa040;
+  color: var(--orange);
   font-weight: 700;
   font-size: 0.8rem;
   white-space: nowrap;
@@ -1109,4 +1164,650 @@ blockquote {
   height: 2.2rem;
   margin: -0.5rem 0.2rem -0.5rem 0;
   vertical-align: middle;
+}
+
+/* ============================================================
+   Paper sheet: the look of the elements (see the tokens on top)
+   ============================================================ */
+
+/* Paper grain: fine noise printed over the sheet colour */
+.page,
+.tabs,
+.sheet {
+  background-color: var(--paper);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .42 0 0 0 0 .36 0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+}
+
+h1,
+h2,
+h3,
+.label,
+.happy,
+.btn,
+.number,
+.stats b,
+.hud-title,
+.wave .tz {
+  font-family: var(--slab);
+}
+
+/* The sheet itself, with a thin printed frame */
+.page {
+  width: min(36rem, calc(100% - 0.9rem));
+  margin: 0.45rem auto;
+  padding: max(1.1rem, env(safe-area-inset-top)) 1rem 1.2rem;
+  color: var(--ink);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 3px 16px rgba(0, 0, 0, 0.35);
+  border-radius: 2px;
+}
+.page::before {
+  content: '';
+  position: absolute;
+  inset: 0.3rem;
+  border: 1px solid var(--rule-soft);
+  pointer-events: none;
+}
+.page.with-tabs {
+  margin-bottom: calc(4.6rem + env(safe-area-inset-bottom));
+  padding-bottom: 1.2rem;
+}
+
+h1 {
+  font-weight: 300;
+  font-size: 1.7rem;
+  letter-spacing: 0.01em;
+}
+h2 {
+  font-weight: 400;
+}
+
+/* Section title between two rules, as on a printed form */
+.card > h2,
+.label,
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  margin: 0;
+  font-family: var(--slab);
+  font-weight: 300;
+  font-size: 1.25rem;
+  text-align: center;
+}
+.card > h2::before,
+.card > h2::after,
+.label::before,
+.label::after,
+.page-title::before,
+.page-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.card {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0.2rem 0.1rem;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.card.row {
+  border-top: 1px solid var(--rule-soft);
+  padding-top: 0.8rem;
+}
+
+/* Red stamp frame: the highlighted box of the sheet */
+.festive,
+.gift-card {
+  background: var(--stamp-soft);
+  border: 1.5px solid var(--stamp);
+  box-shadow:
+    inset 0 0 0 3px var(--paper),
+    inset 0 0 0 4px color-mix(in srgb, var(--stamp) 55%, transparent);
+  padding: 1.2rem 1rem;
+}
+.festive > h2::before,
+.festive > h2::after,
+.festive .label::before,
+.festive .label::after {
+  background: var(--stamp);
+}
+
+/* Buttons: letterpress */
+.btn {
+  border-radius: 2px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+.btn:hover {
+  transform: none;
+}
+.btn:active {
+  transform: translateY(2px);
+}
+.btn-primary {
+  color: var(--on-stamp);
+  background: var(--stamp);
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--stamp) 62%, #000);
+}
+.btn-primary::before {
+  display: none;
+}
+.btn-primary:hover:not(:disabled),
+.btn-primary:active:not(:disabled) {
+  color: var(--on-stamp);
+}
+.btn-primary:active:not(:disabled) {
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--stamp) 62%, #000);
+}
+.btn-secondary {
+  background: transparent;
+  border: 1.5px solid var(--rule);
+  box-shadow:
+    inset 0 0 0 2px var(--paper),
+    inset 0 0 0 3px var(--rule-soft);
+}
+.btn-ghost {
+  border: 1px dashed var(--rule);
+}
+.link {
+  color: var(--stamp);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.select,
+.textarea {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 70%, #fff 30%);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+:root[data-theme='dark'] .select,
+:root[data-theme='dark'] .textarea {
+  background: var(--paper-2);
+}
+.select:focus,
+.textarea:focus {
+  border-color: var(--stamp);
+  box-shadow: 0 0 0 2px var(--stamp-soft);
+}
+.idea {
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  border-radius: 0;
+}
+
+/* Countdown: leaves of a tear-off calendar (big numeral over a rule, small caption) */
+.countdown {
+  gap: 0.7rem;
+}
+.unit {
+  min-width: 0;
+  max-width: 6rem;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+}
+.number {
+  font-weight: 800;
+  color: var(--ink);
+  font-size: clamp(1.9rem, 9.5vw, 2.8rem);
+  border-bottom: 2px solid var(--rule);
+  margin-bottom: 0.2rem;
+}
+.unit:first-child .number {
+  color: var(--stamp);
+  border-bottom-color: var(--stamp);
+}
+.caption {
+  font-family: var(--slab);
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--ink-2);
+}
+.unit:first-child .caption {
+  color: var(--stamp);
+}
+
+.stats > div {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+.stats b {
+  font-weight: 800;
+  font-size: 1.9rem;
+  line-height: 1.1;
+  color: var(--ink);
+  border-bottom: 2px solid var(--rule);
+  margin: 0 0.3rem 0.25rem;
+}
+.stats span {
+  font-family: var(--slab);
+  font-weight: 700;
+}
+
+.wave li {
+  border-radius: 0;
+}
+.wave li.mine {
+  box-shadow: inset 3px 0 0 var(--stamp);
+}
+.wave .bar,
+.wave .bar span,
+.level-bar,
+.level-bar span {
+  border-radius: 0;
+}
+.wave li.done .bar span {
+  background: var(--stamp);
+}
+.wave li.done .when {
+  color: var(--stamp);
+}
+
+.badge,
+.chip {
+  border-radius: 2px;
+}
+.badge.approved {
+  background: color-mix(in srgb, var(--green) 16%, transparent);
+}
+.badge.rejected {
+  background: var(--stamp-soft);
+}
+.badge.on_validation {
+  background: color-mix(in srgb, var(--gold) 18%, transparent);
+}
+blockquote {
+  border-radius: 0;
+}
+.reaction {
+  border-radius: 2px;
+  border-color: var(--rule-soft);
+}
+.reaction.selected {
+  border-color: var(--stamp);
+}
+.preview,
+.media,
+.media img,
+.media video {
+  border-radius: 2px;
+}
+
+/* Bottom bar: a strip of the same paper under a printed rule */
+.tabs {
+  width: min(36rem, calc(100% - 0.9rem));
+  border-top: 2px solid var(--rule);
+  box-shadow: 0 -3px 14px rgba(0, 0, 0, 0.25);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.tabs a {
+  font-family: var(--slab);
+  font-weight: 700;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+}
+.tabs a.active {
+  color: var(--stamp);
+  background: none;
+  border-bottom-color: var(--stamp);
+}
+.dot {
+  background: var(--stamp);
+}
+.toast {
+  color: var(--paper);
+  background: var(--ink);
+  border: none;
+  border-radius: 2px;
+}
+
+/* The scene is the illustration of the sheet: a dark picture in a printed frame */
+.tree-card {
+  border: 1.5px solid var(--rule);
+  border-radius: 2px;
+  box-shadow:
+    0 0 0 3px var(--paper),
+    0 0 0 4px var(--rule-soft);
+}
+.tree-skeleton {
+  background: var(--paper-3);
+}
+.hud-title {
+  color: #fff;
+  font-weight: 700;
+}
+.level {
+  color: var(--ink);
+  background: var(--paper);
+  border-top: 1.5px solid var(--rule);
+}
+.level-bar span {
+  background: var(--stamp);
+  box-shadow: none;
+}
+
+.sheet {
+  color: var(--ink);
+  border: none;
+  border-top: 2px solid var(--rule);
+  border-radius: 0;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.35);
+}
+.sheet::before {
+  content: '';
+  display: block;
+  height: 1px;
+  margin: -0.85rem 0 0.4rem;
+  background: var(--rule-soft);
+}
+.sheet h2 {
+  font-weight: 300;
+  font-size: 1.35rem;
+}
+.sheet h3 {
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 0.2rem;
+}
+/* Watercolour wash behind a picture, as under the icons of a printed calendar */
+.sheet-emoji {
+  align-self: center;
+  padding: 0.1rem 1.4rem;
+  background: radial-gradient(closest-side, var(--wash) 0 45%, transparent 100%);
+}
+.quote,
+.designer {
+  border-radius: 2px;
+}
+.designer {
+  background: var(--paper-2);
+}
+.snow-mode,
+.pattern-btn {
+  border-radius: 2px;
+  border-width: 1.5px;
+}
+
+/* Small print at the bottom of the sheet */
+.imprint {
+  flex-direction: row !important;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem !important;
+  margin-top: 0.4rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--rule-soft);
+  font-size: 0.68rem;
+  color: var(--ink-2);
+}
+.theme-toggle {
+  font: inherit;
+  font-family: var(--slab);
+  font-weight: 700;
+  color: var(--ink-2);
+  background: none;
+  border: 1px solid var(--rule-soft);
+  border-radius: 2px;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   Hand-made unevenness (SVG filters live in index.html).
+   Only frames, rules and ink blocks are roughened, on pseudo-elements:
+   the text stays sharp and nothing is recomputed while the scene animates.
+   ============================================================ */
+.handmade-defs {
+  position: absolute;
+}
+
+/* Rules of the titles are drawn by hand */
+.card > h2::before,
+.card > h2::after,
+.label::before,
+.label::after,
+.page-title::before,
+.page-title::after {
+  height: 1.5px;
+  filter: url(#rough-line);
+}
+.card > h2::after,
+.label::after,
+.page-title::after {
+  transform: scaleX(-1) rotate(0.4deg);
+}
+.card > h2::before,
+.label::before,
+.page-title::before {
+  transform: rotate(-0.3deg);
+}
+
+/* Frame of the sheet */
+.page::before {
+  filter: url(#rough-b);
+}
+
+/* Stamp frame: two uneven lines, pressed a little askew */
+.festive,
+.gift-card {
+  position: relative;
+  isolation: isolate;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+.festive::before,
+.gift-card::before,
+.festive::after,
+.gift-card::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+.festive::before,
+.gift-card::before {
+  inset: 0;
+  border: 2px solid var(--stamp);
+  background: var(--stamp-soft);
+  transform: rotate(-0.35deg);
+  filter: url(#ink);
+}
+.festive::after,
+.gift-card::after {
+  inset: 5px;
+  border: 1px solid var(--stamp);
+  opacity: 0.6;
+  transform: rotate(0.3deg);
+  filter: url(#rough-b);
+}
+
+/* Buttons are stamped / framed by hand */
+.btn {
+  position: relative;
+  isolation: isolate;
+}
+.btn-primary {
+  background: none;
+  box-shadow: none;
+}
+.btn-primary::before {
+  display: block;
+  inset: 0;
+  z-index: -1;
+  background: var(--stamp);
+  background-image: none;
+  border-radius: 3px;
+  filter: url(#ink);
+  animation: none;
+}
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 3px -1px -3px 1px;
+  z-index: -2;
+  background: color-mix(in srgb, var(--stamp) 55%, #000);
+  border-radius: 3px;
+  filter: url(#rough);
+}
+.btn-primary:hover:not(:disabled),
+.btn-primary:active:not(:disabled) {
+  background: none;
+}
+.btn-secondary {
+  border: none;
+  box-shadow: none;
+}
+.btn-secondary::before,
+.btn-secondary::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+.btn-secondary::before {
+  inset: 0;
+  border: 1.5px solid var(--rule);
+  filter: url(#rough);
+}
+.btn-secondary::after {
+  inset: 3px;
+  border: 1px solid var(--rule-soft);
+  filter: url(#rough-b);
+}
+
+/* Numerals: letterpress, each leaf hangs slightly differently */
+.number,
+.stats b {
+  position: relative;
+  border-bottom: none;
+  filter: url(#press);
+}
+.number::after,
+.stats b::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--rule);
+  filter: url(#rough-line);
+}
+.unit:first-child .number::after {
+  background: var(--stamp);
+}
+.unit:nth-child(odd),
+.stats > div:nth-child(even) {
+  transform: rotate(-0.8deg);
+}
+.unit:nth-child(even),
+.stats > div:nth-child(odd) {
+  transform: rotate(0.6deg);
+}
+.unit:nth-child(3) {
+  transform: rotate(-0.3deg) translateY(1px);
+}
+
+/* The illustration: its printed frame is uneven too (an overlay, the canvas is untouched) */
+.tree-card {
+  border: none;
+  box-shadow: none;
+  overflow: visible;
+}
+.tree-card > * {
+  position: relative;
+}
+.tree-card::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  z-index: 3;
+  border: 4px solid var(--paper);
+  outline: 1.5px solid var(--rule);
+  outline-offset: -2.5px;
+  pointer-events: none;
+  filter: url(#rough);
+}
+
+/* Bottom bar and sheets: a hand-ruled top edge */
+.tabs,
+.sheet {
+  border-top: none;
+}
+.tabs::before,
+.sheet::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--rule);
+  filter: url(#rough-line);
+}
+.sheet::after {
+  position: sticky;
+  order: -1;
+  flex: none;
+  margin: -1.2rem -1.2rem 0;
+}
+.tabs a.active {
+  border-bottom-color: transparent;
+  background: linear-gradient(var(--stamp), var(--stamp)) 50% 100% / 60% 2px no-repeat;
+}
+
+/* Watercolour blots */
+.sheet-emoji {
+  position: relative;
+  isolation: isolate;
+  background: none;
+}
+.sheet-emoji::before {
+  content: '';
+  position: absolute;
+  inset: 8% 4%;
+  z-index: -1;
+  border-radius: 50%;
+  background: var(--wash);
+  filter: url(#blot);
+}
+
+/* Round seal in the corner of the sheet */
+.seal {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border: 1.5px solid var(--stamp);
+  border-radius: 50%;
+  color: var(--stamp);
+  box-shadow:
+    inset 0 0 0 3px var(--paper),
+    inset 0 0 0 4px var(--stamp);
+  transform: rotate(-12deg);
+  opacity: 0.8;
+  filter: url(#ink);
+}
+.seal i {
+  font-style: normal;
+  font-size: 1.1rem;
+}
+.imprint-text {
+  flex: 1;
 }

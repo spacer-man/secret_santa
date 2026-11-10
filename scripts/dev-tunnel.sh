@@ -20,7 +20,10 @@ die()  { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 # --- Настройки ---------------------------------------------------------------
 ENV_FILE="${ENV_FILE:-$ROOT/.env.dev}"
 [ -f "$ENV_FILE" ] || die "Нет $ENV_FILE. Сделайте: cp .env.dev.example .env.dev и впишите BOT_TOKEN"
-set -a; . "$ENV_FILE"; set +a
+set -a
+# shellcheck source=/dev/null
+. "$ENV_FILE"
+set +a
 
 [ -n "${BOT_TOKEN:-}" ] || die "В $ENV_FILE не задан BOT_TOKEN"
 [ -n "${WISH_VALIDATE_TG_IDS:-}" ] || die "В $ENV_FILE не задан WISH_VALIDATE_TG_IDS (ваш Telegram ID)"
@@ -38,9 +41,9 @@ PY="$ROOT/bot/.venv/bin/python"
 if [ ! -x "$PY" ]; then
   say "Ставлю зависимости бота в bot/.venv"
   if command -v uv >/dev/null; then
-    (cd "$ROOT/bot" && uv venv -q -p 3.13 .venv && uv pip install -q -p .venv/bin/python -r requirements.txt)
+    (cd "$ROOT/bot" && uv sync -q --group dev)
   else
-    python3 -m venv "$ROOT/bot/.venv" && "$PY" -m pip install -q -r "$ROOT/bot/requirements.txt"
+    python3 -m venv "$ROOT/bot/.venv" && "$PY" -m pip install -q -r "$ROOT/bot/requirements.txt" aiosqlite
   fi
 fi
 if [ ! -d "$ROOT/web_app/node_modules" ]; then

@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (ruff, ty, pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bot
+    services:
+      postgres:
+        image: postgres:17.4
+        env:
+          POSTGRES_USER: santa
+          POSTGRES_PASSWORD: santa
+          POSTGRES_DB: santa_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U santa -d santa_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: bot/uv.lock
+      - name: Install
+        run: uv sync --locked --group dev
+      - name: Lint (ruff)
+        run: uv run --no-sync ruff check --output-format github .
+      - name: Format (ruff)
+        run: uv run --no-sync ruff format --check --diff .
+      - name: Types (ty)
+        run: uv run --no-sync ty check --output-format github
+      - name: Tests (SQLite)
+        run: uv run --no-sync pytest -q
+      - name: Tests (Postgres)
+        env:
+          TEST_DB_URL: postgresql+asyncpg://santa:santa@localhost:5432/santa_test
+        run: uv run --no-sync pytest -q
+      - name: requirements.txt matches uv.lock (Docker installs from it)
+        run: |
+          uv export --locked --no-dev --no-hashes --no-emit-project --no-header -q -o requirements.txt
+          git diff --exit-code requirements.txt
+
+  frontend:
+    name: Frontend (bun fmt, eslint, tsc, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web_app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Format (bun fmt)
+        run: bun run format:check
+      - name: Lint (eslint)
+        run: bun run lint
+      - name: Types (tsc)
+        run: bun run typecheck
+      - name: Build (ng build, strict templates)
+        run: bunx ng build
+
+  scripts:
+    name: Shell & compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+      - name: docker compose config
+        run: cp .env.example .env && docker compose config -q

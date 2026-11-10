@@ -1022,6 +1022,8 @@ blockquote {
 .snow-mode small {
   color: #ffa040;
   font-weight: 700;
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 .snow-icon {
   font-size: 1.6rem;
@@ -1055,4 +1057,41 @@ blockquote {
 }
 .skin-strip .snow-icon {
   font-size: 1.3rem;
+}
+
+/* ===== Shop ===== */
+.hud-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+.hud-actions .mandarin-chip {
+  min-height: 2.4rem;
+}
+.sheet.tall {
+  max-height: 92vh;
+  max-height: 92dvh;
+}
+.earn b.neg {
+  color: var(--second-text-color);
+}
+.lack {
+  color: #ff7a8a;
+  margin: 0;
+}
+.pad-pick {
+  font-size: 1rem;
+}
+.buy-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: left;
+}
+.buy-row .small {
+  flex: 1;
+}
+.buy-row .btn {
+  padding: 0.7rem 1rem;
+  font-size: 0.95rem;
+  white-space: nowrap;
 }

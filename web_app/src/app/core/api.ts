@@ -51,6 +51,39 @@ export interface TreeData {
   level_to: number | null;
   /** Courtyard figures from the shop: item key and pad index */
   decor?: { item: string; pad: number }[];
+  /** Keys of all owned shop items */
+  owned?: string[];
+}
+
+export type ShopCategory = 'figure' | 'lights' | 'weather';
+export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
+
+export interface ShopItem {
+  key: string;
+  category: ShopCategory;
+  rarity: Rarity;
+  price: number;
+  /** Set key, if the item belongs to a collection */
+  set: string | null;
+  /** > 0: a milestone gift, granted for this many invited friends (cannot be bought) */
+  friends: number;
+  owned: boolean;
+  /** Courtyard place of an owned figure (null: not placed) */
+  pad: number | null;
+}
+
+export interface ShopSet {
+  key: string;
+  bonus: number;
+  items: string[];
+  done: boolean;
+}
+
+export interface ShopData {
+  balance: number;
+  friends: number;
+  items: ShopItem[];
+  sets: ShopSet[];
 }
 
 export interface MandarinTx {
@@ -180,6 +213,11 @@ export class Api {
 
   tree = () => this.request<TreeData>('GET', '/tree');
   mandarins = () => this.request<{ balance: number; history: MandarinTx[] }>('GET', '/mandarins');
+
+  shop = () => this.request<ShopData>('GET', '/shop');
+  buy = (item: string) => this.request<ShopData & { bonus: number }>('POST', '/shop/buy', { item });
+  place = (item: string, pad: number | null) =>
+    this.request<ShopData>('PUT', '/shop/place', { item, pad });
 
   gift = () => this.request<Gift>('GET', '/gift');
   openGift = () => this.request<Gift>('POST', '/gift/open');

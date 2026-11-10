@@ -87,6 +87,8 @@ export class Tree3d implements OnDestroy {
   readonly starClick = output<void>();
   /** Decorate mode: free courtyard places glow and can be chosen */
   readonly decorMode = input(false);
+  /** Figure being placed: free places show its translucent preview */
+  readonly previewItem = input<string | null>(null);
   /** 0 clear (starry sky), 1 light, 2 snowfall, 3 blizzard */
   readonly snowfall = input(1);
   /** Fringe lights under the cabin roof */
@@ -98,6 +100,8 @@ export class Tree3d implements OnDestroy {
 
   protected readonly fallback = signal(new URLSearchParams(location.search).get('scene') === '2d');
   protected readonly ready = signal(false);
+  /** The flat 2D tree is shown (no WebGL or ?scene=2d): no courtyard there */
+  readonly is2d = this.fallback.asReadonly();
   private readonly canvas = viewChild<ElementRef<HTMLCanvasElement>>('canvas');
   private world?: TreeWorld;
 
@@ -111,7 +115,8 @@ export class Tree3d implements OnDestroy {
     });
     effect(() => {
       const on = this.decorMode();
-      this.world?.setDecorMode(on);
+      const item = this.previewItem();
+      this.world?.setDecorMode(on, item);
     });
     effect(() => {
       const level = this.snowfall();
@@ -138,7 +143,7 @@ export class Tree3d implements OnDestroy {
         focused: (corner) => this.focused.emit(corner),
         cabin: () => this.cabinClick.emit(),
       });
-      this.world.setDecorMode(this.decorMode());
+      this.world.setDecorMode(this.decorMode(), this.previewItem());
       this.world.setSnowfall(this.snowfall());
       this.world.setCabinLights(this.cabinLights() as LightSkin | null);
       // For screenshots/tests only: ?debug exposes the scene

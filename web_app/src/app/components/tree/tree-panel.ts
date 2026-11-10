@@ -7,12 +7,16 @@ import { Store } from '../../core/store';
 import { Telegram } from '../../core/telegram';
 import { confetti } from '../fx/confetti';
 import { BallArt, BallDefs } from './ball-art';
+import { ShopState } from '../../core/shop';
 import { Tree3d } from '../tree3d/tree-3d';
 import { LIGHT_SKINS } from '../tree3d/skins';
+import { ShopSheet } from './shop-sheet';
 
 const SEEN_KEY = 'santa.tree.seen';
 const SNOW_KEY = 'santa.snowfall.v2';
 const LIGHTS_KEY = 'santa.cabinLights';
+/** Shop items that unlock the dense snowfall modes (by mode index) */
+const SNOW_ITEMS: Record<number, string> = { 2: 'snow-snowfall', 3: 'snow-blizzard' };
 
 function readStored(key: string): string | null {
   try {
@@ -38,6 +42,7 @@ type Sheet =
   | { kind: 'pad'; pad: number; corner: string; item: string | null }
   | { kind: 'snow' }
   | { kind: 'lights' }
+  | { kind: 'shop' }
   | null;
 
 function readSeen(): Record<string, string> | null {
@@ -51,20 +56,30 @@ function readSeen(): Record<string, string> | null {
 /** The tree with its HUD: mandarins, festive level, ball/star/wallet sheets */
 @Component({
   selector: 'tree-panel',
-  imports: [Tree3d, BallArt, BallDefs, KeyValuePipe],
+  imports: [Tree3d, BallArt, BallDefs, KeyValuePipe, ShopSheet],
   template: `
     @if (tree(); as t) {
       <section class="tree-card">
         <div class="hud">
           <span class="hud-title">🎄 {{ i18n.t('myTree') }}</span>
-          <button class="mandarin-chip" (click)="openWallet()">🍊 {{ t.mandarins }}</button>
+          <div class="hud-actions">
+            <button
+              class="mandarin-chip"
+              (click)="openShop()"
+              [attr.aria-label]="i18n.t('shopTitle')"
+            >
+              🛍
+            </button>
+            <button class="mandarin-chip" (click)="openWallet()">🍊 {{ t.mandarins }}</button>
+          </div>
         </div>
         <div class="scene-wrap">
           <tree-3d
             #scene3d
             [tree]="t"
             [decorMode]="decorMode()"
-            [snowfall]="snowfall()"
+            [previewItem]="placing()"
+            [snowfall]="shownSnow()"
             [cabinLights]="shownLights()"
             (cabinClick)="openLights()"
             (padClick)="openPad($event)"
@@ -87,11 +102,7 @@ function readSeen(): Record<string, string> | null {
             <p class="drag-hint">↔ {{ i18n.t('dragHint') }}</p>
             <button class="decor-btn" (click)="toggleDecor()">⛄ {{ i18n.t('decorate') }}</button>
           }
-          <button
-            class="snow-btn"
-            (click)="sheet.set({ kind: 'snow' })"
-            [attr.aria-label]="i18n.t('snowfall')"
-          >
+          <button class="snow-btn" (click)="openSnow()" [attr.aria-label]="i18n.t('snowfall')">
             {{ snowModes[snowfall()].icon }}
           </button>
         </div>
@@ -122,7 +133,12 @@ function readSeen(): Record<string, string> | null {
         (click)="closeSheet()"
         (keydown.escape)="closeSheet()"
       ></div>
-      <div class="sheet" [class.compact]="s.kind === 'lights'" role="dialog">
+      <div
+        class="sheet"
+        [class.compact]="s.kind === 'lights'"
+        [class.tall]="s.kind === 'shop'"
+        role="dialog"
+      >
         @switch (s.kind) {
           @case ('ball') {
             @if (s.kind === 'ball') {
@@ -157,9 +173,44 @@ function readSeen(): Record<string, string> | null {
           }
           @case ('pad') {
             @if (s.kind === 'pad') {
-              <div class="sheet-emoji">{{ s.item ? '⛄' : '✨' }}</div>
+              <div class="sheet-emoji">{{ s.item ? shop.icon(s.item) : '✨' }}</div>
               <h2>{{ cornerName(s.corner) }}</h2>
-              <p class="muted">{{ s.item ? i18n.t('padTaken') : i18n.t('padFree') }}</p>
+              @if (s.item && !padReplacing()) {
+                <p class="muted">
+                  <b>{{ shop.name(s.item) }}.</b> {{ i18n.t('padTaken') }}
+                </p>
+                <button class="btn btn-primary wide" (click)="padReplacing.set(true)">
+                  {{ i18n.t('padReplace') }}
+                </button>
+                <button
+                  class="btn btn-secondary wide"
+                  [disabled]="shop.busy()"
+                  (click)="padRemove(s.item)"
+                >
+                  {{ i18n.t('padRemove') }}
+                </button>
+              } @else if (shop.spare().length) {
+                <p class="muted">{{ i18n.t('padFree') }}</p>
+                @for (f of shop.spare(); track f.key) {
+                  <button
+                    class="btn btn-secondary wide pad-pick"
+                    [disabled]="shop.busy()"
+                    (click)="padPlace(s.pad, f.key)"
+                  >
+                    {{ shop.icon(f.key) }} {{ shop.name(f.key) }} — {{ i18n.t('padPutHere') }}
+                  </button>
+                }
+                @if (padReplacing()) {
+                  <button class="btn btn-ghost wide" (click)="padReplacing.set(false)">
+                    {{ i18n.t('padBack') }}
+                  </button>
+                }
+              } @else {
+                <p class="muted">{{ i18n.t('padFreeEmpty') }}</p>
+                <button class="btn btn-primary wide" (click)="openShop()">
+                  🛍 {{ i18n.t('toShop') }}
+                </button>
+              }
             }
           }
           @case ('snow') {
@@ -169,20 +220,30 @@ function readSeen(): Record<string, string> | null {
               @for (m of snowModes; track m.key; let i = $index) {
                 <button
                   class="snow-mode"
-                  [class.selected]="snowfall() === i"
+                  [class.selected]="shownSnow() === i"
                   [class.locked]="!isUnlocked(i)"
                   (click)="pickSnow(i)"
                 >
                   <span class="snow-icon">{{ m.icon }}</span>
                   <span>{{ i18n.dict.snowModes[m.key] }}</span>
                   @if (!isUnlocked(i)) {
-                    <small>🔒 {{ m.price }} 🍊</small>
+                    <small>🔒 {{ snowPriceText(i) }}</small>
                   }
                 </button>
               }
             </div>
-            @if (snowNote()) {
-              <p class="small muted">{{ snowNote() }}</p>
+            @if (lockedSnow(); as locked) {
+              <p class="small muted">{{ i18n.t('snowLocked').replace('%s', '' + locked.price) }}</p>
+              <button
+                class="btn btn-primary wide"
+                [disabled]="shop.busy() || locked.lack > 0"
+                (click)="buySnow(locked.index)"
+              >
+                {{ i18n.t('buyBtnFull').replace('%s', '' + locked.price) }}
+              </button>
+              @if (locked.lack > 0) {
+                <p class="small lack">{{ i18n.t('notEnough').replace('%s', '' + locked.lack) }}</p>
+              }
             }
           }
           @case ('lights') {
@@ -196,29 +257,53 @@ function readSeen(): Record<string, string> | null {
                 <span class="snow-icon">🌑</span>
                 <span>{{ i18n.dict.lightSkins['none'] }}</span>
               </button>
-              @for (l of lightSkins; track l.key) {
+              @for (l of lightSkins; track l) {
                 <button
                   class="snow-mode"
-                  [class.selected]="shownLights() === l.key"
-                  [class.locked]="!ownsLights(l.key)"
-                  (click)="pickLights(l.key)"
+                  [class.selected]="shownLights() === l"
+                  [class.locked]="!ownsLights(l)"
+                  (click)="pickLights(l)"
                 >
-                  <span class="snow-icon">{{ lightIcons[l.key] }}</span>
-                  <span>{{ i18n.dict.lightSkins[l.key] }}</span>
-                  @if (!ownsLights(l.key)) {
-                    <small>🔒 {{ l.price }} 🍊</small>
+                  <span class="snow-icon">{{ lightIcons[l] }}</span>
+                  <span>{{ i18n.dict.lightSkins[l] }}</span>
+                  @if (!ownsLights(l)) {
+                    <small>🔒 {{ lightsPrice(l) }}</small>
                   }
                 </button>
               }
             </div>
-            @if (lightsNote()) {
-              <p class="small muted">{{ lightsNote() }}</p>
+            @if (lockedLights(); as locked) {
+              <div class="buy-row">
+                <span class="small muted">{{
+                  i18n.t('lightsLocked').replace('%s', '' + locked.price)
+                }}</span>
+                <button
+                  class="btn btn-primary"
+                  [disabled]="shop.busy() || locked.lack > 0"
+                  (click)="buyLights(locked.key)"
+                >
+                  {{
+                    locked.lack > 0
+                      ? i18n.t('notEnough').replace('%s', '' + locked.lack)
+                      : i18n.t('buyBtnFull').replace('%s', '' + locked.price)
+                  }}
+                </button>
+              </div>
             }
+          }
+          @case ('shop') {
+            <shop-sheet
+              [canPlace]="!scene3d()?.is2d()"
+              (changed)="load()"
+              (placeFigure)="startPlacing($event)"
+            />
           }
           @case ('wallet') {
             <div class="sheet-emoji">🍊</div>
             <h2>{{ i18n.t('mandarins') }}: {{ tree()?.mandarins }}</h2>
-            <p class="muted small">{{ i18n.t('shopSoon') }}</p>
+            <button class="btn btn-primary wide" (click)="openShop()">
+              {{ i18n.t('shopOpen') }}
+            </button>
             <h3>{{ i18n.t('howToEarn') }}</h3>
             <ul class="earn">
               @for (r of rewards(); track r.reason) {
@@ -234,7 +319,7 @@ function readSeen(): Record<string, string> | null {
                 @for (tx of s.history; track $index) {
                   <li>
                     <span>{{ reasonText(tx.reason) }}</span
-                    ><b>+{{ tx.amount }}</b>
+                    ><b [class.neg]="tx.amount < 0">{{ signed(tx.amount) }}</b>
                   </li>
                 }
               </ul>
@@ -260,16 +345,46 @@ export class TreePanel {
   protected readonly decorMode = signal(false);
   protected readonly cornerFocused = signal(false);
 
-  // Snowfall strength: dense modes are unlocked in the shop for mandarins
+  protected readonly shop = inject(ShopState);
+  /** Figure being placed in the yard (chosen in the shop) */
+  protected readonly placing = signal<string | null>(null);
+  private placeSettling = false;
+  protected readonly padReplacing = signal(false);
+
+  /** Keys of owned shop items: from the tree, fresher from the shop once it is loaded */
+  private readonly owned = computed(
+    () => new Set([...(this.tree()?.owned ?? []), ...this.shop.ownedKeys()]),
+  );
+
+  // Snowfall strength: dense modes are bought in the shop
   protected readonly snowModes = [
-    { key: 'clear', icon: '✨', price: 0 },
-    { key: 'light', icon: '❄️', price: 0 },
-    { key: 'snowfall', icon: '🌨', price: 150 },
-    { key: 'blizzard', icon: '🌬', price: 400 },
+    { key: 'clear', icon: '✨' },
+    { key: 'light', icon: '❄️' },
+    { key: 'snowfall', icon: '🌨' },
+    { key: 'blizzard', icon: '🌬' },
   ];
-  protected readonly snowfall = signal(readSnow());
-  protected readonly snowNote = signal('');
-  // Fringe lights under the cabin roof: skins for mandarins (try on = preview)
+  private readonly snowChoice = signal(readSnow());
+  private readonly unlockedSnow = computed(() =>
+    [0, 1, 2, 3].filter((i) => !SNOW_ITEMS[i] || this.owned().has(SNOW_ITEMS[i])),
+  );
+  /** Chosen mode; a mode that is not owned falls back to light snow */
+  protected readonly snowfall = computed(() =>
+    this.unlockedSnow().includes(this.snowChoice()) ? this.snowChoice() : 1,
+  );
+  private readonly previewSnow = signal<number | null>(null);
+  protected readonly shownSnow = computed(() => {
+    const preview = this.previewSnow();
+    return this.sheet()?.kind === 'snow' && preview !== null ? preview : this.snowfall();
+  });
+  /** A locked mode picked for a try-on */
+  protected readonly lockedSnow = computed(() => {
+    const index = this.previewSnow();
+    if (index === null || this.unlockedSnow().includes(index)) return null;
+    const price = this.snowPrice(index) ?? 0;
+    return { index, price, lack: this.lack(price) };
+  });
+
+  // Fringe lights under the cabin roof: skins from the shop (locked = try-on)
   protected readonly lightSkins = LIGHT_SKINS;
   protected readonly lightIcons: Record<string, string> = {
     multi: '🌈',
@@ -278,18 +393,24 @@ export class TreePanel {
     icy: '🧊',
     candy: '🍭',
   };
-  private readonly ownLights = signal<string | null>(readStored(LIGHTS_KEY));
-  private readonly ownedLightSkins = signal<string[]>([]); // filled by the shop
+  private readonly storedLights = signal<string | null>(readStored(LIGHTS_KEY));
+  private readonly ownLights = computed(() => {
+    const key = this.storedLights();
+    return key && this.owned().has('lights-' + key) ? key : null;
+  });
   private readonly previewLights = signal<string | null | undefined>(undefined);
-  protected readonly lightsNote = signal('');
   protected readonly shownLights = computed(() => {
     const preview = this.previewLights();
     return this.sheet()?.kind === 'lights' && preview !== undefined ? preview : this.ownLights();
   });
+  protected readonly lockedLights = computed(() => {
+    const key = this.previewLights();
+    if (!key || this.ownsLights(key)) return null;
+    const price = this.lightsPriceNum(key);
+    return { key, price, lack: this.lack(price) };
+  });
 
-  /** Unlocked snowfall modes (filled by the shop when it opens) */
-  private readonly unlockedSnow = signal<number[]>([0, 1]);
-  private readonly scene3d = viewChild<Tree3d>('scene3d');
+  protected readonly scene3d = viewChild<Tree3d>('scene3d');
 
   protected readonly progress = computed(() => {
     const t = this.tree();
@@ -307,6 +428,7 @@ export class TreePanel {
 
   constructor() {
     this.load();
+    this.shop.load();
   }
 
   async load(): Promise<void> {
@@ -356,7 +478,7 @@ export class TreePanel {
   }
 
   ownsLights(key: string): boolean {
-    return this.ownedLightSkins().includes(key);
+    return this.owned().has('lights-' + key);
   }
 
   closeSheet(): void {
@@ -364,57 +486,151 @@ export class TreePanel {
     this.sheet.set(null);
   }
 
+  private lack(price: number): number {
+    return Math.max(0, price - (this.shop.data()?.balance ?? this.tree()?.mandarins ?? 0));
+  }
+
+  protected lightsPriceNum(key: string): number {
+    return this.shop.item('lights-' + key)?.price ?? 0;
+  }
+
+  protected lightsPrice(key: string): string {
+    const item = this.shop.item('lights-' + key);
+    return item ? item.price + ' 🍊' : '';
+  }
+
+  protected snowPrice(i: number): number | null {
+    return this.shop.item(SNOW_ITEMS[i])?.price ?? null;
+  }
+
+  protected snowPriceText(i: number): string {
+    const price = this.snowPrice(i);
+    return price === null ? '' : price + ' 🍊';
+  }
+
   openLights(): void {
     this.tg.haptic('light');
     this.scene3d()?.focusCabin();
     this.previewLights.set(undefined);
-    this.lightsNote.set('');
     this.sheet.set({ kind: 'lights' });
   }
 
   pickLights(key: string | null): void {
     this.tg.haptic('light');
     this.previewLights.set(key);
-    if (key && !this.ownsLights(key)) {
-      const price = LIGHT_SKINS.find((l) => l.key === key)?.price ?? 0;
-      this.lightsNote.set(this.i18n.t('lightsLocked').replace('%s', String(price)));
-      return;
-    }
-    this.lightsNote.set('');
-    this.ownLights.set(key);
+    if (key && !this.ownsLights(key)) return; // try-on: buy button appears
+    this.storedLights.set(key);
     try {
       if (key) localStorage.setItem(LIGHTS_KEY, key);
       else localStorage.removeItem(LIGHTS_KEY);
     } catch {}
   }
 
+  async buyLights(key: string): Promise<void> {
+    if ((await this.shop.buy('lights-' + key)) !== 'ok') return;
+    this.pickLights(key);
+    this.load();
+  }
+
   isUnlocked(i: number): boolean {
     return this.unlockedSnow().includes(i);
+  }
+
+  openSnow(): void {
+    this.tg.haptic('light');
+    this.previewSnow.set(null);
+    this.sheet.set({ kind: 'snow' });
   }
 
   pickSnow(i: number): void {
     this.tg.haptic('light');
     if (!this.isUnlocked(i)) {
-      this.snowNote.set(this.i18n.t('snowLocked').replace('%s', String(this.snowModes[i].price)));
+      this.previewSnow.set(i); // try-on: buy button appears
       return;
     }
-    this.snowNote.set('');
-    this.snowfall.set(i);
+    this.previewSnow.set(null);
+    this.snowChoice.set(i);
     try {
       localStorage.setItem(SNOW_KEY, String(i));
     } catch {}
   }
 
+  async buySnow(i: number): Promise<void> {
+    if ((await this.shop.buy(SNOW_ITEMS[i])) !== 'ok') return;
+    this.pickSnow(i);
+    this.load();
+  }
+
+  openShop(): void {
+    this.tg.haptic('light');
+    this.sheet.set({ kind: 'shop' });
+  }
+
+  /** From the shop: close it and let the user pick a yard place for the figure */
+  startPlacing(item: string): void {
+    this.placeSettling = false;
+    this.placing.set(item);
+    this.cornerFocused.set(false);
+    this.decorMode.set(true);
+    this.sheet.set(null);
+  }
+
+  private finishPlacing(): void {
+    this.placing.set(null);
+    this.placeSettling = false;
+    this.decorMode.set(false);
+    this.scene3d()?.clearFocus();
+  }
+
   toggleDecor(): void {
     this.tg.haptic('light');
+    this.placing.set(null);
     this.decorMode.update((v) => !v);
     if (!this.decorMode()) this.scene3d()?.clearFocus();
   }
 
   openPad(e: { pad: number; corner: string; item: string | null }): void {
     this.tg.haptic('light');
+    const figure = this.placing();
+    if (figure) {
+      this.putFigure(figure, e.pad);
+      return;
+    }
+    this.padReplacing.set(false);
     // Let the camera fly first, then show the sheet
     setTimeout(() => this.sheet.set({ kind: 'pad', ...e }), 650);
+  }
+
+  /** A place was chosen for the figure: put it there, let the user see it, leave the mode */
+  private async putFigure(item: string, pad: number): Promise<void> {
+    if (this.placeSettling) return;
+    this.placeSettling = true;
+    if (await this.shop.place(item, pad)) {
+      await this.load();
+      this.store.showToast(this.i18n.t('placedToast'));
+      setTimeout(() => this.finishPlacing(), 900);
+    } else {
+      this.placeSettling = false;
+    }
+  }
+
+  async padPlace(pad: number, item: string): Promise<void> {
+    if (!(await this.shop.place(item, pad))) return;
+    await this.load();
+    this.store.showToast(this.i18n.t('placedToast'));
+    this.leavePad();
+  }
+
+  async padRemove(item: string): Promise<void> {
+    if (!(await this.shop.place(item, null))) return;
+    await this.load();
+    this.store.showToast(this.i18n.t('removedToast'));
+    this.leavePad();
+  }
+
+  private leavePad(): void {
+    this.sheet.set(null);
+    if (!this.decorMode()) this.scene3d()?.clearFocus();
   }
 
   cornerName(key: string): string {
@@ -434,6 +650,10 @@ export class TreePanel {
     return this.i18n.t(
       ball.state === 'box' ? 'ballBox' : ball.state === 'lit' ? 'ballLit' : 'ballHung',
     );
+  }
+
+  signed(amount: number): string {
+    return (amount < 0 ? '−' : '+') + Math.abs(amount);
   }
 
   reasonText(reason: string): string {

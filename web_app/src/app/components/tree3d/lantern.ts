@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { VolumeGlow, volumeGlow } from './glow';
 import { withOutline } from './outline';
 
 export interface LanternKit {
@@ -51,11 +52,8 @@ export const LANTERN_LIGHT = 5.5;
 
 export interface Lantern {
   group: THREE.Group;
-  glow: THREE.Sprite;
-  /** Size of the glow when lit (for the flicker) */
-  glowSize: number;
-  /** Real light that falls on the snow and things around (absent on weak devices) */
-  light?: THREE.PointLight;
+  /** Brightness of the flame: 0 is out, about 1 is lit (flickers around it) */
+  shine(k: number): void;
 }
 
 export interface Lanterns {
@@ -117,30 +115,45 @@ export function lanternFactory(kit: LanternKit): Lanterns {
       const glass = new THREE.Mesh(glassGeo, glassMat);
       const snow = new THREE.Mesh(snowGeo, snowMat);
       snow.rotation.y = all.length * 1.3;
-      const light = kit.light?.() ?? undefined;
-      // With a real light the sprite is only a small halo around the flame
-      const glowSize = (light ? 1.15 : 2.4) * scale;
-      const glow = kit.glow(0xffc070, glowSize, 0);
-      glow.position.y = 0.21;
-      group.add(frame, glass, snow, glow);
-      if (light) {
-        light.position.y = 0.3;
-        group.add(light);
-      }
+      group.add(frame, glass, snow);
       group.scale.setScalar(scale);
-      // The glow is a sprite: keep its size in world units
-      glow.scale.setScalar(glowSize / scale);
-      const lantern: Lantern = { group, glow, glowSize: glowSize / scale, light };
+      const light = kit.light?.() ?? null;
+      let lantern: Lantern;
+      if (light) {
+        // Real light on the things around and lit air around the flame; the roof shades both
+        light.position.y = 0.3;
+        const air: VolumeGlow = volumeGlow(1.05, 0xffb866, { y: 0.135, r: 0.17 });
+        air.mesh.position.y = 0.21;
+        group.add(light, air.mesh);
+        lantern = {
+          group,
+          shine(k) {
+            light.intensity = LANTERN_LIGHT * k;
+            air.setPower(k);
+          },
+        };
+      } else {
+        // Weak devices: a flat glow sprite (its size is kept in world units)
+        const size = 2.4;
+        const glow = kit.glow(0xffc070, size * scale, 0);
+        glow.position.y = 0.21;
+        glow.scale.setScalar(size);
+        group.add(glow);
+        lantern = {
+          group,
+          shine(k) {
+            glow.material.opacity = 0.9 * k;
+            glow.scale.setScalar(size * (k > 0 ? 0.3 + 0.7 * k : 1));
+          },
+        };
+      }
       all.push(lantern);
       return lantern;
     },
     setOn(on) {
       glassMat.color.set(on ? 0xffd27a : 0x3a3550);
       glassMat.emissive.set(on ? 0xffa040 : 0x000000);
-      all.forEach((l) => {
-        l.glow.material.opacity = on ? 0.9 : 0;
-        if (l.light) l.light.intensity = on ? LANTERN_LIGHT : 0;
-      });
+      all.forEach((l) => l.shine(on ? 1 : 0));
     },
   };
 }

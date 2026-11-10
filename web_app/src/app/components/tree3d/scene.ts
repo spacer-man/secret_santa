@@ -15,7 +15,7 @@ import { ModelName, Models } from './models';
 import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape } from './layout';
 import { TIERS, TREE_TOP, buildFirTree, treeRadius } from './tree-model';
 import { Glitter, buildGlitter, sampleSurface, snowMaterial } from './snow';
-import { pushForward } from './glow';
+import { pushForward, volumeGlow } from './glow';
 import { FACING_DECAY, LANTERN_LIGHT, Lanterns, facingLights, lanternFactory } from './lantern';
 import {
   Birds,
@@ -2068,23 +2068,38 @@ export class TreeWorld {
     const box = new THREE.Box3().setFromObject(obj);
     const head = new THREE.Vector3(
       obj.position.x,
-      box.min.y + (box.max.y - box.min.y) * 0.74,
+      box.min.y + (box.max.y - box.min.y) * 0.815,
       obj.position.z,
     );
-    const size = this.figureLight ? 1.3 : 2.6;
-    const halo = this.glow(0xffc070, size, 0.9);
-    halo.position.copy(head);
-    this.dynamic.add(halo);
+    const fire = (t: number) => 0.86 + 0.09 * Math.sin(t * 7.3 + 4) + 0.05 * Math.sin(t * 17.1 + 9);
     const light = this.figureLight;
-    if (light) light.position.copy(head);
-    this.animated.push({
-      update: (t) => {
-        const fire = 0.86 + 0.09 * Math.sin(t * 7.3 + 4) + 0.05 * Math.sin(t * 17.1 + 9);
-        halo.material.opacity = 0.9 * fire;
-        halo.scale.setScalar(size * (0.94 + 0.08 * fire));
-        if (light) light.intensity = LANTERN_LIGHT * fire;
-      },
-    });
+    if (light) {
+      // Lit air under the hood of the lamp (the hood shades what is above it).
+      // The flame and the hood rim are measured on the Kenney model: 0.815 and 0.893 of its height
+      const height = box.max.y - box.min.y;
+      const width = Math.max(box.max.x - box.min.x, box.max.z - box.min.z);
+      const air = volumeGlow(1.5, 0xffb866, { y: height * 0.078, r: width * 0.45 }, 0.8);
+      air.mesh.position.copy(head);
+      this.dynamic.add(air.mesh);
+      light.position.copy(head);
+      this.animated.push({
+        update: (t) => {
+          light.intensity = LANTERN_LIGHT * fire(t);
+          air.setPower(fire(t));
+        },
+      });
+    } else {
+      const size = 2.6;
+      const halo = this.glow(0xffc070, size, 0.9);
+      halo.position.copy(head);
+      this.dynamic.add(halo);
+      this.animated.push({
+        update: (t) => {
+          halo.material.opacity = 0.9 * fire(t);
+          halo.scale.setScalar(size * (0.94 + 0.08 * fire(t)));
+        },
+      });
+    }
   }
 
   private idle(item: string, obj: THREE.Object3D, yaw: number, seed: number): void {
@@ -2364,11 +2379,7 @@ export class TreeWorld {
     if (!this.lampsOn) return;
     const fire = (k: number) =>
       0.86 + 0.09 * Math.sin(t * 7.3 + k * 2.1) + 0.05 * Math.sin(t * 17.1 + k * 5.3);
-    this.lanterns.all.forEach((l, i) => {
-      l.glow.material.opacity = 0.9 * fire(i);
-      l.glow.scale.setScalar(l.glowSize * (0.94 + 0.08 * fire(i + 0.5)));
-      if (l.light) l.light.intensity = LANTERN_LIGHT * fire(i);
-    });
+    this.lanterns.all.forEach((l, i) => l.shine(fire(i)));
     this.cabinLights.forEach((l, i) => (l.material.opacity = 0.7 * fire(i + 10)));
     this.windowLights.forEach((l, i) => (l.intensity = WINDOW_LIGHT * fire(i + 20)));
   }

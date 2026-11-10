@@ -17,11 +17,18 @@ import { Snow } from './components/fx/snow';
 
     @if (showTabs()) {
       <nav class="tabs">
-        <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }"><span>🎄</span>{{ i18n.t('navHome') }}</a>
+        <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }"
+          ><span>🎄</span>{{ i18n.t('navHome') }}</a
+        >
         <a routerLink="/new" routerLinkActive="active"><span>✍️</span>{{ i18n.t('navWrite') }}</a>
         <a routerLink="/wishes" routerLinkActive="active"><span>❤️</span>{{ i18n.t('navMine') }}</a>
         <a routerLink="/inbox" routerLinkActive="active">
-          <span>🎁@if (store.gift()?.status === 'ready') {<i class="dot"></i>}</span>{{ i18n.t('navGifts') }}
+          <span
+            >🎁
+            @if (store.gift()?.status === 'ready') {
+              <i class="dot"></i>
+            }</span
+          >{{ i18n.t('navGifts') }}
         </a>
       </nav>
     }
@@ -49,7 +56,8 @@ export class App {
       const path = (e as NavigationEnd).urlAfterRedirects.split('?')[0];
       this.showTabs.set(!['/login', '/register'].includes(path) || this.store.registered());
       this.hideBack();
-      this.hideBack = path === '/' ? () => {} : this.tg.backButton(() => this.router.navigateByUrl('/'));
+      this.hideBack =
+        path === '/' ? () => {} : this.tg.backButton(() => this.router.navigateByUrl('/'));
     });
 
     // Deep link from the bot: t.me/<bot>/<app>?startapp=inbox

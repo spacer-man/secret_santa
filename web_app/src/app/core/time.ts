@@ -16,7 +16,8 @@ export function formatOffset(minutes: number): string {
 
 /** The device offset on New Year's night (DST-aware) */
 export function detectTimezone(known: string[]): string {
-  const year = new Date().getMonth() === 0 ? new Date().getFullYear() : new Date().getFullYear() + 1;
+  const year =
+    new Date().getMonth() === 0 ? new Date().getFullYear() : new Date().getFullYear() + 1;
   const offset = -new Date(year, 0, 1).getTimezoneOffset();
   const tz = formatOffset(offset);
   if (known.includes(tz)) return tz;

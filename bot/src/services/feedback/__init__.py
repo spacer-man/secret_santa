@@ -4,7 +4,6 @@ from aiogram import Bot
 
 from services.delivery import ReactionResult
 
-
 log = logging.getLogger(__name__)
 
 
@@ -27,9 +26,6 @@ async def notify_author(bot: Bot, result: ReactionResult) -> None:
         return None
 
     try:
-        await bot.send_message(
-            chat_id=result.author_telegram_id,
-            text=text,
-            parse_mode=None)
+        await bot.send_message(chat_id=result.author_telegram_id, text=text, parse_mode=None)
     except Exception:
         log.warning("Failed to notify wish author", exc_info=True)

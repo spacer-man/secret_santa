@@ -21,7 +21,12 @@ let ramp: THREE.DataTexture | undefined;
 /** Shading ramp of the snow: smooth, with bright shadows */
 function snowRamp(): THREE.DataTexture {
   if (!ramp) {
-    ramp = new THREE.DataTexture(new Uint8Array([118, 128, 148, 176, 206, 232, 250, 255]), 8, 1, THREE.RedFormat);
+    ramp = new THREE.DataTexture(
+      new Uint8Array([118, 128, 148, 176, 206, 232, 250, 255]),
+      8,
+      1,
+      THREE.RedFormat,
+    );
     ramp.minFilter = ramp.magFilter = THREE.LinearFilter;
     ramp.needsUpdate = true;
   }
@@ -34,7 +39,10 @@ export function snowMaterial(color: number, rim = 0.2): THREE.MeshToonMaterial {
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vSnowPos;')
-      .replace('#include <fog_vertex>', 'vSnowPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <fog_vertex>');
+      .replace(
+        '#include <fog_vertex>',
+        'vSnowPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <fog_vertex>',
+      );
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
@@ -137,7 +145,12 @@ export function buildGlitter(spots: number[], pixelRatio: number): Glitter {
 }
 
 /** Random points with normals on a mesh surface (area-weighted enough for our smooth meshes) */
-export function sampleSurface(geometry: THREE.BufferGeometry, count: number, seed: number, up = 0.25): number[] {
+export function sampleSurface(
+  geometry: THREE.BufferGeometry,
+  count: number,
+  seed: number,
+  up = 0.25,
+): number[] {
   const pos = geometry.getAttribute('position');
   const nrm = geometry.getAttribute('normal');
   const out: number[] = [];

@@ -53,7 +53,10 @@ export function terrainHeight(x: number, z: number): number {
     const d2 = (x - mx) ** 2 + (z - mz) ** 2;
     if (d2 < mr * mr * 4) h += mh * Math.exp(-d2 / (mr * mr * 0.6));
   }
-  h += smooth(10, 16, r) * 0.25 * (Math.sin(x * 0.23 + 1) * Math.cos(z * 0.19) + 0.5 * Math.sin(x * 0.11 - z * 0.13));
+  h +=
+    smooth(10, 16, r) *
+    0.25 *
+    (Math.sin(x * 0.23 + 1) * Math.cos(z * 0.19) + 0.5 * Math.sin(x * 0.11 - z * 0.13));
 
   // Flat around the cabin and on the path from the gate to the porch
   const flat = Math.max(

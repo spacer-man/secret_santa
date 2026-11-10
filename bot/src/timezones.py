@@ -4,23 +4,23 @@ Timezones are stored as fixed UTC offsets in the form ``UTC+3`` or ``UTC+5:30``.
 Only the offset that is in effect on New Year's night matters for us,
 so we don't need full IANA zones (and DST rules) here.
 """
+
 import datetime
 import re
 
-
-_WHOLE_HOURS = range(-12, 15)   # UTC-12 ... UTC+14 (Kiribati)
+_WHOLE_HOURS = range(-12, 15)  # UTC-12 ... UTC+14 (Kiribati)
 _FRACTIONAL = (
-    (-9, 30),   # Marquesas
-    (-3, 30),   # Newfoundland
-    (3, 30),    # Iran
-    (4, 30),    # Afghanistan
-    (5, 30),    # India, Sri Lanka
-    (5, 45),    # Nepal
-    (6, 30),    # Myanmar
-    (8, 45),    # Eucla
-    (9, 30),    # Central Australia
-    (10, 30),   # Lord Howe, South Australia (summer)
-    (12, 45),   # Chatham (NZ)
+    (-9, 30),  # Marquesas
+    (-3, 30),  # Newfoundland
+    (3, 30),  # Iran
+    (4, 30),  # Afghanistan
+    (5, 30),  # India, Sri Lanka
+    (5, 45),  # Nepal
+    (6, 30),  # Myanmar
+    (8, 45),  # Eucla
+    (9, 30),  # Central Australia
+    (10, 30),  # Lord Howe, South Australia (summer)
+    (12, 45),  # Chatham (NZ)
 )
 
 _TZ_RE = re.compile(r"^UTC([+-])(\d{1,2})(?::(\d{2}))?$")
@@ -43,12 +43,9 @@ def offset_minutes(tz: str) -> int:
 
 WHOLE_HOUR_TIMEZONES = [format_offset(h * 60) for h in _WHOLE_HOURS]
 FRACTIONAL_TIMEZONES = [
-    format_offset((1 if h >= 0 else -1) * (abs(h) * 60 + m))
-    for h, m in _FRACTIONAL
+    format_offset((1 if h >= 0 else -1) * (abs(h) * 60 + m)) for h, m in _FRACTIONAL
 ]
-ALL_TIMEZONES = sorted(
-    WHOLE_HOUR_TIMEZONES + FRACTIONAL_TIMEZONES,
-    key=offset_minutes)
+ALL_TIMEZONES = sorted(WHOLE_HOUR_TIMEZONES + FRACTIONAL_TIMEZONES, key=offset_minutes)
 
 
 def is_valid(tz: str) -> bool:
@@ -61,7 +58,7 @@ def tz_from_timeshift(tz: str) -> datetime.timezone:
 
 
 def local_now(tz: str, now: datetime.datetime | None = None) -> datetime.datetime:
-    now = now or datetime.datetime.now(datetime.timezone.utc)
+    now = now or datetime.datetime.now(datetime.UTC)
     return now.astimezone(tz_from_timeshift(tz))
 
 

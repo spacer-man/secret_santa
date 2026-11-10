@@ -1,11 +1,6 @@
-from typing import Generator
-from typing import Sequence
+from collections.abc import Generator, Sequence
 
-from timezones import ALL_TIMEZONES
-from timezones import FRACTIONAL_TIMEZONES
-from timezones import WHOLE_HOUR_TIMEZONES
-from timezones import tz_from_timeshift
-
+from timezones import ALL_TIMEZONES, FRACTIONAL_TIMEZONES, WHOLE_HOUR_TIMEZONES, tz_from_timeshift
 
 __all__ = (
     "ALL_TIMEZONES",
@@ -32,19 +27,28 @@ def clock_emoji(hour: int) -> str:
     clock_face = hour % 12
     # Dictionary mapping clock face number to emojis
     clock_emojis = {
-        0: "🕛", 1: "🕐", 2: "🕑", 3: "🕒",
-        4: "🕓", 5: "🕔", 6: "🕕", 7: "🕖",
-        8: "🕗", 9: "🕘", 10: "🕙", 11: "🕚"
+        0: "🕛",
+        1: "🕐",
+        2: "🕑",
+        3: "🕒",
+        4: "🕓",
+        5: "🕔",
+        6: "🕕",
+        7: "🕖",
+        8: "🕗",
+        9: "🕘",
+        10: "🕙",
+        11: "🕚",
     }
     # Return the clock emoji
     return clock_emojis[clock_face]
 
 
 def batch[T](
-        iterable: Sequence[T],
-        size: int = 1,
-        ) -> Generator[Sequence[T]]:
+    iterable: Sequence[T],
+    size: int = 1,
+) -> Generator[Sequence[T]]:
     """Split sequence to batch"""
-    l = len(iterable)
-    for chunk in range(0, l, size):
-        yield iterable[chunk: min(l, chunk + size)]
+    n = len(iterable)
+    for chunk in range(0, n, size):
+        yield iterable[chunk : min(n, chunk + size)]

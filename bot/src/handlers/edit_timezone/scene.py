@@ -3,25 +3,24 @@ from datetime import datetime
 
 from aiogram import F
 from aiogram.fsm.scene import on
-from aiogram.types import CallbackQuery
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
-from . import messages
 from handlers import buttons
 from handlers import keyboards as common_keyboards
 from handlers.common.cancellable import CancellableScene
 from handlers.consts import Scenes
 from handlers.depends import user_service
-from handlers.utils.timezone import ALL_TIMEZONES
-from handlers.utils.timezone import clock_emoji
-from handlers.utils.timezone import tz_from_timeshift
+from handlers.utils.timezone import ALL_TIMEZONES, clock_emoji, tz_from_timeshift
+
+from . import messages
 
 
 class EditTimezoneScene(
-        CancellableScene,
-        state=Scenes.EDIT_TIMEZONE,
-        ):
+    CancellableScene,
+    state=Scenes.EDIT_TIMEZONE,
+):
     """Edit timezone scene"""
+
     @on.callback_query.enter()
     async def choose_timezone(self, call: CallbackQuery) -> None:
         message = call.message
@@ -35,12 +34,12 @@ class EditTimezoneScene(
         await self.choose_timezone_menu(message=message)
 
     async def choose_timezone_menu(
-            self,
-            message: Message,
-            ) -> None:
+        self,
+        message: Message,
+    ) -> None:
         await message.answer(
-            text=messages.CHOOSE_TIMEZONE,
-            reply_markup=common_keyboards.TIMEZONE_MENU_OR_CANCEL)
+            text=messages.CHOOSE_TIMEZONE, reply_markup=common_keyboards.TIMEZONE_MENU_OR_CANCEL
+        )
 
     @on.callback_query(F.data.in_(ALL_TIMEZONES))
     async def set_timezone(self, _: CallbackQuery) -> None:
@@ -48,23 +47,25 @@ class EditTimezoneScene(
 
 
 class ConfirmEditTimezoneScene(
-        CancellableScene,
-        state=Scenes.CONFIRM_EDIT_TIMEZONE,
-        ):
+    CancellableScene,
+    state=Scenes.CONFIRM_EDIT_TIMEZONE,
+):
     async def check_timezone_correct(
-            self,
-            message: Message,
-            timezone: str,
-            ) -> None:
+        self,
+        message: Message,
+        timezone: str,
+    ) -> None:
         await self.wizard.update_data(selected_timezone=timezone)
         time_now = datetime.now(tz_from_timeshift(timezone))
         await message.answer(
-            text=messages.CONFIRM_TIMEZONE % {
+            text=messages.CONFIRM_TIMEZONE
+            % {
                 "timezone": timezone,
                 "clock_emoji": clock_emoji(hour=time_now.hour),
                 "time_now": time_now.strftime("%H:%M"),
             },
-            reply_markup=common_keyboards.CONFIRM_OR_BACK)
+            reply_markup=common_keyboards.CONFIRM_OR_BACK,
+        )
 
     @on.callback_query.enter()
     async def check_timezone(self, call: CallbackQuery) -> None:
@@ -92,9 +93,7 @@ class ConfirmEditTimezoneScene(
         await message.delete()
 
         if timezone:
-            await user_service.edit_user(
-                telegram_id=message.chat.id,
-                timezone=timezone)
+            await user_service.edit_user(telegram_id=message.chat.id, timezone=timezone)
 
         # Messages
         alert = await message.answer(text=messages.SUCCESSFULL_SELECT_TIMEZONE)

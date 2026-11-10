@@ -39,12 +39,20 @@ import { confetti } from '../components/fx/confetti';
 
     @if (store.stats(); as stats) {
       <section class="stats">
-        <div><b>{{ stats.participants }}</b><span>{{ i18n.t('participants') }}</span></div>
-        <div><b>{{ stats.wishes }}</b><span>{{ i18n.t('wishesCount') }}</span></div>
-        <div><b>{{ zones() }}</b><span>{{ i18n.t('timezonesCount') }}</span></div>
+        <div>
+          <b>{{ stats.participants }}</b
+          ><span>{{ i18n.t('participants') }}</span>
+        </div>
+        <div>
+          <b>{{ stats.wishes }}</b
+          ><span>{{ i18n.t('wishesCount') }}</span>
+        </div>
+        <div>
+          <b>{{ zones() }}</b
+          ><span>{{ i18n.t('timezonesCount') }}</span>
+        </div>
       </section>
     }
-
 
     @if (store.me()?.invite_link) {
       <section class="card">
@@ -55,7 +63,9 @@ import { confetti } from '../components/fx/confetti';
           <button class="btn btn-ghost" (click)="copy()" aria-label="Copy">📋</button>
         </div>
         @if (store.me()?.invited) {
-          <p class="small">{{ i18n.t('invited') }}: <b>{{ store.me()?.invited }}</b> 🎉</p>
+          <p class="small">
+            {{ i18n.t('invited') }}: <b>{{ store.me()?.invited }}</b> 🎉
+          </p>
         }
       </section>
     }
@@ -63,7 +73,9 @@ import { confetti } from '../components/fx/confetti';
     <wave />
 
     <section class="card row between">
-      <span>{{ i18n.t('timezone') }}: <b>{{ store.me()?.timezone }}</b></span>
+      <span
+        >{{ i18n.t('timezone') }}: <b>{{ store.me()?.timezone }}</b></span
+      >
       <a class="link" routerLink="/register">{{ i18n.t('change') }}</a>
     </section>
   `,
@@ -78,7 +90,9 @@ export class HomePage {
   protected readonly target = computed(() =>
     newYearMoment(this.store.me()?.timezone ?? 'UTC+0', this.store.now()),
   );
-  protected readonly zones = computed(() => Object.keys(this.store.stats()?.timezones ?? {}).length);
+  protected readonly zones = computed(
+    () => Object.keys(this.store.stats()?.timezones ?? {}).length,
+  );
 
   private celebrated = false;
 

@@ -8,8 +8,9 @@ Every wish of the season is a ball:
 Plus: a star on top for the opened gift, a garland for invited friends,
 and the festive level (1..10) that changes the whole scene.
 """
+
 import random
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -21,21 +22,20 @@ from db.models import Delivery, User, ValidStatus, Wish
 from services import mandarins
 from services.delivery import DeliveryService, current_season_year, season_start
 
-
 BALL_COLORS = ("red", "gold", "silver", "blue", "green", "purple", "pink", "orange")
 BALL_PATTERNS = ("plain", "stripes", "dots", "snowflake", "zigzag", "stars")
 
 # Festive points needed for levels 1..10
 LEVELS = (0, 2, 6, 12, 20, 30, 42, 56, 72, 90)
 POINTS = {"hung": 3, "lit": 6, "friend": 4, "star": 8, "reaction": 1}
-MAX_GARLAND = 10    # friends shown as garland bulbs
+MAX_GARLAND = 10  # friends shown as garland bulbs
 
 
 class Ball(BaseModel):
     id: UUID
     color: str
     pattern: str
-    state: str          # box | hung | lit
+    state: str  # box | hung | lit
     reactions: dict[str, int]
     replies: int
 
@@ -66,27 +66,37 @@ def festive_level(points: int) -> tuple[int, int, int | None]:
 
 
 async def build_tree(
-        user_id: UUID,
-        delivery_service: DeliveryService,
-        now: datetime | None = None,
-        ) -> Tree:
-    now = now or datetime.now(timezone.utc)
+    user_id: UUID,
+    delivery_service: DeliveryService,
+    now: datetime | None = None,
+) -> Tree:
+    now = now or datetime.now(UTC)
     year = current_season_year(now)
 
     async with new_db_session() as session:
-        wishes = (await session.scalars(
-            select(Wish)
-            .where(Wish.author_id == user_id)
-            .where(Wish.valid_status != ValidStatus.REJECTED)
-            .where(col(Wish.timestamp) >= season_start(year))
-            .order_by(col(Wish.timestamp)))).all()
-        star = bool(await session.scalar(
-            select(Delivery.id)
-            .where(Delivery.recipient_id == user_id)
-            .where(Delivery.year == year)
-            .where(col(Delivery.opened_at).is_not(None))))
-        friends = await session.scalar(
-            select(func.count(col(User.id))).where(User.referrer_id == user_id)) or 0
+        wishes = (
+            await session.scalars(
+                select(Wish)
+                .where(Wish.author_id == user_id)
+                .where(Wish.valid_status != ValidStatus.REJECTED)
+                .where(col(Wish.timestamp) >= season_start(year))
+                .order_by(col(Wish.timestamp))
+            )
+        ).all()
+        star = bool(
+            await session.scalar(
+                select(Delivery.id)
+                .where(Delivery.recipient_id == user_id)
+                .where(Delivery.year == year)
+                .where(col(Delivery.opened_at).is_not(None))
+            )
+        )
+        friends = (
+            await session.scalar(
+                select(func.count(col(User.id))).where(User.referrer_id == user_id)
+            )
+            or 0
+        )
         balance = await mandarins.balance(session, user_id)
 
     feedback = await delivery_service.feedback(w.id for w in wishes)
@@ -100,13 +110,16 @@ async def build_tree(
         else:
             state = "hung"
         color, pattern = default_look(wish.id)
-        balls.append(Ball(
-            id=wish.id,
-            color=wish.ball_color if wish.ball_color in BALL_COLORS else color,
-            pattern=wish.ball_pattern if wish.ball_pattern in BALL_PATTERNS else pattern,
-            state=state,
-            reactions=fb.reactions,
-            replies=len(fb.replies)))
+        balls.append(
+            Ball(
+                id=wish.id,
+                color=wish.ball_color if wish.ball_color in BALL_COLORS else color,
+                pattern=wish.ball_pattern if wish.ball_pattern in BALL_PATTERNS else pattern,
+                state=state,
+                reactions=fb.reactions,
+                replies=len(fb.replies),
+            )
+        )
 
     points = (
         sum(POINTS[b.state] for b in balls if b.state != "box")
@@ -125,4 +138,5 @@ async def build_tree(
         level=level,
         points=points,
         level_from=level_from,
-        level_to=level_to)
+        level_to=level_to,
+    )

@@ -1,9 +1,7 @@
 import json
+from collections.abc import AsyncGenerator, Generator, Iterable
 from datetime import datetime
 from typing import (
-    AsyncGenerator,
-    Generator,
-    Iterable,
     NotRequired,
     Required,
     TypedDict,
@@ -17,10 +15,10 @@ from sqlmodel import update
 
 from db import new_db_session
 from db.models import Delivery, MediaType, User, ValidStatus, Wish
-from services import mandarins
+from repos.media.abc import MediaRepository
 from repos.user.abc import UserRepository
 from repos.wish.abc import WishRepository
-from repos.media.abc import MediaRepository
+from services import mandarins
 
 
 # Exceptions
@@ -31,8 +29,9 @@ class WishAuthorNotFoundError(Exception):
 # DTOs
 class MediaDTO(BaseModel):
     id: UUID
-    data: bytes = Field(max_length=10 * 2 ** 20)
+    data: bytes = Field(max_length=10 * 2**20)
     type: MediaType
+
 
 class WishDTO(BaseModel):
     id: UUID
@@ -52,6 +51,7 @@ class WishMediaData(TypedDict):
     data: bytes
     type: MediaType
 
+
 class NewWishArgs(TypedDict):
     author_telegram_id: Required[int]
     ball_color: NotRequired[str | None]
@@ -63,16 +63,17 @@ class NewWishArgs(TypedDict):
 
 
 # Service
-class WishService(object):
+class WishService:
     """
     Serfice for manipulating with wish.
     """
+
     def __init__(
-            self,
-            user_repo_type: type[UserRepository],
-            wish_repo_type: type[WishRepository],
-            media_repo_type: type[MediaRepository],
-            ) -> None:
+        self,
+        user_repo_type: type[UserRepository],
+        wish_repo_type: type[WishRepository],
+        media_repo_type: type[MediaRepository],
+    ) -> None:
         self.user_repo_type = user_repo_type
         self.wish_repo_type = wish_repo_type
         self.media_repo_type = media_repo_type
@@ -90,75 +91,73 @@ class WishService(object):
             media_repo = self.media_repo_type(session=db_session)
 
             author_telegram_id = kwargs["author_telegram_id"]
-            author = await user_repo.get_one(
-                filter_by={"telegram_id": author_telegram_id})
+            author = await user_repo.get_one(filter_by={"telegram_id": author_telegram_id})
             if not author:
                 raise WishAuthorNotFoundError(
-                    "User with telegram_id=%d not found" % author_telegram_id)
+                    f"User with telegram_id={author_telegram_id} not found"
+                )
 
             author_id = author.id
             text_entities = kwargs.get("text_entities")
             if text_entities is not None:
-                text_entities = json.dumps([
-                    entity.model_dump(mode="json")
-                    for entity in text_entities
-                ])
+                text_entities = json.dumps(
+                    [entity.model_dump(mode="json") for entity in text_entities]
+                )
             wish_id = await wish_repo.create(
                 author_id=author_id,
                 text_entities=text_entities,
                 effect_id=kwargs.get("effect_id"),
                 text=kwargs["text"],
                 ball_color=kwargs.get("ball_color"),
-                ball_pattern=kwargs.get("ball_pattern"))
+                ball_pattern=kwargs.get("ball_pattern"),
+            )
             await db_session.commit()
 
             if media := kwargs.get("media"):
                 for media_item in media:
                     await media_repo.create(
-                        wish_id=wish_id,
-                        data=media_item["data"],
-                        type=media_item["type"])
+                        wish_id=wish_id, data=media_item["data"], type=media_item["type"]
+                    )
             await db_session.commit()
 
         return wish_id
 
     async def _wish_medias(
-            self,
-            wish_id: UUID,
-            media_repo: MediaRepository,
-            ) -> Generator[MediaDTO]:
+        self,
+        wish_id: UUID,
+        media_repo: MediaRepository,
+    ) -> Generator[MediaDTO]:
         """
         Create wish medias generator.
         """
         return (
             MediaDTO.model_validate(media, from_attributes=True)
-            for media in await media_repo.get_many(
-                filter_by={"wish_id": wish_id})
+            for media in await media_repo.get_many(filter_by={"wish_id": wish_id})
         )
 
     async def _wishes_generator(
-            self,
-            author_id: UUID,
-            author_telegram_id: int,
-            wish_repo: WishRepository,
-            media_repo: MediaRepository,
-            ) -> AsyncGenerator[WishDTO]:
+        self,
+        author_id: UUID,
+        author_telegram_id: int,
+        wish_repo: WishRepository,
+        media_repo: MediaRepository,
+    ) -> AsyncGenerator[WishDTO]:
         """
         Create wishes async generator.
         """
-        for wish in await wish_repo.get_many(
-                filter_by={"author_id": author_id}):
-            yield WishDTO.model_validate(obj={
-                **wish.model_dump(),
-                "author_telegram_id": author_telegram_id,
-                "media": await self._wish_medias(
-                    wish_id=wish.id, media_repo=media_repo),
-            })
+        for wish in await wish_repo.get_many(filter_by={"author_id": author_id}):
+            yield WishDTO.model_validate(
+                obj={
+                    **wish.model_dump(),
+                    "author_telegram_id": author_telegram_id,
+                    "media": await self._wish_medias(wish_id=wish.id, media_repo=media_repo),
+                }
+            )
 
     async def my_wishes(
-            self,
-            author_telegram_id: int,
-            ) -> AsyncGenerator[WishDTO]:
+        self,
+        author_telegram_id: int,
+    ) -> AsyncGenerator[WishDTO]:
         """
         Get wishes :class:`Generator`.
 
@@ -171,18 +170,19 @@ class WishService(object):
             user_repo = self.user_repo_type(session=db_session)
             wish_repo = self.wish_repo_type(session=db_session)
             media_repo = self.media_repo_type(session=db_session)
-            author = await user_repo.get_one(
-                filter_by={"telegram_id": author_telegram_id})
+            author = await user_repo.get_one(filter_by={"telegram_id": author_telegram_id})
 
             if not author:
                 raise WishAuthorNotFoundError(
-                    "User with telegram_id=%d not found" % author_telegram_id)
+                    f"User with telegram_id={author_telegram_id} not found"
+                )
 
             wishes = self._wishes_generator(
                 author_id=author.id,
                 author_telegram_id=author_telegram_id,
                 wish_repo=wish_repo,
-                media_repo=media_repo)
+                media_repo=media_repo,
+            )
 
         return wishes
 
@@ -201,15 +201,17 @@ class WishService(object):
             media_repo = self.media_repo_type(session=db_session)
 
             if wish := await wish_repo.get_one(wish_id=wish_id):
-                author = await user_repo.get_one(
-                    filter_by={"id": wish.author_id})
+                author = await user_repo.get_one(filter_by={"id": wish.author_id})
                 if author:
-                    return WishDTO.model_validate(obj={
-                        **wish.model_dump(),
-                        "author_telegram_id": author.telegram_id,
-                        "media": await self._wish_medias(
-                            wish_id=wish.id, media_repo=media_repo),
-                    })
+                    return WishDTO.model_validate(
+                        obj={
+                            **wish.model_dump(),
+                            "author_telegram_id": author.telegram_id,
+                            "media": await self._wish_medias(
+                                wish_id=wish.id, media_repo=media_repo
+                            ),
+                        }
+                    )
 
         return None
 
@@ -231,17 +233,18 @@ class WishService(object):
             await db_session.execute(
                 update(Delivery)
                 .where(Delivery.wish_id == wish_id)  # type: ignore
-                .values(wish_id=None))
+                .values(wish_id=None)
+            )
             await media_repo.delete(filter_by={"wish_id": wish_id})
             await wish_repo.delete(filter_by={"id": wish_id})
 
             await db_session.commit()
 
     async def update_wish_status(
-            self,
-            wish_id: UUID,
-            valid_status: ValidStatus,
-            ) -> None:
+        self,
+        wish_id: UUID,
+        valid_status: ValidStatus,
+    ) -> None:
         """
         Update valid wish status.
         If wish with current id is not exist, than do nothing.
@@ -269,10 +272,9 @@ class WishService(object):
         wish = await db_session.get(Wish, wish_id)
         if not wish:
             return None
-        await mandarins.award(
-            db_session, wish.author_id, mandarins.Reason.WISH_APPROVED, wish_id)
+        await mandarins.award(db_session, wish.author_id, mandarins.Reason.WISH_APPROVED, wish_id)
         author = await db_session.get(User, wish.author_id)
         if author and author.referrer_id:
             await mandarins.award(
-                db_session, author.referrer_id,
-                mandarins.Reason.FRIEND_WISH, author.id)
+                db_session, author.referrer_id, mandarins.Reason.FRIEND_WISH, author.id
+            )

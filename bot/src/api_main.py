@@ -2,7 +2,6 @@ import uvicorn
 
 import setup
 
-
 if __name__ == "__main__":
     setup.setup_logs()
     uvicorn.run(
@@ -11,4 +10,5 @@ if __name__ == "__main__":
         port=8000,
         proxy_headers=True,
         forwarded_allow_ips="*",
-        log_config=None)
+        log_config=None,
+    )

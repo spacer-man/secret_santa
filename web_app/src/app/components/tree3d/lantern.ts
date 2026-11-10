@@ -39,7 +39,8 @@ export function lanternFactory(kit: LanternKit): Lanterns {
   };
   box(0.3, 0.05, 0.3, 0, 0.025, 0);
   box(0.22, 0.03, 0.22, 0, 0.065, 0);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(0.03, 0.27, 0.03, sx * 0.105, 0.2, sz * 0.105);
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) box(0.03, 0.27, 0.03, sx * 0.105, 0.2, sz * 0.105);
   box(0.27, 0.03, 0.27, 0, 0.345, 0);
   const roof = new THREE.ConeGeometry(0.24, 0.17, 4).toNonIndexed();
   roof.rotateY(Math.PI / 4);

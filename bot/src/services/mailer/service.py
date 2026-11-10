@@ -1,18 +1,18 @@
 import asyncio
 import logging
 import random
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import FSInputFile, InlineKeyboardMarkup
 
 import timezones
-from . import messages
 from configs.labels import LabelsConfig
 from handlers import keyboards as common_keyboards
 from services.delivery import DeliveryService
 
+from . import messages
 
 log = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 SEND_INTERVAL = 0.05
 
 
-class MailerService(object):
+class MailerService:
     """
     Sends gifts when the New Year comes in user's timezone.
 
@@ -29,6 +29,7 @@ class MailerService(object):
     users who haven't got one yet. So delays, restarts and users who register
     after midnight are handled too.
     """
+
     def __init__(self, bot: Bot, delivery_service: DeliveryService) -> None:
         self.bot = bot
         self.delivery_service = delivery_service
@@ -46,7 +47,8 @@ class MailerService(object):
             chat_id=reciever,
             photo=FSInputFile(LabelsConfig().gift(color)),
             caption=messages.NEW_WISH_ALERT,
-            reply_markup=self.gift_keyboard())
+            reply_markup=self.gift_keyboard(),
+        )
 
     async def send_gifts(self, tz: str, year: int) -> None:
         recipients = await self.delivery_service.pending_recipients(tz, year)
@@ -64,17 +66,15 @@ class MailerService(object):
             except TelegramForbiddenError:
                 log.info(f"Bot is blocked by user {recipient.telegram_id}")
             except Exception:
-                log.warning(
-                    f"Failed to send gift to user {recipient.telegram_id}",
-                    exc_info=True)
+                log.warning(f"Failed to send gift to user {recipient.telegram_id}", exc_info=True)
             await asyncio.sleep(SEND_INTERVAL)
 
     async def check_ny_and_send_wishes(self, now: datetime | None = None) -> None:
         if self._lock.locked():
-            return None     # Previous run is still sending
+            return None  # Previous run is still sending
 
         async with self._lock:
-            now = now or datetime.now(timezone.utc)
+            now = now or datetime.now(UTC)
             for tz in timezones.ALL_TIMEZONES:
                 if (year := timezones.new_year_year(tz, now)) is not None:
                     await self.send_gifts(tz=tz, year=year)

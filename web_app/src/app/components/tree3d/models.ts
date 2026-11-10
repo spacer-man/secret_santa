@@ -48,8 +48,7 @@ export class Models {
   private readonly cache = new Map<ModelName, Promise<THREE.Group>>();
   private readonly materials = new Map<string, THREE.MeshToonMaterial>();
 
-  constructor(private readonly gradient: THREE.Texture) {
-  }
+  constructor(private readonly gradient: THREE.Texture) {}
 
   /** A fresh copy of the model (geometry and materials are shared) */
   async get(name: ModelName, outline = true): Promise<THREE.Group> {
@@ -70,7 +69,9 @@ export class Models {
   }
 
   /** Geometry + material of a single-mesh model, for instancing */
-  async mesh(name: ModelName): Promise<{ geometry: THREE.BufferGeometry; material: THREE.Material }> {
+  async mesh(
+    name: ModelName,
+  ): Promise<{ geometry: THREE.BufferGeometry; material: THREE.Material }> {
     const group = await this.get(name, false);
     let found: THREE.Mesh | undefined;
     group.traverse((o) => (found ??= (o as THREE.Mesh).isMesh ? (o as THREE.Mesh) : undefined));
@@ -99,7 +100,11 @@ export class Models {
         source.map.colorSpace = THREE.SRGBColorSpace;
         source.map.magFilter = THREE.NearestFilter;
       }
-      mat = new THREE.MeshToonMaterial({ map: source.map, color: source.color, gradientMap: this.gradient });
+      mat = new THREE.MeshToonMaterial({
+        map: source.map,
+        color: source.color,
+        gradientMap: this.gradient,
+      });
       this.materials.set(key, mat);
     }
     return mat;

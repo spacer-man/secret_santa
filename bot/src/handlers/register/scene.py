@@ -3,44 +3,36 @@ from datetime import datetime
 from uuid import UUID
 
 from aiogram import F
-from aiogram.fsm.scene import on
-from aiogram.fsm.scene import Scene
-from aiogram.types import CallbackQuery
-from aiogram.types import Message
+from aiogram.fsm.scene import Scene, on
+from aiogram.types import CallbackQuery, Message
 
 from configs.support import SupportConfig
-
-from . import messages
 from handlers import buttons
 from handlers import keyboards as common_keyboards
 from handlers.common.cancellable import CancellableScene
 from handlers.consts import Scenes
 from handlers.depends import user_service
 from handlers.referral import invite_link
-from handlers.utils.timezone import ALL_TIMEZONES
-from handlers.utils.timezone import clock_emoji
-from handlers.utils.timezone import tz_from_timeshift
+from handlers.utils.timezone import ALL_TIMEZONES, clock_emoji, tz_from_timeshift
+
+from . import messages
 
 
 class RegistrationScene(
-        Scene,
-        state=Scenes.REGISTRATION,
-        ):
+    Scene,
+    state=Scenes.REGISTRATION,
+):
     """Registration new user into bot scene"""
+
     @on.message.enter()
     async def greeting(self, message: Message) -> None:
         name = None
         if message.from_user:
-            name = (
-                message.from_user.full_name
-                or message.from_user.username
-                or name
-            )
+            name = message.from_user.full_name or message.from_user.username or name
 
-        greeting = await message.answer(
-            text=messages.FIRST_GREETING % {"name": f", *{name}*"})
+        greeting = await message.answer(text=messages.FIRST_GREETING % {"name": f", *{name}*"})
         await self.choose_timezone_menu(message=message)
-        
+
         await asyncio.sleep(5)
         await greeting.delete()
 
@@ -57,12 +49,12 @@ class RegistrationScene(
         await self.choose_timezone_menu(message=message)
 
     async def choose_timezone_menu(
-            self,
-            message: Message,
-            ) -> None:
+        self,
+        message: Message,
+    ) -> None:
         await message.answer(
-            text=messages.CHOOSE_TIMEZONE,
-            reply_markup=common_keyboards.TIMEZONE_MENU)
+            text=messages.CHOOSE_TIMEZONE, reply_markup=common_keyboards.TIMEZONE_MENU
+        )
 
     @on.callback_query(F.data.in_(ALL_TIMEZONES))
     async def choose_timezone(self, _: CallbackQuery) -> None:
@@ -70,23 +62,25 @@ class RegistrationScene(
 
 
 class ConfirmTimezoneScene(
-        CancellableScene,
-        state=Scenes.CONFIRM_TIMEZONE,
-        ):
+    CancellableScene,
+    state=Scenes.CONFIRM_TIMEZONE,
+):
     async def check_timezone_correct(
-            self,
-            message: Message,
-            timezone: str,
-            ) -> None:
+        self,
+        message: Message,
+        timezone: str,
+    ) -> None:
         await self.wizard.update_data(selected_timezone=timezone)
         time_now = datetime.now(tz_from_timeshift(timezone))
         await message.answer(
-            text=messages.CONFIRM_TIMEZONE % {
+            text=messages.CONFIRM_TIMEZONE
+            % {
                 "timezone": timezone,
                 "clock_emoji": clock_emoji(hour=time_now.hour),
                 "time_now": time_now.strftime("%H:%M"),
             },
-            reply_markup=common_keyboards.CONFIRM_OR_BACK)
+            reply_markup=common_keyboards.CONFIRM_OR_BACK,
+        )
 
     @on.callback_query.enter()
     async def check_timezone(self, call: CallbackQuery) -> None:
@@ -120,7 +114,8 @@ class ConfirmTimezoneScene(
                 telegram_id=message.chat.id,
                 timezone=timezone,
                 language=call.from_user.language_code,
-                referrer_id=UUID(referrer_id) if referrer_id else None)
+                referrer_id=UUID(referrer_id) if referrer_id else None,
+            )
 
         # Messages
         alerts = (
@@ -130,27 +125,26 @@ class ConfirmTimezoneScene(
         to_delete = []
         for msg in alerts:
             to_delete.append(await message.answer(text=msg))
-            await asyncio.sleep(.5)
+            await asyncio.sleep(0.5)
 
         share_text = messages.SHARE_REQUEST
         if user_id and message.bot:
             link = await invite_link(bot=message.bot, user_id=user_id)
             share_text += messages.INVITE_LINK % {"link": link}
         await message.answer(
-            text=share_text,
-            reply_markup=common_keyboards.HIDE,
-            disable_web_page_preview=True)
-        await asyncio.sleep(.5)
+            text=share_text, reply_markup=common_keyboards.HIDE, disable_web_page_preview=True
+        )
+        await asyncio.sleep(0.5)
 
         await message.answer(
-            text=messages.SUPPORT_REQUEST % {
-                "support_link": SupportConfig().author_support_link},
+            text=messages.SUPPORT_REQUEST % {"support_link": SupportConfig().author_support_link},
             reply_markup=common_keyboards.SUPPORT_OR_HIDE,
-            disable_web_page_preview=True)
-        await asyncio.sleep(.5)
+            disable_web_page_preview=True,
+        )
+        await asyncio.sleep(0.5)
 
         to_delete.append(await message.answer(text=messages.WISH_OFFER))
-        await asyncio.sleep(.5)
+        await asyncio.sleep(0.5)
 
         await self.wizard.exit()
 

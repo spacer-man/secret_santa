@@ -9,6 +9,7 @@ Authentication of Telegram users.
 Docs: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
       https://core.telegram.org/widgets/login#checking-authorization
 """
+
 import base64
 import hashlib
 import hmac
@@ -17,7 +18,6 @@ import time
 from urllib.parse import parse_qsl
 
 from pydantic import BaseModel
-
 
 INIT_DATA_MAX_AGE = 7 * 24 * 3600
 LOGIN_MAX_AGE = 24 * 3600
@@ -48,8 +48,7 @@ def check_init_data(init_data: str, bot_token: str, now: float | None = None) ->
     # Everything except "hash" is checked ("signature" too)
     received_hash = fields.pop("hash", "")
     secret = _hmac(b"WebAppData", bot_token.encode())
-    expected = hmac.new(
-        secret, _check_string(fields).encode(), hashlib.sha256).hexdigest()
+    expected = hmac.new(secret, _check_string(fields).encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, received_hash):
         raise AuthError("Bad initData signature")
 
@@ -64,15 +63,15 @@ def check_init_data(init_data: str, bot_token: str, now: float | None = None) ->
         id=user["id"],
         first_name=user.get("first_name"),
         language_code=user.get("language_code"),
-        start_param=fields.get("start_param"))
+        start_param=fields.get("start_param"),
+    )
 
 
 def check_login_widget(data: dict, bot_token: str, now: float | None = None) -> TgUser:
     fields = {k: str(v) for k, v in data.items() if v is not None}
     received_hash = fields.pop("hash", "")
     secret = hashlib.sha256(bot_token.encode()).digest()
-    expected = hmac.new(
-        secret, _check_string(fields).encode(), hashlib.sha256).hexdigest()
+    expected = hmac.new(secret, _check_string(fields).encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, received_hash):
         raise AuthError("Bad login signature")
 
@@ -121,7 +120,9 @@ def unsign(token: str, bot_token: str, purpose: str, now: float | None = None) -
 def make_session(user: TgUser, bot_token: str) -> str:
     return sign(
         {"id": user.id, "fn": user.first_name, "exp": int(time.time()) + SESSION_MAX_AGE},
-        bot_token, "session")
+        bot_token,
+        "session",
+    )
 
 
 def read_session(token: str, bot_token: str) -> TgUser:

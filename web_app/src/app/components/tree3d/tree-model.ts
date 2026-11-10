@@ -19,11 +19,6 @@ export interface TreeKit {
   snow(): THREE.MeshToonMaterial;
 }
 
-function rand(seed: number): number {
-  const x = Math.sin(seed * 9301 + 49297) * 233280;
-  return x - Math.floor(x);
-}
-
 // Tree tiers: [bottom y, height, radius]
 export const TIERS: [number, number, number][] = [
   [0.75, 1.45, 2.1],
@@ -57,7 +52,8 @@ function lobeShape(i: number, theta: number): number {
 /** Mean of lobeShape() around the circle */
 const LOBE_MEAN = (() => {
   let sum = 0;
-  for (let k = 0; k < 360; k++) sum += Math.pow(0.5 + 0.5 * Math.cos((k / 360) * Math.PI * 2), LOBE_POW);
+  for (let k = 0; k < 360; k++)
+    sum += Math.pow(0.5 + 0.5 * Math.cos((k / 360) * Math.PI * 2), LOBE_POW);
   return sum / 360;
 })();
 
@@ -233,7 +229,10 @@ function buildTier(i: number): THREE.BufferGeometry {
     colors.push(rim.map(() => GREEN_DEEP.clone().lerp(GREEN_UNDER, blend)));
   });
   const apex = slope(i, 0, 0, new THREE.Vector3());
-  return ringGeometry(rings, colors, apex, new THREE.Vector3(0, bottom + h * 0.3, 0), [GREEN, GREEN_UNDER]);
+  return ringGeometry(rings, colors, apex, new THREE.Vector3(0, bottom + h * 0.3, 0), [
+    GREEN,
+    GREEN_UNDER,
+  ]);
 }
 
 /**
@@ -242,7 +241,7 @@ function buildTier(i: number): THREE.BufferGeometry {
  * rounded lip that tucks into the needles. Thickness varies slowly: lumpy, not noisy.
  */
 function buildSnow(i: number): THREE.BufferGeometry {
-  const [, h, r] = TIERS[i];
+  const [, , r] = TIERS[i];
   const m = snowColumns(i);
   const n = lobeCount(i);
   // Where the tier above hides the slope (snow starts under it)
@@ -284,14 +283,19 @@ function buildSnow(i: number): THREE.BufferGeometry {
     }
     rings.push(ring);
   }
-  const top = above ? null : slope(i, 0, 0, new THREE.Vector3()).add(new THREE.Vector3(0, thick, 0));
+  const top = above
+    ? null
+    : slope(i, 0, 0, new THREE.Vector3()).add(new THREE.Vector3(0, thick, 0));
   return ringGeometry(rings, null, top, null);
 }
 
 export function buildFirTree(kit: TreeKit): THREE.Group {
   const tree = new THREE.Group();
 
-  const trunk = kit.hull(new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.6, 12), kit.toon(0x5b3a26)), 0.02);
+  const trunk = kit.hull(
+    new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.6, 12), kit.toon(0x5b3a26)),
+    0.02,
+  );
   trunk.position.y = 0.85;
   tree.add(trunk);
 

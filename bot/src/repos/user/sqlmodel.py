@@ -1,7 +1,6 @@
+from collections.abc import Generator
 from typing import (
     Any,
-    Generator,
-    Optional,
     Unpack,
 )
 from uuid import UUID
@@ -9,8 +8,9 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, update
 
-from .abc import EditUserArgs, NewUserArgs, UserDTO, UserRepository
 from db.models import User
+
+from .abc import EditUserArgs, NewUserArgs, UserDTO, UserRepository
 
 
 class SQLModelUserRepository(UserRepository):
@@ -18,9 +18,9 @@ class SQLModelUserRepository(UserRepository):
         self.session = session
 
     async def get_one(
-            self,
-            filter_by: Optional[dict[str, Any]] = None,
-            ) -> UserDTO | None:
+        self,
+        filter_by: dict[str, Any] | None = None,
+    ) -> UserDTO | None:
         stmt = select(User)
         if filter_by:
             stmt = stmt.filter_by(**filter_by)
@@ -32,17 +32,16 @@ class SQLModelUserRepository(UserRepository):
         return None
 
     async def get_many(
-            self,
-            filter_by: Optional[dict[str, Any]] = None,
-            ) -> Generator[UserDTO]:
+        self,
+        filter_by: dict[str, Any] | None = None,
+    ) -> Generator[UserDTO]:
         stmt = select(User)
         if filter_by:
             stmt = stmt.filter_by(**filter_by)
 
         query_result = await self.session.execute(stmt)
         users = (
-            UserDTO.model_validate(user, from_attributes=True)
-            for user in query_result.scalars()
+            UserDTO.model_validate(user, from_attributes=True) for user in query_result.scalars()
         )
         return users
 
@@ -53,9 +52,5 @@ class SQLModelUserRepository(UserRepository):
         return new_user.id
 
     async def edit(self, **kwargs: Unpack[EditUserArgs]) -> None:
-        stmt = (
-            update(User)
-            .filter_by(id=kwargs["id"])
-            .values(timezone=kwargs["timezone"])
-        )
+        stmt = update(User).filter_by(id=kwargs["id"]).values(timezone=kwargs["timezone"])
         await self.session.execute(stmt)

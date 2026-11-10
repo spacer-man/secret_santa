@@ -1,8 +1,7 @@
-from .new.scene import WishingScene
 from .list.scene import WishesListScene
+from .new.scene import WishingScene
 from .open.router import wish_open_router
 from .validate.router import wish_validate_router
-
 
 scenes = (
     WishesListScene,

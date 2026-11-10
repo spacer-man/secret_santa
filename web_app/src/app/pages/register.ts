@@ -23,8 +23,12 @@ import { detectTimezone, localTime } from '../core/time';
           <option [value]="tz">{{ tz }}</option>
         }
       </select>
-      <p class="clock">{{ i18n.t('yourTime') }}: <b>{{ time() }}</b></p>
-      <button class="btn btn-primary" [disabled]="saving()" (click)="save()">{{ i18n.t('join') }}</button>
+      <p class="clock">
+        {{ i18n.t('yourTime') }}: <b>{{ time() }}</b>
+      </p>
+      <button class="btn btn-primary" [disabled]="saving()" (click)="save()">
+        {{ i18n.t('join') }}
+      </button>
       @if (error()) {
         <p class="error">{{ error() }}</p>
       }

@@ -1,10 +1,11 @@
 """
 New Year gifts: who received which wish, reactions and anonymous replies.
 """
+
 import random
 from collections import Counter
-from datetime import datetime, timezone
-from typing import Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -17,7 +18,6 @@ from db.models import Delivery, User, ValidStatus, Wish
 from repos.wish.abc import WishRepository
 from services import mandarins
 from services.wish import WishDTO, WishService
-
 
 REACTIONS = ("❤️", "😂", "🥹", "🔥", "🎉", "👏")
 MAX_REPLY_LENGTH = 1024
@@ -38,6 +38,7 @@ class DeliveryDTO(BaseModel):
 
 class FeedbackDTO(BaseModel):
     """What recipients answered to a wish"""
+
     recipients: int = 0
     reactions: dict[str, int] = {}
     replies: list[str] = []
@@ -58,11 +59,11 @@ class ReactionResult(BaseModel):
 
 def season_start(year: int) -> datetime:
     """Wishes written after this moment are sent at the New Year ``year``"""
-    return datetime(year - 1, 2, 1, tzinfo=timezone.utc)
+    return datetime(year - 1, 2, 1, tzinfo=UTC)
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def current_season_year(now: datetime | None = None) -> int:
@@ -71,12 +72,12 @@ def current_season_year(now: datetime | None = None) -> int:
     return now.year + 1 if now.month > 1 else now.year
 
 
-class DeliveryService(object):
+class DeliveryService:
     def __init__(
-            self,
-            wish_service: WishService,
-            wish_repo_type: type[WishRepository],
-            ) -> None:
+        self,
+        wish_service: WishService,
+        wish_repo_type: type[WishRepository],
+    ) -> None:
         self.wish_service = wish_service
         self.wish_repo_type = wish_repo_type
 
@@ -84,10 +85,7 @@ class DeliveryService(object):
     async def pending_recipients(self, tz: str, year: int) -> list[Recipient]:
         """Users from the timezone who haven't got a gift for the ``year`` yet"""
         async with new_db_session() as session:
-            delivered = (
-                select(Delivery.recipient_id)
-                .where(Delivery.year == year)
-            )
+            delivered = select(Delivery.recipient_id).where(Delivery.year == year)
             stmt = (
                 select(User.id, User.telegram_id)
                 .where(User.timezone == tz)
@@ -101,17 +99,16 @@ class DeliveryService(object):
             exists = await session.scalar(
                 select(Delivery.id)
                 .where(Delivery.recipient_id == user_id)
-                .where(Delivery.year == year))
+                .where(Delivery.year == year)
+            )
             if exists:
                 return None
-            session.add(Delivery(
-                recipient_id=user_id, year=year, notified_at=utc_now()))
+            session.add(Delivery(recipient_id=user_id, year=year, notified_at=utc_now()))
             await session.commit()
 
     # ====== Recipient side ====== #
     async def _user(self, session, telegram_id: int) -> User | None:
-        return await session.scalar(
-            select(User).where(User.telegram_id == telegram_id))
+        return await session.scalar(select(User).where(User.telegram_id == telegram_id))
 
     async def current(self, telegram_id: int) -> DeliveryDTO | None:
         """
@@ -130,8 +127,9 @@ class DeliveryService(object):
 
     async def _current_delivery(self, session, user: User) -> Delivery | None:
         now = utc_now()
-        local = timezones.local_now(user.timezone, now) \
-            if timezones.is_valid(user.timezone) else now
+        local = (
+            timezones.local_now(user.timezone, now) if timezones.is_valid(user.timezone) else now
+        )
         # Gifts can be opened all January
         if local.month != 1:
             return None
@@ -139,11 +137,11 @@ class DeliveryService(object):
         delivery = await session.scalar(
             select(Delivery)
             .where(Delivery.recipient_id == user.id)
-            .where(Delivery.year == local.year))
+            .where(Delivery.year == local.year)
+        )
         if not delivery:
             # Registered after midnight: the gift is still here
-            delivery = Delivery(
-                recipient_id=user.id, year=local.year, notified_at=now)
+            delivery = Delivery(recipient_id=user.id, year=local.year, notified_at=now)
             session.add(delivery)
             await session.flush()
         return delivery
@@ -163,22 +161,23 @@ class DeliveryService(object):
 
             if delivery.wish_id is None:
                 wish_repo = self.wish_repo_type(session=session)
-                wishes = list(await wish_repo.get_with_min_recipients(
-                    recipient=user.id,
-                    since=season_start(delivery.year)))
+                wishes = list(
+                    await wish_repo.get_with_min_recipients(
+                        recipient=user.id, since=season_start(delivery.year)
+                    )
+                )
                 if wishes:
                     wish = random.choice(wishes)
                     delivery.wish_id = wish.id
                     await wish_repo.increment_recipients(wish.id)
                     # The author's ball lights up
                     await mandarins.award(
-                        session, wish.author_id,
-                        mandarins.Reason.WISH_DELIVERED, delivery.id)
+                        session, wish.author_id, mandarins.Reason.WISH_DELIVERED, delivery.id
+                    )
 
             if delivery.opened_at is None:
                 delivery.opened_at = utc_now()
-                await mandarins.award(
-                    session, user.id, mandarins.Reason.GIFT_OPENED, delivery.id)
+                await mandarins.award(session, user.id, mandarins.Reason.GIFT_OPENED, delivery.id)
 
             session.add(delivery)
             await session.commit()
@@ -190,20 +189,23 @@ class DeliveryService(object):
             user = await self._user(session, telegram_id)
             if not user:
                 return []
-            deliveries = (await session.scalars(
-                select(Delivery)
-                .where(Delivery.recipient_id == user.id)
-                .where(col(Delivery.opened_at).is_not(None))
-                .order_by(col(Delivery.year).desc()))).all()
+            deliveries = (
+                await session.scalars(
+                    select(Delivery)
+                    .where(Delivery.recipient_id == user.id)
+                    .where(col(Delivery.opened_at).is_not(None))
+                    .order_by(col(Delivery.year).desc())
+                )
+            ).all()
         return [await self._to_dto(d) for d in deliveries]
 
     async def react(
-            self,
-            telegram_id: int,
-            delivery_id: UUID,
-            reaction: str | None = None,
-            reply: str | None = None,
-            ) -> ReactionResult:
+        self,
+        telegram_id: int,
+        delivery_id: UUID,
+        reaction: str | None = None,
+        reply: str | None = None,
+    ) -> ReactionResult:
         """
         Set a reaction and/or an anonymous reply to the received wish.
         The reaction can be changed, the reply can be sent only once.
@@ -229,17 +231,18 @@ class DeliveryService(object):
                 delivery.reply = reply
 
             session.add(delivery)
-            author = (await session.execute(
-                select(User.id, User.telegram_id)
-                .join(Wish, col(Wish.author_id) == User.id)
-                .where(Wish.id == delivery.wish_id))).first()
+            author = (
+                await session.execute(
+                    select(User.id, User.telegram_id)
+                    .join(Wish, col(Wish.author_id) == User.id)
+                    .where(Wish.id == delivery.wish_id)
+                )
+            ).first()
             author_tg_id = author[1] if author else None
             if author and is_new_reaction:
-                await mandarins.award(
-                    session, author[0], mandarins.Reason.REACTION, delivery.id)
+                await mandarins.award(session, author[0], mandarins.Reason.REACTION, delivery.id)
             if author and is_new_reply:
-                await mandarins.award(
-                    session, author[0], mandarins.Reason.REPLY, delivery.id)
+                await mandarins.award(session, author[0], mandarins.Reason.REPLY, delivery.id)
             await session.commit()
 
         return ReactionResult(
@@ -247,7 +250,8 @@ class DeliveryService(object):
             reaction=delivery.reaction,
             reply=delivery.reply,
             is_new_reaction=is_new_reaction,
-            is_new_reply=is_new_reply)
+            is_new_reply=is_new_reply,
+        )
 
     async def _to_dto(self, delivery: Delivery) -> DeliveryDTO:
         wish = None
@@ -259,7 +263,8 @@ class DeliveryService(object):
             opened_at=delivery.opened_at,
             reaction=delivery.reaction,
             reply=delivery.reply,
-            wish=wish)
+            wish=wish,
+        )
 
     # ====== Author side ====== #
     async def feedback(self, wish_ids: Iterable[UUID]) -> dict[UUID, FeedbackDTO]:
@@ -269,10 +274,13 @@ class DeliveryService(object):
             return result
 
         async with new_db_session() as session:
-            rows = (await session.execute(
-                select(Delivery.wish_id, Delivery.reaction, Delivery.reply)
-                .where(col(Delivery.wish_id).in_(wish_ids))
-                .order_by(col(Delivery.opened_at)))).all()
+            rows = (
+                await session.execute(
+                    select(Delivery.wish_id, Delivery.reaction, Delivery.reply)
+                    .where(col(Delivery.wish_id).in_(wish_ids))
+                    .order_by(col(Delivery.opened_at))
+                )
+            ).all()
 
         counters: dict[UUID, Counter] = {}
         for wish_id, reaction, reply in rows:
@@ -292,21 +300,26 @@ class DeliveryService(object):
 
         async with new_db_session() as session:
             users = await session.scalar(select(func.count(col(User.id))))
-            by_tz = (await session.execute(
-                select(User.timezone, func.count(col(User.id)))
-                .group_by(User.timezone))).all()
+            by_tz = (
+                await session.execute(
+                    select(User.timezone, func.count(col(User.id))).group_by(User.timezone)
+                )
+            ).all()
             wishes = await session.scalar(
                 select(func.count(col(Wish.id)))
                 .where(Wish.valid_status == ValidStatus.APPROVED)
-                .where(col(Wish.timestamp) >= season_start(year)))
+                .where(col(Wish.timestamp) >= season_start(year))
+            )
             opened = await session.scalar(
                 select(func.count(col(Delivery.id)))
                 .where(Delivery.year == year)
-                .where(col(Delivery.opened_at).is_not(None)))
+                .where(col(Delivery.opened_at).is_not(None))
+            )
             reactions = await session.scalar(
                 select(func.count(col(Delivery.id)))
                 .where(Delivery.year == year)
-                .where(col(Delivery.reaction).is_not(None)))
+                .where(col(Delivery.reaction).is_not(None))
+            )
 
         return {
             "year": year,
@@ -322,6 +335,9 @@ class DeliveryService(object):
             user = await self._user(session, telegram_id)
             if not user:
                 return 0
-            return await session.scalar(
-                select(func.count(col(User.id)))
-                .where(User.referrer_id == user.id)) or 0
+            return (
+                await session.scalar(
+                    select(func.count(col(User.id))).where(User.referrer_id == user.id)
+                )
+                or 0
+            )

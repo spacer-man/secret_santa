@@ -1,6 +1,6 @@
 from aiogram import F
 from aiogram.filters import CommandStart
-from aiogram.fsm.scene import on, Scene
+from aiogram.fsm.scene import Scene, on
 from aiogram.types import CallbackQuery, Message
 
 from handlers import buttons

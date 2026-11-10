@@ -185,5 +185,9 @@ export class Api {
   openGift = () => this.request<Gift>('POST', '/gift/open');
   inbox = () => this.request<Delivery[]>('GET', '/inbox');
   react = (id: string, data: { reaction?: string; reply?: string }) =>
-    this.request<{ reaction: string | null; reply: string | null }>('POST', `/inbox/${id}/react`, data);
+    this.request<{ reaction: string | null; reply: string | null }>(
+      'POST',
+      `/inbox/${id}/react`,
+      data,
+    );
 }

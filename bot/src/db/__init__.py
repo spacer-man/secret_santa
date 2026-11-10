@@ -1,8 +1,5 @@
-from .core import drop_relations
-from .core import new_db_session
-from .core import setup_relations
+from .core import drop_relations, new_db_session, setup_relations
 from .utils import get_db_session
-
 
 __all__ = (
     "drop_relations",

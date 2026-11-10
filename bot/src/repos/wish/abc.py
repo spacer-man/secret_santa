@@ -1,9 +1,8 @@
+from collections.abc import Generator
 from datetime import datetime
 from typing import (
     Any,
-    Generator,
     NotRequired,
-    Optional,
     Protocol,
     Required,
     TypedDict,
@@ -50,10 +49,10 @@ class WishRepository(Protocol):
     def __init__(self, session: AsyncSession) -> None: ...
 
     async def get_with_min_recipients(
-            self,
-            recipient: Optional[UUID],
-            since: Optional[datetime] = None,
-            ) -> Generator[WishDTO]:
+        self,
+        recipient: UUID | None,
+        since: datetime | None = None,
+    ) -> Generator[WishDTO]:
         """
         Get approved wishes with minimal recipients count.
         Wishes written by the recipient are excluded.
@@ -66,12 +65,13 @@ class WishRepository(Protocol):
         :returns: :class:`Generator[WishDTO]`
         """
         ...
+
     async def increment_recipients(self, wish_id: UUID) -> None: ...
     async def get_one(self, wish_id: UUID) -> WishDTO | None: ...
     async def get_many(
-            self,
-            filter_by: Optional[dict[str, Any]] = None,
-            ) -> Generator[WishDTO]: ...
+        self,
+        filter_by: dict[str, Any] | None = None,
+    ) -> Generator[WishDTO]: ...
     async def create(self, **kwargs: Unpack[NewWishArgs]) -> UUID: ...
     async def edit(self, **kwargs: Unpack[EditWishArgs]) -> None: ...
     async def delete(self, filter_by: dict[str, Any]) -> None: ...

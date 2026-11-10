@@ -10,7 +10,10 @@ import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const materials = new Map<string, THREE.ShaderMaterial>();
 
-export function outlineMaterial(width = 0.0035, color = new THREE.Color(0.04, 0.04, 0.12)): THREE.ShaderMaterial {
+export function outlineMaterial(
+  width = 0.0035,
+  color = new THREE.Color(0.04, 0.04, 0.12),
+): THREE.ShaderMaterial {
   const key = `${width}|${color.getHexString()}`;
   let m = materials.get(key);
   if (!m) {
@@ -67,7 +70,11 @@ export function withOutline<T extends THREE.Mesh>(mesh: T, width?: number): T {
 
 /** Outline for an instanced mesh: an instanced hull sharing the instance matrices */
 export function instancedOutline(inst: THREE.InstancedMesh, width?: number): THREE.InstancedMesh {
-  const hull = new THREE.InstancedMesh(smoothForOutline(inst.geometry), outlineMaterial(width), inst.count);
+  const hull = new THREE.InstancedMesh(
+    smoothForOutline(inst.geometry),
+    outlineMaterial(width),
+    inst.count,
+  );
   hull.instanceMatrix = inst.instanceMatrix;
   hull.userData['outline'] = true;
   return hull;

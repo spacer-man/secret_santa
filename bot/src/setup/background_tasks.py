@@ -1,5 +1,5 @@
 import logging
-from datetime import timezone
+from datetime import UTC
 
 from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -8,8 +8,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from handlers.depends import delivery_service
 from services.mailer.service import MailerService
-from .bot import bot
 
+from .bot import bot
 
 log = logging.getLogger(__name__)
 
@@ -23,10 +23,11 @@ def setup_background_tasks() -> BaseScheduler:
     sheduler.add_job(
         func=mailer.check_ny_and_send_wishes,
         # Cheap when it's not 1 January anywhere
-        trigger=IntervalTrigger(minutes=1, timezone=timezone.utc),
+        trigger=IntervalTrigger(minutes=1, timezone=UTC),
         name="new_year_mailing",
         executor="asyncio",
         max_instances=1,
-        coalesce=True)
+        coalesce=True,
+    )
 
     return sheduler

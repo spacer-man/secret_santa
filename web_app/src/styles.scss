@@ -26,8 +26,16 @@ body {
   margin: 0;
   min-height: 100vh;
   min-height: 100dvh;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-  background: radial-gradient(120% 60% at 50% 0%, #1b1030 0%, var(--bg-color) 60%) fixed, var(--bg-color);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Arial,
+    sans-serif;
+  background:
+    radial-gradient(120% 60% at 50% 0%, #1b1030 0%, var(--bg-color) 60%) fixed,
+    var(--bg-color);
   color: var(--light-color);
   line-height: 1.45;
   -webkit-tap-highlight-color: transparent;
@@ -91,8 +99,7 @@ p {
 }
 .festive {
   background:
-    radial-gradient(80% 120% at 50% 0%, rgba(255, 0, 96, 0.18), transparent 70%),
-    var(--card-color);
+    radial-gradient(80% 120% at 50% 0%, rgba(255, 0, 96, 0.18), transparent 70%), var(--card-color);
 }
 
 .row {
@@ -180,7 +187,14 @@ p {
   content: '';
   position: absolute;
   inset: 0;
-  background-image: conic-gradient(from var(--angle), transparent, var(--primary-color), transparent, var(--primary-color), transparent);
+  background-image: conic-gradient(
+    from var(--angle),
+    transparent,
+    var(--primary-color),
+    transparent,
+    var(--primary-color),
+    transparent
+  );
   border-radius: inherit;
   z-index: -1;
   filter: blur(1.2rem);
@@ -859,7 +873,8 @@ blockquote {
   display: flex;
   gap: 1rem;
   align-items: center;
-  background: radial-gradient(circle at 20% 50%, rgba(255, 209, 102, 0.12), transparent 60%), #12121a;
+  background:
+    radial-gradient(circle at 20% 50%, rgba(255, 209, 102, 0.12), transparent 60%), #12121a;
   border-radius: 1rem;
   padding: 0.8rem;
 }

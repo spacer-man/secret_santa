@@ -1,7 +1,6 @@
+from collections.abc import Generator
 from typing import (
     Any,
-    Generator,
-    Optional,
     Unpack,
 )
 from uuid import UUID
@@ -9,12 +8,13 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import delete, select
 
+from db.models import Media
+
 from .abc import (
-    NewMediaArgs,
     MediaDTO,
     MediaRepository,
+    NewMediaArgs,
 )
-from db.models import Media
 
 
 class SQLModelMediaRepository(MediaRepository):
@@ -22,9 +22,9 @@ class SQLModelMediaRepository(MediaRepository):
         self.session = session
 
     async def get_many(
-            self,
-            filter_by: Optional[dict[str, Any]] = None,
-            ) -> Generator[MediaDTO]:
+        self,
+        filter_by: dict[str, Any] | None = None,
+    ) -> Generator[MediaDTO]:
         stmt = select(Media)
         if filter_by:
             stmt = stmt.filter_by(**filter_by)
@@ -32,8 +32,7 @@ class SQLModelMediaRepository(MediaRepository):
         query_result = await self.session.execute(stmt)
 
         medias = (
-            MediaDTO.model_validate(media, from_attributes=True)
-            for media in query_result.scalars()
+            MediaDTO.model_validate(media, from_attributes=True) for media in query_result.scalars()
         )
 
         return medias

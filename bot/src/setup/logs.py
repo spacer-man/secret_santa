@@ -1,7 +1,8 @@
 import logging
 import logging.config
-import yaml
 from pathlib import Path
+
+import yaml
 
 from configs.logs import LogsConfig
 

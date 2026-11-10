@@ -4,6 +4,7 @@
  * Local space: the door faces +Z.
  */
 import * as THREE from 'three';
+import { buildPuff, puffScale } from './life';
 
 export interface Kit {
   toon(color: number, extra?: Partial<THREE.MeshToonMaterialParameters>): THREE.MeshToonMaterial;
@@ -269,6 +270,16 @@ export function buildCabin(kit: Kit): Cabin {
   const rim = new THREE.Mesh(chimneySnowGeometry(), snow);
   rim.position.set(chimney.position.x, topY, chimney.position.z);
   g.add(rim);
+  // Icicles hanging from the snowy rim, of different length, irregularly spaced
+  [0.25, 0.95, 1.5, 2.3, 2.75, 3.6, 4.35, 4.9, 5.75].forEach((th, k) => {
+    const len = 0.1 + rand(k * 5.3 + 2) * 0.24;
+    const sq = 1 / Math.pow(Math.pow(Math.abs(Math.cos(th)), 4) + Math.pow(Math.abs(Math.sin(th)), 4), 0.25);
+    const icicle = new THREE.Mesh(new THREE.ConeGeometry(0.022 + len * 0.05, len, 5), icicleMat);
+    icicle.rotation.z = Math.PI;
+    icicle.position.set(chimney.position.x + Math.cos(th) * 0.27 * sq, topY - 0.09 - len / 2, chimney.position.z + Math.sin(th) * 0.27 * sq);
+    g.add(icicle);
+  });
+
   // Snow piled up around the chimney where it comes out of the roof
   const pile = new THREE.Mesh(new THREE.SphereGeometry(0.46, 16, 10), snow);
   pile.scale.set(1, 0.42, 1.05);
@@ -276,15 +287,15 @@ export function buildCabin(kit: Kit): Cabin {
   pile.rotation.z = slope * 0.8;
   g.add(pile);
 
-  const smoke: THREE.Sprite[] = [];
-  for (let i = 0; i < 9; i++) {
-    const puff = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: kit.glowTex, color: 0xb8bfdc, transparent: true, opacity: 0, depthWrite: false }),
-    );
+  // Smoke: solid cartoon puffs rising in a curl
+  const smokeMat = kit.toon(0xe6e9f8, { emissive: 0x6f78a8, emissiveIntensity: 0.55 });
+  const smoke: THREE.Mesh[] = [];
+  for (let i = 0; i < 6; i++) {
+    const puff = buildPuff(smokeMat);
     g.add(puff);
     smoke.push(puff);
   }
-  const smokeOrigin = new THREE.Vector3(chimney.position.x, chimney.position.y + 0.8, chimney.position.z);
+  const smokeOrigin = new THREE.Vector3(chimney.position.x, chimney.position.y + 0.62, chimney.position.z);
 
   // Windows: frame, cross bars, sill with snow, shutters
   const shutterMat = kit.toon(0x2f6b4f);
@@ -424,14 +435,17 @@ export function buildCabin(kit: Kit): Cabin {
     update(t: number, dt: number) {
       smokeT += dt;
       smoke.forEach((puff, i) => {
-        const life = (smokeT * 0.25 + i / smoke.length) % 1;
+        const life = (smokeT * 0.2 + i / smoke.length) % 1;
+        const k = puffScale(life) * (0.4 + 0.2 * rand(i * 3.1));
+        puff.visible = k > 0.01;
+        // Rises in an S-curl and leans with the wind
         puff.position.set(
-          smokeOrigin.x + Math.sin(t * 0.7 + i) * 0.15 + life * 0.6,
-          smokeOrigin.y + life * 2.4,
-          smokeOrigin.z + life * 0.2,
+          smokeOrigin.x + Math.sin(life * 5.5 + i * 0.4) * 0.22 * life + life * life * 0.9,
+          smokeOrigin.y + life * 2.9,
+          smokeOrigin.z + Math.cos(life * 4.0 + i) * 0.12 * life,
         );
-        puff.scale.setScalar(0.4 + life * 1.2);
-        puff.material.opacity = Math.sin(life * Math.PI) * 0.45;
+        puff.scale.setScalar(Math.max(k, 0.001));
+        puff.rotation.set(i * 1.3, t * 0.3 + i * 2.1, life * 1.5 + i);
       });
     },
   };

@@ -11,6 +11,11 @@ function rand(seed: number): number {
   return x - Math.floor(x);
 }
 
+/** Crystals per unit of length, how exactly a crystal must face the eye to flash (cos), brightness */
+const SPARKLE_DENSITY = 30;
+const SPARKLE_NARROW = 0.972;
+const SPARKLE_STRENGTH = 0.85;
+
 let ramp: THREE.DataTexture | undefined;
 
 /** Shading ramp of the snow: smooth, with bright shadows */
@@ -27,14 +32,40 @@ function snowRamp(): THREE.DataTexture {
 export function snowMaterial(color: number, rim = 0.2): THREE.MeshToonMaterial {
   const mat = new THREE.MeshToonMaterial({ color, gradientMap: snowRamp() });
   mat.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <opaque_fragment>',
-      `float snowRim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.5);
-       outgoingLight += vec3(0.5, 0.62, 1.0) * snowRim * ${rim.toFixed(3)};
-       #include <opaque_fragment>`,
-    );
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSnowPos;')
+      .replace('#include <fog_vertex>', 'vSnowPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <fog_vertex>');
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+         varying vec3 vSnowPos;
+         float snowHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }`,
+      )
+      .replace(
+        '#include <opaque_fragment>',
+        `float snowRim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.5);
+         outgoingLight += vec3(0.5, 0.62, 1.0) * snowRim * ${rim.toFixed(3)};
+
+         // Sparkle like real snow: the surface is full of tiny ice crystals,
+         // each a mirror turned its own way. A crystal flashes only while it
+         // reflects towards the eye, so the glints wander as the camera moves.
+         vec3 toEye = cameraPosition - vSnowPos;
+         float eyeDist = length(toEye);
+         vec3 sp = vSnowPos * ${SPARKLE_DENSITY.toFixed(1)};
+         vec3 cell = floor(sp);
+         vec3 facet = normalize(vec3(snowHash(cell), snowHash(cell + 17.3), snowHash(cell + 41.7)) * 2.0 - 1.0);
+         float aligned = dot(facet, toEye / eyeDist);
+         float glint = smoothstep(${SPARKLE_NARROW.toFixed(3)}, 1.0, aligned);
+         // A small round grain in the middle of its cell; brightness varies
+         float grain = smoothstep(0.42, 0.12, length(fract(sp) - 0.5)) * (0.45 + 0.55 * snowHash(cell + 5.1));
+         // Far away the crystals are smaller than a pixel: no noise there
+         float near = 1.0 - smoothstep(14.0, 30.0, eyeDist);
+         outgoingLight += vec3(0.92, 0.96, 1.0) * glint * grain * near * ${SPARKLE_STRENGTH.toFixed(2)};
+         #include <opaque_fragment>`,
+      );
   };
-  mat.customProgramCacheKey = () => `snow-${rim}`;
+  mat.customProgramCacheKey = () => `snow-sparkle-${rim}`;
   return mat;
 }
 

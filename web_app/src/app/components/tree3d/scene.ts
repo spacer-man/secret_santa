@@ -14,6 +14,8 @@ import { terrainGeometry, terrainHeight, terrainOutline } from './terrain';
 import { ModelName, Models } from './models';
 import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape } from './layout';
 import { TIERS, TREE_TOP, buildFirTree, treeRadius } from './tree-model';
+import { Glitter, buildGlitter, sampleSurface, snowMaterial } from './snow';
+import { Birds, ShootingStar, buildBirds, buildFootprints, buildShootingStar } from './life';
 
 /** A ball place: where the thread is tied and where the ball centre hangs */
 interface BallSlot {
@@ -293,7 +295,7 @@ export class TreeWorld {
   private readonly animated: Animated[] = [];
   private readonly staticAnimated: Animated[] = [];
   private readonly patternCache = new Map<string, THREE.CanvasTexture>();
-  private readonly treeLight = new THREE.PointLight(0xffb45a, 0, 9, 1.5);
+  private readonly treeLight = new THREE.PointLight(0xffd0a0, 0, 9, 1.5);
   private snow!: THREE.Points;
 
   private azimuth = 0.6;
@@ -348,6 +350,15 @@ export class TreeWorld {
   // ====== Materials helpers ====== //
   private toon(color: number, extra: Partial<THREE.MeshToonMaterialParameters> = {}): THREE.MeshToonMaterial {
     return new THREE.MeshToonMaterial({ color, gradientMap: this.gradient, ...extra });
+  }
+
+  private readonly snowMats = new Map<number, THREE.MeshToonMaterial>();
+
+  /** Soft powdery snow (shared per colour) */
+  private snowMat(color = 0xf4f7ff): THREE.MeshToonMaterial {
+    let m = this.snowMats.get(color);
+    if (!m) this.snowMats.set(color, (m = snowMaterial(color)));
+    return m;
   }
 
   /** Anime-style outline of constant width on screen (fence, cabin, gifts...) */
@@ -415,7 +426,13 @@ export class TreeWorld {
     const moonGlow = this.glow(0xbfc8ff, 26, 0.5);
     moonGlow.position.copy(moon.position);
     this.scene.add(moon, moonGlow);
+
+    this.shootingStar = buildShootingStar();
+    this.scene.add(this.shootingStar.mesh);
+    this.staticAnimated.push({ update: (t) => this.shootingStar!.update(t, this.skyClear, this.azimuth) });
   }
+
+  private shootingStar?: ShootingStar;
 
   private starMat!: THREE.ShaderMaterial;
 
@@ -495,7 +512,7 @@ export class TreeWorld {
 
   private buildGround(): void {
     // Uneven snowy ground with drifts, outlined like the models
-    const ground = new THREE.Mesh(terrainGeometry(), this.toon(0xdfe5f8));
+    const ground = new THREE.Mesh(terrainGeometry(), this.snowMat(0xe6ebfb));
     ground.add(new THREE.Mesh(ground.geometry, terrainOutline()));
     this.scene.add(ground);
 
@@ -544,19 +561,39 @@ export class TreeWorld {
         }
       }
     }
-    // Snow: lies in the joints and on some stones (lighter and flatter)
-    for (let i = 0; i < 1400; i++) {
-      const x = rand(i + 1) * size;
-      const y = rand(i + 2) * size;
-      const rr = 3 + rand(i + 3) * 12;
-      cc.fillStyle = `rgba(240,244,255,${0.3 + rand(i) * 0.5})`;
-      cc.beginPath();
-      cc.arc(x, y, rr, 0, Math.PI * 2);
-      cc.fill();
-      hc.fillStyle = 'rgba(150,150,150,0.45)';
-      hc.beginPath();
-      hc.arc(x, y, rr, 0, Math.PI * 2);
-      hc.fill();
+    // Snow: soft irregular patches (clusters of blurry blobs) lying on the
+    // stones, lighter and flatter; thicker towards the fence, where nobody walks
+    const patch = (x: number, y: number, rr: number, alpha: number) => {
+      const g = cc.createRadialGradient(x, y, rr * 0.15, x, y, rr);
+      g.addColorStop(0, `rgba(238,243,255,${alpha})`);
+      g.addColorStop(0.6, `rgba(238,243,255,${alpha * 0.75})`);
+      g.addColorStop(1, 'rgba(238,243,255,0)');
+      cc.fillStyle = g;
+      cc.fillRect(x - rr, y - rr, rr * 2, rr * 2);
+      const gh = hc.createRadialGradient(x, y, rr * 0.15, x, y, rr);
+      gh.addColorStop(0, `rgba(165,165,165,${Math.min(1, alpha * 1.1)})`);
+      gh.addColorStop(1, 'rgba(165,165,165,0)');
+      hc.fillStyle = gh;
+      hc.fillRect(x - rr, y - rr, rr * 2, rr * 2);
+    };
+    for (let i = 0; i < 260; i++) {
+      // Cluster centre: anywhere on the ring of stones, more often near the edge
+      const a = rand(i * 1.9 + 1) * Math.PI * 2;
+      const r = 250 + Math.pow(rand(i * 2.7 + 2), 0.7) * 262;
+      const edge = THREE.MathUtils.smoothstep(r, 380, 512);
+      const blobs = 3 + Math.floor(rand(i * 3.3) * 4 + edge * 3);
+      for (let k = 0; k < blobs; k++) {
+        const rr = 9 + rand(i * 5.1 + k) * 16 + edge * 14;
+        const x = half + Math.cos(a) * r + (rand(i * 7.7 + k * 1.3) - 0.5) * rr * 2.6;
+        const y = half + Math.sin(a) * r + (rand(i * 8.9 + k * 2.1) - 0.5) * rr * 2.6;
+        patch(x, y, rr, 0.35 + rand(i + k * 0.7) * 0.3 + edge * 0.3);
+      }
+    }
+    // The rim of the plaza disappears under the snow
+    for (let k = 0; k < 150; k++) {
+      const a = (k / 150) * Math.PI * 2;
+      const r = 500 + rand(k * 1.3) * 16 - 26 * Math.pow(rand(k * 4.1), 2);
+      patch(half + Math.cos(a) * r, half + Math.sin(a) * r, 26 + rand(k * 2.2) * 22, 0.95);
     }
     const map = new THREE.CanvasTexture(color);
     map.colorSpace = THREE.SRGBColorSpace;
@@ -616,9 +653,9 @@ export class TreeWorld {
     low.position.y = 0.14;
     const high = new THREE.Mesh(new THREE.CylinderGeometry(2.45, 2.55, 0.28, 64), [blocks(4), top, top]);
     high.position.y = 0.42;
-    const snow = new THREE.Mesh(new THREE.CylinderGeometry(2.38, 2.38, 0.06, 48), this.toon(0xf2f5ff));
+    const snow = new THREE.Mesh(new THREE.CylinderGeometry(2.38, 2.38, 0.06, 48), this.snowMat());
     snow.position.y = 0.58;
-    const snowLow = new THREE.Mesh(new THREE.CylinderGeometry(2.92, 2.92, 0.04, 48, 1, false), this.toon(0xf2f5ff));
+    const snowLow = new THREE.Mesh(new THREE.CylinderGeometry(2.92, 2.92, 0.04, 48, 1, false), this.snowMat());
     snowLow.position.y = 0.29;
     this.scene.add(low, high, snow, snowLow);
   }
@@ -629,12 +666,14 @@ export class TreeWorld {
 
   private buildFence(): void {
     const wood = this.toon(0x6b4a3a);
-    const snow = this.toon(0xf2f5ff);
+    const snow = this.snowMat();
     const R = 8.6;
     const posts = 20;
     const gapAt = 14; // entrance towards the cabin
     const postGeo = new THREE.BoxGeometry(0.32, 1.0, 0.32);
-    const capGeo = new THREE.BoxGeometry(0.38, 0.12, 0.38);
+    // A plump rounded cap of snow on every post
+    const capGeo = new THREE.SphereGeometry(0.29, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+    capGeo.scale(1, 0.62, 1);
     const bulbPositions: THREE.Vector3[] = [];
 
     for (let i = 0; i < posts; i++) {
@@ -644,8 +683,11 @@ export class TreeWorld {
       const post = this.outline(new THREE.Mesh(postGeo, wood), 1.08);
       post.position.copy(p);
       const cap = new THREE.Mesh(capGeo, snow);
-      cap.position.set(p.x, 1.06, p.z);
+      cap.position.set(p.x, 0.99, p.z);
+      cap.rotation.y = a * 3;
+      cap.scale.set(1 + rand(i) * 0.12, 0.85 + rand(i + 5) * 0.35, 1 + rand(i + 9) * 0.12);
       this.scene.add(post, cap);
+      if (i % 4 !== 1) this.perches.push(new THREE.Vector3(p.x, 0.99 + 0.18 * cap.scale.y, p.z));
 
       if (i % 4 === 1) {
         // Lantern on the post
@@ -692,7 +734,15 @@ export class TreeWorld {
     bulbs.visible = false;
     this.fenceBulbs = bulbs;
     this.scene.add(bulbs);
+
+    // Bullfinches on the posts
+    this.birds = buildBirds(this.perches, (c) => this.toon(c));
+    this.scene.add(this.birds.group);
+    this.staticAnimated.push(this.birds);
   }
+
+  private readonly perches: THREE.Vector3[] = [];
+  private birds?: Birds;
 
   private windows: THREE.Mesh[] = [];
   private cabinLights: THREE.Sprite[] = [];
@@ -709,6 +759,7 @@ export class TreeWorld {
   private buildCabin(): void {
     const cabin = buildCabin({
       toon: (c, e) => this.toon(c, e),
+      snow: () => this.snowMat(),
       hull: (m) => withOutline(m),
       outline: (m, sc) => this.outline(m, sc),
       glow: (c, sz, o) => this.glow(c, sz, o),
@@ -716,6 +767,7 @@ export class TreeWorld {
     });
     this.windows = cabin.windows;
     this.cabinLights = cabin.lights;
+    this.roofSnow = cabin.roofSnow;
     this.staticAnimated.push(cabin);
 
     // Fringe lights under the roof (a skin from the shop)
@@ -735,6 +787,14 @@ export class TreeWorld {
     cabin.group.position.set(Math.cos(a) * 12.5, terrainHeight(Math.cos(a) * 12.5, Math.sin(a) * 12.5), Math.sin(a) * 12.5);
     cabin.group.lookAt(0, 0, 0);
     this.scene.add(cabin.group);
+
+    // Footprints from the porch steps to the gate
+    cabin.group.updateMatrixWorld(true);
+    const porch = cabin.group.localToWorld(new THREE.Vector3(0.95, 0, 3.75));
+    const bend = cabin.group.localToWorld(new THREE.Vector3(0.75, 0, 5.2));
+    const path = [porch, bend, new THREE.Vector3(Math.cos(a) * 8.6, 0, Math.sin(a) * 8.6), new THREE.Vector3(Math.cos(a + 0.03) * 7.45, 0, Math.sin(a + 0.03) * 7.45)];
+    path.forEach((p) => (p.y = terrainHeight(p.x, p.z)));
+    this.scene.add(buildFootprints(path));
   }
 
   private buildForest(): void {
@@ -833,7 +893,8 @@ export class TreeWorld {
       bodies.forEach((b, k) => {
         objs[k].position.set(b.x, 0, b.z);
         this.scene.add(objs[k]);
-        this.heapColliders.push(...circlesOf(b));
+        // Boxes have corners sticking out of their circles: keep figures a bit further
+        this.heapColliders.push(...circlesOf(b).map((c) => ({ ...c, r: c.r * 1.22 })));
       });
 
       // The top one on the biggest (first) present, smaller than it
@@ -890,18 +951,55 @@ export class TreeWorld {
     this.scene.add(trees, caps);
   }
 
+  /**
+   * Low-poly mountain range far away: faceted rocky cones with jagged snow
+   * caps, one mesh. Not fogged (the fog would hide the caps), so the colours
+   * are already the night ones.
+   */
   private buildMountains(): void {
-    // Mountains far away
-    for (let i = 0; i < 14; i++) {
-      const a = (i / 14) * Math.PI * 2 + rand(i) * 0.3;
+    const pos: number[] = [];
+    const col: number[] = [];
+    const rock = new THREE.Color(0x191c48);
+    const rockLow = new THREE.Color(0x100f2c);
+    const snow = new THREE.Color(0x6a76b4);
+    const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, ca: THREE.Color, cb: THREE.Color, cc: THREE.Color) => {
+      pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+      col.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
+    };
+    const COUNT = 16;
+    for (let i = 0; i < COUNT; i++) {
+      const a = (i / COUNT) * Math.PI * 2 + rand(i) * 0.3;
       // Low enough to leave the starry sky visible between the peaks
-      const h = 6 + rand(i + 9) * 7;
-      const mountain = new THREE.Mesh(new THREE.ConeGeometry(h * 0.9, h, 6), this.toon(0x2a2f6a));
-      mountain.position.set(Math.cos(a) * 62, h / 2 - 1, Math.sin(a) * 62);
-      const top = new THREE.Mesh(new THREE.ConeGeometry(h * 0.3, h / 3, 6), this.toon(0xdfe6ff));
-      top.position.set(mountain.position.x, h - 1 - h / 6, mountain.position.z);
-      this.scene.add(mountain, top);
+      const h = 5.5 + rand(i + 9) * 7.5;
+      const dist = 60 + rand(i * 3 + 1) * 6;
+      const cx = Math.cos(a) * dist;
+      const cz = Math.sin(a) * dist;
+      const sides = 8;
+      const apex = new THREE.Vector3(cx + (rand(i * 5) - 0.5) * h * 0.25, h - 1, cz + (rand(i * 7) - 0.5) * h * 0.25);
+      const line: THREE.Vector3[] = [];
+      const base: THREE.Vector3[] = [];
+      for (let k = 0; k < sides; k++) {
+        const t = (k / sides) * Math.PI * 2 + i;
+        const br = h * (0.85 + rand(i * 11 + k) * 0.5);
+        base.push(new THREE.Vector3(cx + Math.cos(t) * br, -1, cz + Math.sin(t) * br));
+        // Snow line: a zigzag, lower in the gullies
+        const f = (k % 2 ? 0.3 : 0.48) + rand(i * 13 + k) * 0.1;
+        line.push(apex.clone().lerp(base[k], f));
+      }
+      for (let k = 0; k < sides; k++) {
+        const n = (k + 1) % sides;
+        tri(apex, line[n], line[k], snow, snow, snow);
+        tri(line[k], line[n], base[k], rock, rock, rockLow);
+        tri(line[n], base[n], base[k], rock, rockLow, rockLow);
+      }
     }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.computeVertexNormals();
+    const mountains = new THREE.Mesh(geo, this.toon(0xffffff, { vertexColors: true, fog: false }));
+    mountains.frustumCulled = false;
+    this.scene.add(mountains);
   }
 
   private treeGroup?: THREE.Group;
@@ -910,8 +1008,50 @@ export class TreeWorld {
     this.treeGroup = buildFirTree({
       toon: (c, e) => this.toon(c, e),
       hull: (m, t, smooth) => this.hull(m, t, smooth),
+      snow: () => this.snowMat(),
     });
     this.scene.add(this.treeGroup);
+    this.buildGlitter();
+  }
+
+  private glitter?: Glitter;
+  private roofSnow?: THREE.Mesh;
+
+  /** Glints on the snow: the ground near the courtyard, the drifts, the tree */
+  private buildGlitter(): void {
+    const spots: number[] = [];
+    for (let i = 0; i < 620; i++) {
+      const a = rand(i * 1.3 + 7) * Math.PI * 2;
+      const r = 7.35 + Math.pow(rand(i * 2.9 + 3), 1.5) * 15;
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      spots.push(x, terrainHeight(x, z), z, 0, 1, 0);
+    }
+    // The snow on the podium
+    for (let i = 0; i < 40; i++) {
+      const a = rand(i * 3.1) * Math.PI * 2;
+      const low = i % 2 === 0;
+      const r = low ? 2.6 + rand(i) * 0.3 : 1.2 + rand(i) * 1.1;
+      spots.push(Math.cos(a) * r, low ? 0.31 : 0.61, Math.sin(a) * r, 0, 1, 0);
+    }
+    const treeSnow = this.treeGroup?.children[2] as THREE.Mesh | undefined;
+    if (treeSnow) spots.push(...sampleSurface(treeSnow.geometry, 130, 11));
+    if (this.roofSnow) {
+      // Roof snow lives in the cabin's space: bring the points to the world
+      this.roofSnow.updateWorldMatrix(true, false);
+      const m = this.roofSnow.matrixWorld;
+      const local = sampleSurface(this.roofSnow.geometry, 70, 23);
+      const v = new THREE.Vector3();
+      for (let i = 0; i < local.length; i += 6) {
+        v.set(local[i], local[i + 1], local[i + 2]).applyMatrix4(m);
+        spots.push(v.x, v.y, v.z);
+        v.set(local[i + 3], local[i + 4], local[i + 5]).transformDirection(m);
+        spots.push(v.x, v.y, v.z);
+      }
+    }
+    this.glitter = buildGlitter(spots, Math.min(devicePixelRatio || 1, 1.75));
+    this.scene.add(this.glitter.points);
+    this.staticAnimated.push(this.glitter);
   }
 
   /** Snowfall strength: light (free), snowfall, blizzard (unlocked for mandarins) */
@@ -929,7 +1069,8 @@ export class TreeWorld {
     this.snowLevel = THREE.MathUtils.clamp(level, 0, TreeWorld.SNOWFALL.length - 1);
     const cfg = TreeWorld.SNOWFALL[this.snowLevel];
     this.snow.geometry.setDrawRange(0, cfg.count);
-    (this.snow.material as THREE.PointsMaterial).size = cfg.size;
+    this.snowMatUniforms['size'].value = cfg.size;
+    this.glitter?.setStrength([1, 0.9, 0.6, 0.35][this.snowLevel]);
     // Clouds come with the snow: fewer stars
     if (this.starMat) this.starMat.uniforms['opacity'].value = cfg.stars;
     // Northern lights need a clear sky too
@@ -937,18 +1078,53 @@ export class TreeWorld {
     this.renderOnce();
   }
 
+  private readonly snowMatUniforms: Record<string, THREE.IUniform> = {
+    map: { value: null },
+    size: { value: 0.16 },
+    scale: { value: 400 },
+    time: { value: 0 },
+  };
+
+  /** Flakes of different size that tumble (flicker) as they fall */
   private buildSnowfall(): void {
     const n = TreeWorld.SNOWFALL[TreeWorld.SNOWFALL.length - 1].count;
     const pos = new Float32Array(n * 3);
+    const flake = new Float32Array(n * 2);
     for (let i = 0; i < n; i++) {
       pos.set([(rand(i) - 0.5) * 26, rand(i + 0.3) * 14, (rand(i + 0.6) - 0.5) * 26], i * 3);
+      // Mostly small flakes, a few big fluffy ones
+      flake.set([0.55 + Math.pow(rand(i * 1.9), 3) * 1.5, rand(i * 2.3) * 6.283], i * 2);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('flake', new THREE.BufferAttribute(flake, 2));
+    this.snowMatUniforms['map'].value = this.glowTex;
     this.snow = new THREE.Points(
       geo,
-      new THREE.PointsMaterial({ map: this.glowTex, color: 0xffffff, size: 0.16, transparent: true, depthWrite: false, opacity: 0.9 }),
+      new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        uniforms: this.snowMatUniforms,
+        vertexShader: `
+          attribute vec2 flake;
+          uniform float size; uniform float scale; uniform float time;
+          varying float vAlpha;
+          void main() {
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            gl_Position = projectionMatrix * mv;
+            gl_PointSize = size * flake.x * scale / max(-mv.z, 0.5);
+            // Tumbling: a flake turns its thin side now and then
+            vAlpha = 0.68 + 0.27 * sin(time * (1.5 + flake.x) + flake.y);
+          }`,
+        fragmentShader: `
+          uniform sampler2D map; varying float vAlpha;
+          void main() {
+            float a = texture2D(map, gl_PointCoord).a * vAlpha;
+            gl_FragColor = vec4(vec3(1.0), a);
+          }`,
+      }),
     );
+    this.snow.frustumCulled = false;
     geo.setDrawRange(0, TreeWorld.SNOWFALL[1].count);
     this.scene.add(this.snow);
   }
@@ -1042,7 +1218,7 @@ export class TreeWorld {
     const onTree = tree.balls.filter((b) => b.state !== 'box');
     const lit = onTree.filter((b) => b.state === 'lit').length;
 
-    this.treeLight.intensity = Math.min(lit, 6) * 3 + (tree.star ? 4 : 0);
+    this.treeLight.intensity = Math.min(lit, 6) * 1.5 + (tree.star ? 2.5 : 0);
 
     onTree.slice(0, this.slots.length).forEach((ball, i) => {
       this.addBall(ball, this.slots[i], i, newHung.includes(ball.id), newLit.includes(ball.id));
@@ -1319,8 +1495,14 @@ export class TreeWorld {
       this.dynamic.add(h);
       return h;
     });
-    const smoke = this.glow(0xd8def5, 0.6, 0);
-    this.dynamic.add(smoke);
+    // A trail of puffs: each stays where it left the funnel and rises
+    const puffs = [0, 1, 2, 3].map(() => {
+      const s = this.glow(0xd8def5, 0.6, 0);
+      s.material.blending = THREE.NormalBlending;
+      this.dynamic.add(s);
+      return { sprite: s, born: -10, x: 0, z: 0 };
+    });
+    let lastPuff = -1;
 
     this.animated.push({
       update: (t) => {
@@ -1332,10 +1514,25 @@ export class TreeWorld {
           h.rotation.y = -angle - Math.PI / 2;
         });
         const loco = holders[0].position;
-        const puff = (t * 1.5) % 1;
-        smoke.position.set(loco.x, 0.95 + puff * 0.8, loco.z);
-        smoke.scale.setScalar(0.3 + puff * 0.7);
-        smoke.material.opacity = Math.sin(puff * Math.PI) * 0.6;
+        const beat = Math.floor(t / 0.45);
+        if (beat !== lastPuff) {
+          lastPuff = beat;
+          const p = puffs[beat % puffs.length];
+          p.born = t;
+          // The funnel is at the front of the locomotive
+          p.x = loco.x - Math.sin(t * 0.22) * 0.3;
+          p.z = loco.z + Math.cos(t * 0.22) * 0.3;
+        }
+        for (const p of puffs) {
+          const life = (t - p.born) / 1.7;
+          if (life >= 1) {
+            p.sprite.material.opacity = 0;
+            continue;
+          }
+          p.sprite.position.set(p.x, 0.98 + life * 1.1, p.z);
+          p.sprite.scale.setScalar(0.28 + life * 0.75);
+          p.sprite.material.opacity = Math.sin(Math.min(1, life * 1.15) * Math.PI) * 0.5;
+        }
       },
     });
     this.renderOnce();
@@ -1377,6 +1574,7 @@ export class TreeWorld {
       const { b, yaw } = this.fit(obj, kind, pad, obstacles);
       obj.position.set(b.x, terrainHeight(b.x, b.z), b.z);
       obj.rotation.y = yaw;
+      this.idle(d.item, obj, yaw, pad);
       obstacles.push(...circlesOf(b));
       placedPads.add(pad);
       for (const c of circlesOf(b)) {
@@ -1474,6 +1672,52 @@ export class TreeWorld {
       });
     }
     this.renderOnce();
+  }
+
+  /**
+   * Characters are alive: each kind moves in its own way (the model turns and
+   * stretches as a whole, around its feet).
+   */
+  private idle(item: string, obj: THREE.Object3D, yaw: number, seed: number): void {
+    const s0 = obj.scale.x;
+    const y0 = obj.position.y;
+    const ph = seed * 1.7;
+    let update: ((t: number) => void) | null = null;
+    switch (item) {
+      case 'snowman':
+      case 'snowman-classic':
+        // Sways from side to side, breathing
+        update = (t) => {
+          obj.rotation.z = Math.sin(t * 1.1 + ph) * 0.035;
+          obj.scale.y = s0 * (1 + 0.015 * Math.sin(t * 2.2 + ph));
+        };
+        break;
+      case 'reindeer':
+        // Looks around; sometimes a little jump of joy
+        update = (t) => {
+          obj.rotation.y = yaw + Math.sin(t * 0.6 + ph) * 0.16 + Math.sin(t * 1.7 + ph) * 0.04;
+          const cycle = (t * 0.22 + ph * 0.13) % 1;
+          const hop = cycle < 0.09 ? Math.sin((cycle / 0.09) * Math.PI) : 0;
+          obj.position.y = y0 + hop * 0.14;
+          obj.scale.y = s0 * (1 + 0.02 * Math.sin(t * 2.6 + ph) + hop * 0.05);
+        };
+        break;
+      case 'gingerbread':
+        // Dances: rocks from foot to foot
+        update = (t) => {
+          obj.rotation.z = Math.sin(t * 3.2 + ph) * 0.1;
+          obj.position.y = y0 + Math.abs(Math.sin(t * 3.2 + ph)) * 0.03;
+        };
+        break;
+      case 'nutcracker':
+        // On guard: turns his head... well, the whole of himself, sharply, like a toy
+        update = (t) => {
+          const k = Math.sin(t * 0.5 + ph);
+          obj.rotation.y = yaw + THREE.MathUtils.smoothstep(k, -0.15, 0.15) * 0.5 - 0.25;
+        };
+        break;
+    }
+    if (update) this.animated.push({ update });
   }
 
   private arrowGeo?: THREE.BufferGeometry;
@@ -1645,8 +1889,22 @@ export class TreeWorld {
     this.start();
   }
 
+  private lampsOn = false;
+
+  /** Living fire: lantern flames and the fireplace behind the windows flicker a little */
+  private flicker(t: number): void {
+    if (!this.lampsOn) return;
+    const fire = (k: number) => 0.86 + 0.09 * Math.sin(t * 7.3 + k * 2.1) + 0.05 * Math.sin(t * 17.1 + k * 5.3);
+    this.lanternGlows.forEach((g, i) => {
+      g.material.opacity = 0.9 * fire(i);
+      g.scale.setScalar(2.4 * (0.94 + 0.08 * fire(i + 0.5)));
+    });
+    this.cabinLights.forEach((l, i) => (l.material.opacity = 0.7 * fire(i + 10)));
+  }
+
   private applyLevel(level: number): void {
     const lampsOn = level >= 3;
+    this.lampsOn = lampsOn;
     this.lanterns.forEach((l) => {
       const m = l.material as THREE.MeshToonMaterial;
       m.color.set(lampsOn ? 0xffd27a : 0x3a3550);
@@ -1890,6 +2148,7 @@ export class TreeWorld {
     const h = this.canvas.clientHeight;
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
+    this.snowMatUniforms['scale'].value = this.renderer.domElement.height / 2;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderOnce();
@@ -1980,7 +2239,9 @@ export class TreeWorld {
       pos.setY(i, y);
     }
     pos.needsUpdate = true;
+    this.snowMatUniforms['time'].value = t;
 
+    this.flicker(t);
     for (const a of this.staticAnimated) a.update(t, dt);
     for (const a of this.animated) a.update(t, dt);
     this.placeCamera();

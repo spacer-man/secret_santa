@@ -7,6 +7,8 @@ import * as THREE from 'three';
 
 export interface Kit {
   toon(color: number, extra?: Partial<THREE.MeshToonMaterialParameters>): THREE.MeshToonMaterial;
+  /** Soft snow material */
+  snow(): THREE.MeshToonMaterial;
   hull(mesh: THREE.Mesh, thickness?: number): THREE.Mesh;
   outline(mesh: THREE.Mesh, scale?: number): THREE.Mesh;
   glow(color: number, size: number, opacity?: number): THREE.Sprite;
@@ -19,6 +21,8 @@ export interface Cabin {
   lights: THREE.Sprite[];
   /** Roof edges (under the eaves) for the fringe lights */
   roofEdges: [THREE.Vector3, THREE.Vector3][];
+  /** The snow blanket on the roof (for the glitter) */
+  roofSnow: THREE.Mesh;
   update(t: number, dt: number): void;
 }
 
@@ -35,6 +39,80 @@ const H = ROWS * LOG * 2; // wall height
 const RIDGE = 1.55; // roof height above the walls
 const OVER = 0.45; // roof overhang
 
+/**
+ * Snow on the gable roof: a single smooth surface lying on both slopes. The
+ * ridge is rounded (never a sharp fold, never self-intersecting: the height
+ * is a function of x and z), the thickness is a little lumpy, and all four
+ * edges roll over the roof edge in a plump lip; over the eaves the lip hangs
+ * in soft uneven lobes.
+ *
+ * `peak`: y of the ridge line, `ex`/`ez`: half sizes of the roof in plan.
+ */
+function roofSnowGeometry(peak: number, slope: number, ex: number, ez: number): THREE.BufferGeometry {
+  const tan = Math.tan(slope);
+  // Top of the roof slab above the ridge line (the slab is 0.16 thick)
+  const slabTop = 0.08 / Math.cos(slope);
+  const THICK = 0.2;
+  const R = 0.22; // how far the lip rounds outwards
+  const PHI_MAX = Math.PI / 2 + 1.0; // the lip rolls back under itself into the roof edge
+
+  // Parameter along one axis: the flat part, then the rounded lip
+  const axis = (core: number, lip: number): { t: number; phi: number; sign: number }[] => {
+    const half: { t: number; phi: number }[] = [];
+    for (let k = 0; k <= core; k++) half.push({ t: k / core, phi: 0 });
+    for (let k = 1; k <= lip; k++) half.push({ t: 1, phi: (k / lip) * PHI_MAX });
+    return [
+      ...half.slice(1).reverse().map((h) => ({ ...h, sign: -1 })),
+      ...half.map((h) => ({ ...h, sign: 1 })),
+    ];
+  };
+  const xs = axis(15, 9);
+  const zs = axis(13, 8);
+
+  const pos: number[] = [];
+  for (const b of zs) {
+    for (const a of xs) {
+      // Along the eave: soft lobes of different size hanging over the edge
+      const zc = b.sign * b.t * ez;
+      const lobe = 0.5 + 0.5 * Math.sin(zc * 3.1 + a.sign * 1.3) * Math.sin(zc * 1.3 + 0.7 + a.sign);
+      const overX = 0.11 + 0.1 * lobe;
+      const overZ = 0.08;
+
+      // The lip bulges out by R, then comes back and ends inside the roof slab
+      const lip = (phi: number, over: number) =>
+        phi <= Math.PI / 2 ? R * Math.sin(phi) : R - (over + 0.04) * ((phi - Math.PI / 2) / (PHI_MAX - Math.PI / 2));
+      const x = a.sign * (a.t * (ex + overX - R) + lip(a.phi, overX));
+      const z = b.sign * (b.t * (ez + overZ - R) + lip(b.phi, overZ));
+      // Rounded ridge: |x| smoothed near zero (always above the real roof)
+      const soft = Math.sqrt(x * x + 0.3 * 0.3) - 0.3;
+      // Lumpy blanket: slow waves, a bit thicker towards the eaves
+      const lumps =
+        1 + 0.16 * Math.sin(x * 2.3 + z * 1.1 + 0.5) * Math.sin(z * 1.9 - x * 0.7) + 0.1 * Math.sin(z * 4.3 + x * 3.1) + 0.12 * (Math.abs(x) / ex);
+      const topY = peak + slabTop - tan * soft + THICK * lumps;
+      // The lip goes all the way down into the real roof surface under it:
+      // the snow lies on the roof everywhere, no gap at the ridge or the eaves
+      const roofY = peak + slabTop - tan * Math.abs(x);
+      const down = (phi: number) => (1 - Math.cos(phi)) / (1 - Math.cos(PHI_MAX));
+      const k = 1 - (1 - down(a.phi)) * (1 - down(b.phi));
+      const y = topY - (topY - (roofY - 0.07)) * k;
+      pos.push(x, y, z);
+    }
+  }
+  const nx = xs.length;
+  const index: number[] = [];
+  for (let i = 0; i < zs.length - 1; i++) {
+    for (let j = 0; j < nx - 1; j++) {
+      const p = i * nx + j;
+      index.push(p, p + nx, p + 1, p + 1, p + nx, p + nx + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 export function buildCabin(kit: Kit): Cabin {
   const g = new THREE.Group();
   const windows: THREE.Mesh[] = [];
@@ -42,7 +120,7 @@ export function buildCabin(kit: Kit): Cabin {
   const logA = kit.toon(0x7a4a34);
   const logB = kit.toon(0x8c5a3e);
   const trim = kit.toon(0xd8b48a);
-  const snow = kit.toon(0xf4f7ff);
+  const snow = kit.snow();
   const stone = kit.toon(0x7d7f9c);
 
   // Foundation
@@ -113,20 +191,10 @@ export function buildCabin(kit: Kit): Cabin {
     slab.position.set((dir * slabLen) / 2, 0, 0);
     pivot.add(slab);
 
-    // Outlined slab below is enough: the snow layer's own outline showed under the eaves
-    // Outlined slab below is enough: the snow layer's own outline showed under the eaves
-    const snowLayer = new THREE.Mesh(new THREE.BoxGeometry(slabLen + 0.06, 0.2, D * 2 + OVER * 2 + 0.08), snow);
-    snowLayer.position.set((dir * slabLen) / 2, 0.17, 0);
-    pivot.add(snowLayer);
-
-    // Snow hanging over the eave
+    // Icicles under the eave
     const eaveX = dir * (slabLen + 0.02);
     for (let k = 0; k < 11; k++) {
       const z = -D - OVER + 0.2 + (k / 10) * (D * 2 + OVER * 2 - 0.4);
-      const drip = new THREE.Mesh(new THREE.SphereGeometry(0.16 + rand(k + side) * 0.06, 8, 6), snow);
-      drip.scale.set(0.9, 0.7, 1.3);
-      drip.position.set(eaveX, 0.08 - rand(k * 3 + side) * 0.06, z);
-      pivot.add(drip);
       if (k % 2 === 0) {
         const len = 0.2 + rand(k * 7 + side) * 0.35;
         const icicle = new THREE.Mesh(new THREE.ConeGeometry(0.035, len, 5), icicleMat);
@@ -137,12 +205,9 @@ export function buildCabin(kit: Kit): Cabin {
     }
     g.add(pivot);
   }
-  // Ridge snow
-  const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, D * 2 + OVER * 2 + 0.1, 8), snow);
-  ridge.rotation.x = Math.PI / 2;
-  ridge.scale.set(1, 1, 0.7);
-  ridge.position.y = top + RIDGE + 0.22;
-  g.add(ridge);
+  // One soft blanket of snow over both slopes and the ridge
+  const roofSnow = new THREE.Mesh(roofSnowGeometry(top + RIDGE, slope, slabLen * Math.cos(slope), D + OVER), snow);
+  g.add(roofSnow);
 
   // Chimney with smoke
   const chimney = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.3, 0.5), kit.toon(0x8a5a4a)), 1.04);
@@ -269,17 +334,21 @@ export function buildCabin(kit: Kit): Cabin {
   g.add(woodSnow);
 
   // Snowdrifts around the walls
+  const driftGeo = new THREE.SphereGeometry(0.5, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2);
   for (let k = 0; k < 10; k++) {
-    const drift = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 1), snow);
+    // Smooth rounded mounds resting on the ground (not flat pancakes)
+    const drift = new THREE.Mesh(driftGeo, snow);
     const side = k % 4;
     const t = rand(k) * 2 - 1;
     drift.position.set(
       side === 0 ? W + 0.2 : side === 1 ? -W - 0.2 : t * W,
-      0.05,
+      -0.02,
       side === 2 ? -D - 0.2 : side === 3 ? D + 0.2 : t * D,
     );
     if (side === 3 && Math.abs(drift.position.x - 0.95) < 0.8) drift.position.x -= 1.6;
-    drift.scale.set(1.2, 0.35, 0.8);
+    const along = side < 2 ? 0 : 1;
+    const len = 1.1 + rand(k * 3 + 1) * 0.7;
+    drift.scale.set(along ? len : 0.75, 0.55 + rand(k * 5 + 2) * 0.45, along ? 0.75 : len);
     g.add(drift);
   }
 
@@ -309,6 +378,7 @@ export function buildCabin(kit: Kit): Cabin {
     windows,
     lights,
     roofEdges,
+    roofSnow,
     update(t: number, dt: number) {
       smokeT += dt;
       smoke.forEach((puff, i) => {

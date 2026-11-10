@@ -12,13 +12,20 @@ export interface LanternKit {
   toon(color: number, extra?: Partial<THREE.MeshToonMaterialParameters>): THREE.MeshToonMaterial;
   snow(): THREE.MeshToonMaterial;
   glow(color: number, size: number, opacity?: number): THREE.Sprite;
+  /** A real light for the lantern, or null on weak devices (then only the glow sprite is left) */
+  light?(): THREE.PointLight | null;
 }
+
+/** Power of a lit lantern's real light */
+export const LANTERN_LIGHT = 5.5;
 
 export interface Lantern {
   group: THREE.Group;
   glow: THREE.Sprite;
   /** Size of the glow when lit (for the flicker) */
   glowSize: number;
+  /** Real light that falls on the snow and things around (absent on weak devices) */
+  light?: THREE.PointLight;
 }
 
 export interface Lanterns {
@@ -80,21 +87,30 @@ export function lanternFactory(kit: LanternKit): Lanterns {
       const glass = new THREE.Mesh(glassGeo, glassMat);
       const snow = new THREE.Mesh(snowGeo, snowMat);
       snow.rotation.y = all.length * 1.3;
-      const glowSize = 2.4 * scale;
+      const light = kit.light?.() ?? undefined;
+      // With a real light the sprite is only a small halo around the flame
+      const glowSize = (light ? 1.15 : 2.4) * scale;
       const glow = kit.glow(0xffc070, glowSize, 0);
       glow.position.y = 0.21;
       group.add(frame, glass, snow, glow);
+      if (light) {
+        light.position.y = 0.3;
+        group.add(light);
+      }
       group.scale.setScalar(scale);
       // The glow is a sprite: keep its size in world units
       glow.scale.setScalar(glowSize / scale);
-      const lantern = { group, glow, glowSize: glowSize / scale };
+      const lantern: Lantern = { group, glow, glowSize: glowSize / scale, light };
       all.push(lantern);
       return lantern;
     },
     setOn(on) {
       glassMat.color.set(on ? 0xffd27a : 0x3a3550);
       glassMat.emissive.set(on ? 0xffa040 : 0x000000);
-      all.forEach((l) => (l.glow.material.opacity = on ? 0.9 : 0));
+      all.forEach((l) => {
+        l.glow.material.opacity = on ? 0.9 : 0;
+        if (l.light) l.light.intensity = on ? LANTERN_LIGHT : 0;
+      });
     },
   };
 }

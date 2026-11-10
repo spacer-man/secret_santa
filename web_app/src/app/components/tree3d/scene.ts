@@ -15,7 +15,7 @@ import { ModelName, Models } from './models';
 import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape } from './layout';
 import { TIERS, TREE_TOP, buildFirTree, treeRadius } from './tree-model';
 import { Glitter, buildGlitter, sampleSurface, snowMaterial } from './snow';
-import { Lanterns, lanternFactory } from './lantern';
+import { LANTERN_LIGHT, Lanterns, lanternFactory } from './lantern';
 import {
   Birds,
   ShootingStar,
@@ -321,6 +321,10 @@ export class TreeWorld {
   private readonly models = new Models(this.gradient);
   private version = 0;
   private readonly glowTex = glowTexture();
+  /** Lanterns really light the snow around; weak devices keep only the glow sprites */
+  private readonly realLights = realLightsWanted();
+  /** Light of the lantern figure from the shop (always in the scene: adding lights recompiles shaders) */
+  private readonly figureLight = this.realLights ? this.lampLight() : null;
   private readonly outlineMat = new THREE.MeshBasicMaterial({
     color: 0x0b0a1e,
     side: THREE.BackSide,
@@ -427,6 +431,10 @@ export class TreeWorld {
     }
     mesh.add(new THREE.Mesh(smooth ?? mesh.geometry, mat));
     return mesh;
+  }
+
+  private lampLight(): THREE.PointLight {
+    return new THREE.PointLight(0xffb468, 0, 6.5, 1.7);
   }
 
   private glow(color: number, size: number, opacity = 1): THREE.Sprite {
@@ -565,6 +573,7 @@ export class TreeWorld {
     this.scene.add(warm);
     this.treeLight.position.set(0, 2.6, 0);
     this.scene.add(this.treeLight);
+    if (this.figureLight) this.scene.add(this.figureLight);
   }
 
   private buildGround(): void {
@@ -737,6 +746,7 @@ export class TreeWorld {
     toon: (c, e) => this.toon(c, e),
     snow: () => this.snowMat(),
     glow: (c, sz, o) => this.glow(c, sz, o),
+    light: () => (this.realLights ? this.lampLight() : null),
   });
   private fenceBulbs?: THREE.InstancedMesh;
 
@@ -1904,6 +1914,7 @@ export class TreeWorld {
     // the one that moves it least, the placed ones become obstacles
     const obstacles: Circle[] = [...STATIC_COLLIDERS, ...this.heapColliders];
     const placedPads = new Set<number>();
+    if (this.figureLight) this.figureLight.intensity = 0;
     items.forEach((d, k) => {
       const obj = objects[k];
       if (!obj) return;
@@ -1914,6 +1925,7 @@ export class TreeWorld {
       obj.position.set(b.x, terrainHeight(b.x, b.z), b.z);
       obj.rotation.y = yaw;
       this.idle(d.item, obj, yaw, pad);
+      if (d.item === 'lantern') this.lightFigureLantern(obj);
       obstacles.push(...circlesOf(b));
       placedPads.add(pad);
       for (const c of circlesOf(b)) {
@@ -2029,6 +2041,31 @@ export class TreeWorld {
    * Characters are alive: each kind moves in its own way (the model turns and
    * stretches as a whole, around its feet).
    */
+  /** The street lamp from the shop always shines: a flame halo and (if allowed) a real light */
+  private lightFigureLantern(obj: THREE.Object3D): void {
+    obj.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(obj);
+    const head = new THREE.Vector3(
+      obj.position.x,
+      box.min.y + (box.max.y - box.min.y) * 0.74,
+      obj.position.z,
+    );
+    const size = this.figureLight ? 1.3 : 2.6;
+    const halo = this.glow(0xffc070, size, 0.9);
+    halo.position.copy(head);
+    this.dynamic.add(halo);
+    const light = this.figureLight;
+    if (light) light.position.copy(head);
+    this.animated.push({
+      update: (t) => {
+        const fire = 0.86 + 0.09 * Math.sin(t * 7.3 + 4) + 0.05 * Math.sin(t * 17.1 + 9);
+        halo.material.opacity = 0.9 * fire;
+        halo.scale.setScalar(size * (0.94 + 0.08 * fire));
+        if (light) light.intensity = LANTERN_LIGHT * fire;
+      },
+    });
+  }
+
   private idle(item: string, obj: THREE.Object3D, yaw: number, seed: number): void {
     const s0 = obj.scale.x;
     const y0 = obj.position.y;
@@ -2309,6 +2346,7 @@ export class TreeWorld {
     this.lanterns.all.forEach((l, i) => {
       l.glow.material.opacity = 0.9 * fire(i);
       l.glow.scale.setScalar(l.glowSize * (0.94 + 0.08 * fire(i + 0.5)));
+      if (l.light) l.light.intensity = LANTERN_LIGHT * fire(i);
     });
     this.cabinLights.forEach((l, i) => (l.material.opacity = 0.7 * fire(i + 10)));
   }
@@ -2715,6 +2753,18 @@ export class TreeWorld {
     this.patternCache.forEach((t) => t.dispose());
     this.renderer.dispose();
   }
+}
+
+/**
+ * Real lantern lights cost a little on every pixel: weak devices keep the cheap
+ * glow sprites. `?light=real` / `?light=simple` in the URL forces the choice.
+ */
+function realLightsWanted(): boolean {
+  const forced = new URLSearchParams(location.search).get('light');
+  if (forced === 'real') return true;
+  if (forced === 'simple') return false;
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+  return (navigator.hardwareConcurrency ?? 4) >= 6 && memory >= 4;
 }
 
 export function webglSupported(): boolean {

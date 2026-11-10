@@ -28,6 +28,23 @@ const ICONS: Record<string, string> = {
   'snow-blizzard': '🌬',
 };
 
+/**
+ * Figures with a picture in `public/shop/` (rendered from the 3D models by
+ * `TreeWorld.thumbnail()`, see CLAUDE.md)
+ */
+const PICTURES = new Set([
+  'candy-cane',
+  'candy-cane-green',
+  'lantern',
+  'snowman-classic',
+  'snowman',
+  'sled',
+  'sled-long',
+  'reindeer',
+  'gingerbread',
+  'nutcracker',
+]);
+
 /** Shop catalog of the user (the catalog itself lives on the server) */
 @Injectable({ providedIn: 'root' })
 export class ShopState {
@@ -61,6 +78,11 @@ export class ShopState {
 
   icon(key: string): string {
     return ICONS[key] ?? '🎁';
+  }
+
+  /** Rendered picture of the item (figures only), otherwise the emoji `icon()` is shown */
+  image(key: string): string | null {
+    return PICTURES.has(key) ? `/shop/${key}.webp` : null;
   }
 
   name(key: string): string {

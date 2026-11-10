@@ -2203,6 +2203,59 @@ export class TreeWorld {
     this.renderOnce();
   }
 
+  /**
+   * Picture of a courtyard figure on a transparent background (WebP data URL).
+   * Used offline to render the shop thumbnails into `public/shop/` (see `?debug`).
+   */
+  async thumbnail(item: string, size = 192): Promise<string> {
+    const kind = DECOR_KINDS[item];
+    if (!kind) throw new Error(`Unknown figure ${item}`);
+    const obj = await this.models.get(kind.model);
+    const stage = new THREE.Scene();
+    stage.add(new THREE.HemisphereLight(0xffffff, 0x8a90c8, 1.25));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    sun.position.set(-2, 4, 3);
+    stage.add(sun, obj);
+
+    // Three-quarter view; the frame is fitted to the bounding sphere
+    obj.rotation.y = -0.6;
+    const sphere = new THREE.Box3().setFromObject(obj).getBoundingSphere(new THREE.Sphere());
+    const fov = 24;
+    const cam = new THREE.PerspectiveCamera(fov, 1, 0.1, 100);
+    const dist = (sphere.radius * 0.84) / Math.sin(THREE.MathUtils.degToRad(fov / 2));
+    cam.position
+      .copy(sphere.center)
+      .add(new THREE.Vector3(0, 0.36, 1).normalize().multiplyScalar(dist));
+    cam.lookAt(sphere.center);
+
+    const px = size * 4; // supersampling: smooth edges after downscaling
+    const target = new THREE.WebGLRenderTarget(px, px);
+    target.texture.colorSpace = THREE.SRGBColorSpace;
+    const clear = this.renderer.getClearAlpha();
+    this.renderer.setRenderTarget(target);
+    this.renderer.setClearAlpha(0);
+    this.renderer.clear();
+    this.renderer.render(stage, cam);
+    const pixels = new Uint8ClampedArray(px * px * 4);
+    this.renderer.readRenderTargetPixels(target, 0, 0, px, px, pixels);
+    this.renderer.setRenderTarget(null);
+    this.renderer.setClearAlpha(clear);
+    target.dispose();
+    this.renderOnce();
+
+    const big = document.createElement('canvas');
+    big.width = big.height = px;
+    big.getContext('2d')!.putImageData(new ImageData(pixels, px, px), 0, 0);
+    const out = document.createElement('canvas');
+    out.width = out.height = size;
+    const ctx = out.getContext('2d')!;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.translate(0, size); // WebGL rows go bottom-up
+    ctx.scale(1, -1);
+    ctx.drawImage(big, 0, 0, size, size);
+    return out.toDataURL('image/webp', 0.9);
+  }
+
   // Camera flight to a corner
   private focusTarget = new THREE.Vector3();
   private focusAzimuth = 0;
@@ -2213,8 +2266,9 @@ export class TreeWorld {
   private focusElev = 0.42;
 
   focusCorner(corner: number): void {
-    this.focusDist = 6.0;
-    this.focusElev = 0.42;
+    // High enough to look over the figure on the nearest place
+    this.focusDist = 8.2;
+    this.focusElev = 0.85;
     this.callbacks.focused?.(corner);
     const c = cornerCentre(corner);
     this.focusTarget.set(c.x * 0.97, 0.55, c.z * 0.97);

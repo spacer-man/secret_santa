@@ -10,7 +10,7 @@
       content="Новогодний Тайный Санта со всего мира: анонимное поздравление ровно в 00:00 по твоему времени"
     />
     <meta name="theme-color" content="#0a0a11" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light dark" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -25,6 +25,99 @@
     <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
   </head>
   <body>
+    <!-- Hand-made unevenness: lines, frames and ink are roughened by these filters (see styles.scss) -->
+    <svg class="handmade-defs" width="0" height="0" aria-hidden="true" focusable="false">
+      <defs>
+        <!-- A frame or a block drawn by an unsteady hand -->
+        <filter id="rough" x="-3%" y="-3%" width="106%" height="106%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4" />
+          <feDisplacementMap
+            in="SourceGraphic"
+            scale="3.2"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+        <filter id="rough-b" x="-3%" y="-3%" width="106%" height="106%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="11" />
+          <feDisplacementMap
+            in="SourceGraphic"
+            scale="2.6"
+            xChannelSelector="G"
+            yChannelSelector="R"
+          />
+        </filter>
+        <!-- A ruled line: it waves a little and the ink is not even -->
+        <filter id="rough-line" x="-2%" y="-400%" width="104%" height="900%">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.02 0.4"
+            numOctaves="2"
+            seed="7"
+            result="n"
+          />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="n"
+            scale="3"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+        <!-- Stamp ink: rough edges and bald spots where the stamp did not press -->
+        <filter id="ink" x="-3%" y="-8%" width="106%" height="116%">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.04"
+            numOctaves="2"
+            seed="3"
+            result="wave"
+          />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="wave"
+            scale="3"
+            xChannelSelector="R"
+            yChannelSelector="G"
+            result="shape"
+          />
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.9"
+            numOctaves="2"
+            seed="5"
+            result="grain"
+          />
+          <feColorMatrix
+            in="grain"
+            values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.5 1.42"
+            result="spots"
+          />
+          <feComposite in="shape" in2="spots" operator="in" />
+        </filter>
+        <!-- Letterpress: big numerals are slightly uneven -->
+        <filter id="press" x="-2%" y="-2%" width="104%" height="104%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.09" numOctaves="1" seed="9" />
+          <feDisplacementMap
+            in="SourceGraphic"
+            scale="1.4"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+        <!-- Watercolour blot -->
+        <filter id="blot" x="-20%" y="-20%" width="140%" height="140%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="3" seed="2" />
+          <feDisplacementMap
+            in="SourceGraphic"
+            scale="22"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+          <feGaussianBlur stdDeviation="1.2" />
+        </filter>
+      </defs>
+    </svg>
     <app-root></app-root>
   </body>
 </html>

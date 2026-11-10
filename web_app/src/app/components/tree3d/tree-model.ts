@@ -15,6 +15,8 @@ export interface TreeKit {
   toon(color: number, extra?: Partial<THREE.MeshToonMaterialParameters>): THREE.MeshToonMaterial;
   /** Outline: back faces of `smooth` (or the mesh geometry) pushed out along normals */
   hull(mesh: THREE.Mesh, thickness?: number, smooth?: THREE.BufferGeometry): THREE.Mesh;
+  /** Soft snow material */
+  snow(): THREE.MeshToonMaterial;
 }
 
 function rand(seed: number): number {
@@ -298,6 +300,6 @@ export function buildFirTree(kit: TreeKit): THREE.Group {
 
   const snowParts = TIERS.map((_, i) => buildSnow(i));
   const snow = mergeGeometries(snowParts);
-  tree.add(kit.hull(new THREE.Mesh(snow, kit.toon(0xf4f7ff)), 0.018));
+  tree.add(kit.hull(new THREE.Mesh(snow, kit.snow()), 0.018));
   return tree;
 }

@@ -18,3 +18,7 @@ wheels/
 # App data
 **/state_data
 **/db_data
+
+# Local dev (scripts/dev-tunnel.sh)
+.dev/
+.env.dev

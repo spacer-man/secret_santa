@@ -3,6 +3,7 @@
  * shooting stars, footprints on the path to the cabin.
  */
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { withOutline } from './outline';
 
 function rand(seed: number): number {
@@ -329,4 +330,43 @@ export function buildFootprints(path: THREE.Vector3[], step = 0.4): THREE.Instan
     mesh.setMatrixAt(i, m);
   }
   return mesh;
+}
+
+// ====== Cartoon smoke ====== //
+
+let puffGeo: THREE.BufferGeometry | undefined;
+
+/**
+ * A puff of smoke in the style of the scene: a solid little cloud (three
+ * merged balls) with cel shading and an ink outline, not a blurry sprite.
+ * It pops out, swells and shrinks away: see puffScale().
+ */
+export function buildPuff(material: THREE.Material): THREE.Mesh {
+  if (!puffGeo) {
+    const balls: [number, number, number, number][] = [
+      [0, 0, 0, 0.5],
+      [0.34, 0.12, 0.1, 0.34],
+      [-0.3, 0.18, -0.12, 0.3],
+      [0.02, 0.3, 0.2, 0.27],
+    ];
+    puffGeo = mergeGeometries(
+      balls.map(([x, y, z, r]) => {
+        const g = new THREE.SphereGeometry(r, 12, 9);
+        g.translate(x, y, z);
+        return g;
+      }),
+    );
+  }
+  const puff = withOutline(new THREE.Mesh(puffGeo, material), 0.0022);
+  puff.visible = false;
+  return puff;
+}
+
+/** Size of a puff over its life (0..1): quick pop, slow swelling, shrinks to nothing */
+export function puffScale(life: number): number {
+  if (life <= 0 || life >= 1) return 0;
+  const pop = 1 - Math.pow(1 - Math.min(1, life / 0.18), 3);
+  const swell = 0.6 + 0.4 * life;
+  const out = 1 - THREE.MathUtils.smoothstep(life, 0.62, 1);
+  return pop * swell * out;
 }

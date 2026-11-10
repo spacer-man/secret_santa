@@ -16,7 +16,7 @@ import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape }
 import { TIERS, TREE_TOP, buildFirTree, treeRadius } from './tree-model';
 import { Glitter, buildGlitter, sampleSurface, snowMaterial } from './snow';
 import { Lanterns, lanternFactory } from './lantern';
-import { Birds, ShootingStar, buildBirds, buildFootprints, buildShootingStar } from './life';
+import { Birds, ShootingStar, buildBirds, buildFootprints, buildPuff, buildShootingStar, puffScale } from './life';
 
 /** A ball place: where the thread is tied and where the ball centre hangs */
 interface BallSlot {
@@ -1035,7 +1035,8 @@ export class TreeWorld {
   /** Glints on the snow: the ground near the courtyard, the drifts, the tree */
   private buildGlitter(): void {
     const spots: number[] = [];
-    for (let i = 0; i < 620; i++) {
+    // A few big star-shaped glints as accents: the fine sparkle is in the snow material
+    for (let i = 0; i < 240; i++) {
       const a = rand(i * 1.3 + 7) * Math.PI * 2;
       const r = 7.35 + Math.pow(rand(i * 2.9 + 3), 1.5) * 15;
       const x = Math.cos(a) * r;
@@ -1050,12 +1051,12 @@ export class TreeWorld {
       spots.push(Math.cos(a) * r, low ? 0.31 : 0.61, Math.sin(a) * r, 0, 1, 0);
     }
     const treeSnow = this.treeGroup?.children[2] as THREE.Mesh | undefined;
-    if (treeSnow) spots.push(...sampleSurface(treeSnow.geometry, 130, 11));
+    if (treeSnow) spots.push(...sampleSurface(treeSnow.geometry, 60, 11));
     if (this.roofSnow) {
       // Roof snow lives in the cabin's space: bring the points to the world
       this.roofSnow.updateWorldMatrix(true, false);
       const m = this.roofSnow.matrixWorld;
-      const local = sampleSurface(this.roofSnow.geometry, 70, 23);
+      const local = sampleSurface(this.roofSnow.geometry, 30, 23);
       const v = new THREE.Vector3();
       for (let i = 0; i < local.length; i += 6) {
         v.set(local[i], local[i + 1], local[i + 2]).applyMatrix4(m);
@@ -1100,20 +1101,82 @@ export class TreeWorld {
     time: { value: 0 },
   };
 
-  /** Flakes of different size that tumble (flicker) as they fall */
+  /**
+   * Snowflake sprites, 2 x 2: a soft fluffy flake and three six-armed crystals.
+   * Small far flakes read as soft dots anyway; the big near ones show the crystal.
+   */
+  private flakeAtlas(): THREE.CanvasTexture {
+    const cell = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = cell * 2;
+    const ctx = canvas.getContext('2d')!;
+    ctx.strokeStyle = ctx.fillStyle = '#fff';
+    ctx.lineCap = 'round';
+    const arm = (len: number, twigs: [number, number][], width: number) => {
+      // One arm along +X with pairs of twigs: [position along the arm, twig length]
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(len, 0);
+      for (const [at, l] of twigs) {
+        for (const side of [-1, 1]) {
+          ctx.moveTo(at, 0);
+          ctx.lineTo(at + l * 0.5, side * l * 0.87);
+        }
+      }
+      ctx.stroke();
+    };
+    const crystals: { len: number; twigs: [number, number][]; width: number; hex: number }[] = [
+      { len: 50, twigs: [[22, 14], [36, 10]], width: 6, hex: 0 },
+      { len: 48, twigs: [[30, 16]], width: 7, hex: 12 },
+      { len: 50, twigs: [[14, 9], [26, 13], [38, 9]], width: 5, hex: 7 },
+    ];
+    for (let k = 0; k < 4; k++) {
+      ctx.save();
+      ctx.translate((k % 2) * cell + cell / 2, Math.floor(k / 2) * cell + cell / 2);
+      // Soft halo: the flake is fluffy, not a wire
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, cell / 2);
+      g.addColorStop(0, k === 0 ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,0.5)');
+      g.addColorStop(k === 0 ? 0.3 : 0.45, k === 0 ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.16)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(-cell / 2, -cell / 2, cell, cell);
+      if (k > 0) {
+        const c = crystals[k - 1];
+        for (let a = 0; a < 6; a++) {
+          ctx.save();
+          ctx.rotate((a / 6) * Math.PI * 2);
+          arm(c.len, c.twigs, c.width);
+          ctx.restore();
+        }
+        if (c.hex) {
+          ctx.lineWidth = c.width * 0.8;
+          ctx.beginPath();
+          for (let a = 0; a <= 6; a++) ctx.lineTo(Math.cos((a / 6) * Math.PI * 2) * c.hex, Math.sin((a / 6) * Math.PI * 2) * c.hex);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  /** Flakes of different size and shape that spin and tumble as they fall */
   private buildSnowfall(): void {
     const n = TreeWorld.SNOWFALL[TreeWorld.SNOWFALL.length - 1].count;
     const pos = new Float32Array(n * 3);
-    const flake = new Float32Array(n * 2);
+    const flake = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       pos.set([(rand(i) - 0.5) * 26, rand(i + 0.3) * 14, (rand(i + 0.6) - 0.5) * 26], i * 3);
-      // Mostly small flakes, a few big fluffy ones
-      flake.set([0.55 + Math.pow(rand(i * 1.9), 3) * 1.5, rand(i * 2.3) * 6.283], i * 2);
+      // Mostly small soft flakes; every third one is a bigger crystal
+      const crystal = i % 3 === 0 ? 1 + Math.floor(rand(i * 5.7) * 3) : 0;
+      const size = crystal ? 1.5 + rand(i * 1.9) * 1.3 : 0.55 + Math.pow(rand(i * 1.9), 3) * 1.1;
+      flake.set([size, rand(i * 2.3) * 6.283, crystal], i * 3);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('flake', new THREE.BufferAttribute(flake, 2));
-    this.snowMatUniforms['map'].value = this.glowTex;
+    geo.setAttribute('flake', new THREE.BufferAttribute(flake, 3));
+    this.snowMatUniforms['map'].value = this.flakeAtlas();
     this.snow = new THREE.Points(
       geo,
       new THREE.ShaderMaterial({
@@ -1121,20 +1184,32 @@ export class TreeWorld {
         depthWrite: false,
         uniforms: this.snowMatUniforms,
         vertexShader: `
-          attribute vec2 flake;
+          attribute vec3 flake;
           uniform float size; uniform float scale; uniform float time;
-          varying float vAlpha;
+          varying float vAlpha; varying float vKind; varying vec2 vSpin;
           void main() {
             vec4 mv = modelViewMatrix * vec4(position, 1.0);
             gl_Position = projectionMatrix * mv;
             gl_PointSize = size * flake.x * scale / max(-mv.z, 0.5);
+            vKind = flake.z;
+            // Crystals spin slowly, each its own way
+            float a = flake.y + time * (0.5 + fract(flake.y * 3.7)) * (fract(flake.y * 1.3) > 0.5 ? 1.0 : -1.0);
+            vSpin = vec2(cos(a), sin(a));
             // Tumbling: a flake turns its thin side now and then
-            vAlpha = 0.68 + 0.27 * sin(time * (1.5 + flake.x) + flake.y);
+            vAlpha = 0.7 + 0.25 * sin(time * (1.5 + flake.x) + flake.y);
+            // Tiny on screen: the crystal would be a noisy dot, fade it a little
+            if (flake.z > 0.5) vAlpha *= 0.55 + 0.45 * smoothstep(5.0, 16.0, gl_PointSize);
           }`,
         fragmentShader: `
-          uniform sampler2D map; varying float vAlpha;
+          uniform sampler2D map;
+          varying float vAlpha; varying float vKind; varying vec2 vSpin;
           void main() {
-            float a = texture2D(map, gl_PointCoord).a * vAlpha;
+            vec2 p = gl_PointCoord - 0.5;
+            p = vec2(p.x * vSpin.x - p.y * vSpin.y, p.x * vSpin.y + p.y * vSpin.x);
+            // The rotated square must stay inside its cell of the atlas
+            if (max(abs(p.x), abs(p.y)) > 0.5) discard;
+            vec2 cell = vec2(mod(vKind, 2.0), floor(vKind / 2.0));
+            float a = texture2D(map, (cell + p + 0.5) * 0.5).a * vAlpha;
             gl_FragColor = vec4(vec3(1.0), a);
           }`,
       }),
@@ -1529,9 +1604,9 @@ export class TreeWorld {
       return h;
     });
     // A trail of puffs: each stays where it left the funnel and rises
+    const puffMat = this.toon(0xe6e9f8, { emissive: 0x6f78a8, emissiveIntensity: 0.55 });
     const puffs = [0, 1, 2, 3].map(() => {
-      const s = this.glow(0xd8def5, 0.6, 0);
-      s.material.blending = THREE.NormalBlending;
+      const s = buildPuff(puffMat);
       this.dynamic.add(s);
       return { sprite: s, born: -10, x: 0, z: 0 };
     });
@@ -1558,13 +1633,11 @@ export class TreeWorld {
         }
         for (const p of puffs) {
           const life = (t - p.born) / 1.7;
-          if (life >= 1) {
-            p.sprite.material.opacity = 0;
-            continue;
-          }
-          p.sprite.position.set(p.x, 0.98 + life * 1.1, p.z);
-          p.sprite.scale.setScalar(0.28 + life * 0.75);
-          p.sprite.material.opacity = Math.sin(Math.min(1, life * 1.15) * Math.PI) * 0.5;
+          const k = puffScale(life) * 0.3;
+          p.sprite.visible = k > 0.01;
+          p.sprite.position.set(p.x, 1.0 + life * 1.0, p.z);
+          p.sprite.scale.setScalar(Math.max(k, 0.001));
+          p.sprite.rotation.y = p.born * 3 + life;
         }
       },
     });

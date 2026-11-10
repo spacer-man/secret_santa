@@ -15,7 +15,11 @@ import { ModelName, Models } from './models';
 import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape } from './layout';
 import { TIERS, TREE_TOP, buildFirTree, treeRadius } from './tree-model';
 import { Glitter, buildGlitter, sampleSurface, snowMaterial } from './snow';
-import { pushForward, volumeGlow } from './glow';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { HIDDEN_LAYER, emit, pushForward } from './glow';
 import { FACING_DECAY, LANTERN_LIGHT, Lanterns, facingLights, lanternFactory } from './lantern';
 import {
   Birds,
@@ -111,8 +115,11 @@ const DECOR_KINDS: Record<string, DecorKind> = {
   lantern: { model: 'lantern', scale: 1.8, yaws: ANY },
 };
 
+/** Brightness of light sources in the rich mode: above 1 they glow through the bloom */
+const BLOOM_POWER = 1.6;
+
 /** Power of the real light from a cabin window */
-const WINDOW_LIGHT = 14;
+const WINDOW_LIGHT = 8;
 
 /** Figures stand between the train track and the fence */
 const COURTYARD_RING = { min: 4.3, max: 8.25 };
@@ -325,8 +332,14 @@ export class TreeWorld {
   private readonly models = new Models(this.gradient);
   private version = 0;
   private readonly glowTex = glowTexture();
-  /** Lanterns really light the snow around; weak devices keep only the glow sprites */
+  /**
+   * Rich light: lanterns and windows really light the snow around, bright things
+   * glow through the bloom. Weak devices keep only flat glow sprites.
+   */
   private readonly realLights = realLightsWanted();
+  /** Brightness of light sources: more than 1 only with the bloom */
+  private readonly bloom = this.realLights ? BLOOM_POWER : 1;
+  private composer?: EffectComposer;
   /** Light of the lantern figure from the shop (always in the scene: adding lights recompiles shaders) */
   private readonly figureLight = this.realLights ? this.lampLight() : null;
   private readonly outlineMat = new THREE.MeshBasicMaterial({
@@ -365,6 +378,15 @@ export class TreeWorld {
     });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    if (this.realLights) {
+      // Bloom: the frame is drawn into a buffer that keeps colours brighter than
+      // white, everything above the threshold is blurred and added on top
+      const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+      this.composer = new EffectComposer(this.renderer, target);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.45, 1.0));
+      this.composer.addPass(new OutputPass());
+    }
 
     this.scene.fog = new THREE.Fog(0x0b0c22, 22, 70);
     this.buildSky();
@@ -430,7 +452,11 @@ export class TreeWorld {
         uniforms: { thickness: { value: thickness } },
         vertexShader: `uniform float thickness;
           void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position + normal * thickness, 1.0); }`,
-        fragmentShader: `void main() { gl_FragColor = vec4(0.04, 0.04, 0.12, 1.0); }`,
+        fragmentShader: `void main() { gl_FragColor = vec4(0.04, 0.04, 0.12, 1.0);
+          // The colours above are display (sRGB) values
+ gl_FragColor = sRGBTransferEOTF( gl_FragColor );
+#include <colorspace_fragment>
+ }`,
       });
       this.hullMats.set(thickness, mat);
     }
@@ -440,6 +466,18 @@ export class TreeWorld {
 
   private lampLight(): THREE.PointLight {
     return new THREE.PointLight(0xffb468, 0, 6.5, FACING_DECAY);
+  }
+
+  /** Glow of a light source: a flat sprite, replaced by the bloom in the rich mode */
+  private halo(color: number, size: number, opacity = 1): THREE.Sprite {
+    const s = this.glow(color, size, opacity);
+    if (this.realLights) s.layers.set(HIDDEN_LAYER);
+    return s;
+  }
+
+  private draw(): void {
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
   }
 
   private glow(color: number, size: number, opacity = 1): THREE.Sprite {
@@ -473,7 +511,11 @@ export class TreeWorld {
         fragmentShader: `varying float h; void main(){
           vec3 top = vec3(0.005, 0.008, 0.05); vec3 mid = vec3(0.035, 0.03, 0.12); vec3 low = vec3(0.085, 0.065, 0.19);
           vec3 c = mix(low, mid, smoothstep(-0.05, 0.25, h)); c = mix(c, top, smoothstep(0.25, 0.9, h));
-          gl_FragColor = vec4(c, 1.0); }`,
+          gl_FragColor = vec4(c, 1.0);
+          // The colours above are display (sRGB) values
+ gl_FragColor = sRGBTransferEOTF( gl_FragColor );
+#include <colorspace_fragment>
+ }`,
       }),
     );
     this.scene.add(sky);
@@ -563,6 +605,10 @@ export class TreeWorld {
           float d = length(gl_PointCoord - 0.5);
           float a = smoothstep(0.5, 0.0, d);
           gl_FragColor = vec4(vec3(0.9, 0.94, 1.0) * 1.6, a * vTwinkle * opacity);
+          // The colours above are display (sRGB) values
+ gl_FragColor = sRGBTransferEOTF( gl_FragColor );
+#include <colorspace_fragment>
+
         }`,
     });
     const stars = new THREE.Points(geo, this.starMat);
@@ -755,6 +801,7 @@ export class TreeWorld {
     snow: () => this.snowMat(),
     glow: (c, sz, o) => this.glow(c, sz, o),
     light: () => (this.realLights ? this.lampLight() : null),
+    bloom: this.bloom,
   });
   private fenceBulbs?: THREE.InstancedMesh;
 
@@ -841,7 +888,7 @@ export class TreeWorld {
     const m = new THREE.Matrix4();
     bulbPositions.forEach((p, i) => {
       bulbs.setMatrixAt(i, m.makeTranslation(p.x, p.y, p.z));
-      bulbs.setColorAt(i, new THREE.Color(colors[i % colors.length]));
+      bulbs.setColorAt(i, emit(colors[i % colors.length], this.bloom));
     });
     bulbs.visible = false;
     this.fenceBulbs = bulbs;
@@ -897,7 +944,12 @@ export class TreeWorld {
     this.staticAnimated.push(cabin);
 
     // Fringe lights under the roof (a skin from the shop)
-    this.fringe = new CabinLights(cabin.roofEdges, this.glowTex, new THREE.Vector3(0, 2.6, 3.4));
+    this.fringe = new CabinLights(
+      cabin.roofEdges,
+      this.glowTex,
+      new THREE.Vector3(0, 2.6, 3.4),
+      this.bloom,
+    );
     cabin.group.add(this.fringe.group);
     this.staticAnimated.push({ update: (t) => this.fringe?.update(t) });
 
@@ -1394,6 +1446,10 @@ export class TreeWorld {
             vec2 cell = vec2(mod(vKind, 2.0), floor(vKind / 2.0));
             float a = texture2D(map, (cell + p + 0.5) * 0.5).a * vAlpha;
             gl_FragColor = vec4(vec3(1.0), a);
+          // The colours above are display (sRGB) values
+ gl_FragColor = sRGBTransferEOTF( gl_FragColor );
+#include <colorspace_fragment>
+
           }`,
       }),
     );
@@ -1571,8 +1627,8 @@ export class TreeWorld {
       this.toon(0xffffff, {
         map: ball.pattern === 'plain' ? null : this.patternMap(ball.pattern, color),
         color: ball.pattern === 'plain' ? color : 0xffffff,
-        emissive: isLit ? color : 0x000000,
-        emissiveIntensity: isLit ? 0.55 : 0,
+        emissive: isLit ? (this.realLights ? emit(color, this.bloom * 0.8) : color) : 0x000000,
+        emissiveIntensity: isLit ? (this.realLights ? 1 : 0.55) : 0,
       }),
     );
     sphere.position.y = -L;
@@ -1592,7 +1648,7 @@ export class TreeWorld {
 
     let glow: THREE.Sprite | undefined;
     if (isLit) {
-      glow = this.glow(color, 1.4, 0.9);
+      glow = this.halo(color, 1.4, 0.9);
       glow.position.y = -L;
       hang.add(glow);
     }
@@ -1715,12 +1771,12 @@ export class TreeWorld {
       const color = colors[k % colors.length];
       const bulb = new THREE.Mesh(
         new THREE.SphereGeometry(0.045, 8, 6),
-        new THREE.MeshBasicMaterial({ color: lit ? color : 0x1d3a2c }),
+        new THREE.MeshBasicMaterial({ color: lit ? emit(color, this.bloom) : 0x1d3a2c }),
       );
       bulb.position.copy(p);
       this.dynamic.add(bulb);
       if (lit) {
-        const g = this.glow(color, 0.45, 0.8);
+        const g = this.halo(color, 0.45, 0.8);
         g.position.copy(p);
         this.dynamic.add(g);
         this.animated.push({
@@ -1750,8 +1806,8 @@ export class TreeWorld {
       new THREE.Mesh(
         geo,
         this.toon(on ? 0xffd36b : 0xc9d2ec, {
-          emissive: on ? 0xffb020 : 0x5a6ab0,
-          emissiveIntensity: on ? 0.8 : 0.35,
+          emissive: on ? (this.realLights ? emit(0xffb020, this.bloom) : 0xffb020) : 0x5a6ab0,
+          emissiveIntensity: on ? (this.realLights ? 1 : 0.8) : 0.35,
         }),
       ),
       1.06,
@@ -1761,7 +1817,7 @@ export class TreeWorld {
     this.clickables.push(star);
     this.dynamic.add(star);
     // Lit: warm big glow. Not lit yet: a faint cold shimmer, so the star is still noticeable
-    const glow = on ? this.glow(0xffe08a, 2.6, 0.9) : this.glow(0x9fb4ff, 1.5, 0.35);
+    const glow = on ? this.halo(0xffe08a, 2.6, 0.9) : this.glow(0x9fb4ff, 1.5, 0.35);
     glow.position.copy(star.position);
     this.dynamic.add(glow);
     this.animated.push({
@@ -2074,20 +2130,14 @@ export class TreeWorld {
     const fire = (t: number) => 0.86 + 0.09 * Math.sin(t * 7.3 + 4) + 0.05 * Math.sin(t * 17.1 + 9);
     const light = this.figureLight;
     if (light) {
-      // Lit air under the hood of the lamp (the hood shades what is above it).
-      // The flame and the hood rim are measured on the Kenney model: 0.815 and 0.893 of its height
-      const height = box.max.y - box.min.y;
-      const width = Math.max(box.max.x - box.min.x, box.max.z - box.min.z);
-      const air = volumeGlow(1.5, 0xffb866, { y: height * 0.078, r: width * 0.45 }, 0.8);
-      air.mesh.position.copy(head);
-      this.dynamic.add(air.mesh);
+      // Real light; the glow is the bloom of the lamp glass, made bright here
       light.position.copy(head);
-      this.animated.push({
-        update: (t) => {
-          light.intensity = LANTERN_LIGHT * fire(t);
-          air.setPower(fire(t));
-        },
+      obj.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh && !mesh.userData['outline'])
+          mesh.material = this.lampGlass(mesh.material as THREE.MeshToonMaterial);
       });
+      this.animated.push({ update: (t) => (light.intensity = LANTERN_LIGHT * fire(t)) });
     } else {
       const size = 2.6;
       const halo = this.glow(0xffc070, size, 0.9);
@@ -2100,6 +2150,31 @@ export class TreeWorld {
         },
       });
     }
+  }
+
+  private readonly lampGlassMats = new Map<THREE.Material, THREE.MeshToonMaterial>();
+
+  /**
+   * The Kenney lamp is painted by one palette texture: its orange glass is made
+   * to shine (for the bloom) by the colour of the texel, the metal stays as it is
+   */
+  private lampGlass(source: THREE.MeshToonMaterial): THREE.MeshToonMaterial {
+    let mat = this.lampGlassMats.get(source);
+    if (!mat) {
+      mat = source.clone();
+      mat.emissiveMap = source.map;
+      mat.emissive = emit(0xffb050, BLOOM_POWER * 1.3);
+      mat.onBeforeCompile = (shader) => {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <emissivemap_fragment>',
+          `vec4 lampTexel = texture2D( emissiveMap, vEmissiveMapUv );
+           totalEmissiveRadiance *= step( 0.5, lampTexel.r ) * step( lampTexel.b, 0.3 );`,
+        );
+      };
+      mat.customProgramCacheKey = () => 'lamp-glass';
+      this.lampGlassMats.set(source, mat);
+    }
+    return mat;
   }
 
   private idle(item: string, obj: THREE.Object3D, yaw: number, seed: number): void {
@@ -2393,7 +2468,8 @@ export class TreeWorld {
       if (m instanceof THREE.MeshToonMaterial) {
         m.color.set(lampsOn ? 0xffd27a : 0x3a3550);
         m.emissive.set(lampsOn ? 0xffa040 : 0x000000);
-      } else m.color.set(lampsOn ? 0xffd27a : 0x1c1a33);
+        m.emissiveIntensity = lampsOn ? this.bloom * 0.85 : 1;
+      } else m.color.copy(lampsOn ? emit(0xffd27a, this.bloom * 0.85) : new THREE.Color(0x1c1a33));
     });
     this.cabinLights.forEach((l) => (l.material.opacity = lampsOn ? 0.7 : 0));
     this.windowLights.forEach((l) => (l.intensity = lampsOn ? WINDOW_LIGHT : 0));
@@ -2494,6 +2570,10 @@ export class TreeWorld {
             col = mix(col, violet, smoothstep(0.5, 1.3, vv));
             float a = ray * glow * vFade * opacity * 2.6;
             gl_FragColor = vec4(col * a, a);
+          // The colours above are display (sRGB) values
+ gl_FragColor = sRGBTransferEOTF( gl_FragColor );
+#include <colorspace_fragment>
+
           }`,
       });
       const mesh = new THREE.Mesh(geo, mat);
@@ -2664,6 +2744,8 @@ export class TreeWorld {
     const h = this.canvas.clientHeight;
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
+    this.composer?.setPixelRatio(this.renderer.getPixelRatio());
+    this.composer?.setSize(w, h);
     this.snowMatUniforms['scale'].value = this.renderer.domElement.height / 2;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -2764,17 +2846,18 @@ export class TreeWorld {
     for (const a of this.staticAnimated) a.update(t, dt);
     for (const a of this.animated) a.update(t, dt);
     this.placeCamera();
-    this.renderer.render(this.scene, this.camera);
+    this.draw();
   }
 
   private renderOnce(): void {
     this.placeCamera();
-    this.renderer.render(this.scene, this.camera);
+    this.draw();
   }
 
   dispose(): void {
     this.version++;
     this.models.dispose();
+    this.composer?.dispose();
     this.stop();
     this.observer?.disconnect();
     this.cleanup.forEach((f) => f());
@@ -2797,6 +2880,13 @@ function realLightsWanted(): boolean {
   const forced = new URLSearchParams(location.search).get('light');
   if (forced === 'real') return true;
   if (forced === 'simple') return false;
+  // The bloom needs a buffer for colours brighter than white
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if (!gl?.getExtension('EXT_color_buffer_float')) return false;
+  } catch {
+    return false;
+  }
   const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
   return (navigator.hardwareConcurrency ?? 4) >= 6 && memory >= 4;
 }

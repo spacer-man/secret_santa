@@ -34,7 +34,11 @@ export function outlineMaterial(
           mv.xyz += vn * (-mv.z) * width;
           gl_Position = projectionMatrix * mv;
         }`,
-      fragmentShader: `uniform vec3 color; void main() { gl_FragColor = vec4(color, 1.0); }`,
+      fragmentShader: `uniform vec3 color; void main() { gl_FragColor = vec4(color, 1.0);
+          // The colours above are display (sRGB) values
+ gl_FragColor = sRGBTransferEOTF( gl_FragColor );
+#include <colorspace_fragment>
+ }`,
     });
     materials.set(key, m);
   }

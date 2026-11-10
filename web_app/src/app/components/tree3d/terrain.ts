@@ -116,6 +116,10 @@ export function terrainOutline(): THREE.ShaderMaterial {
         mv.xyz += n * (-mv.z) * 0.004;
         gl_Position = projectionMatrix * mv;
       }`,
-    fragmentShader: `void main() { gl_FragColor = vec4(0.1, 0.11, 0.26, 1.0); }`,
+    fragmentShader: `void main() { gl_FragColor = vec4(0.1, 0.11, 0.26, 1.0);
+          // The colours above are display (sRGB) values
+ gl_FragColor = sRGBTransferEOTF( gl_FragColor );
+#include <colorspace_fragment>
+ }`,
   });
 }

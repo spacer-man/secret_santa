@@ -133,6 +133,10 @@ export function buildGlitter(spots: number[], pixelRatio: number): Glitter {
         float a = (smoothstep(0.22, 0.0, d) + rays * 0.7) * vFlash * strength;
         if (a < 0.01) discard;
         gl_FragColor = vec4(vec3(0.86, 0.93, 1.0) * a, a);
+          // The colours above are display (sRGB) values
+ gl_FragColor = sRGBTransferEOTF( gl_FragColor );
+#include <colorspace_fragment>
+
       }`,
   });
   const points = new THREE.Points(geo, mat);

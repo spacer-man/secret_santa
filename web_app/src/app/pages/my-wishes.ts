@@ -21,7 +21,9 @@ import { MediaList } from '../components/media';
           <p class="wish-text">{{ w.text }}</p>
           @if (w.feedback.recipients) {
             <div class="feedback">
-              <span>🎁 {{ i18n.t('recipients') }}: <b>{{ w.feedback.recipients }}</b></span>
+              <span
+                >🎁 {{ i18n.t('recipients') }}: <b>{{ w.feedback.recipients }}</b></span
+              >
               @for (r of w.feedback.reactions | keyvalue; track r.key) {
                 <span class="chip">{{ r.key }} {{ r.value }}</span>
               }

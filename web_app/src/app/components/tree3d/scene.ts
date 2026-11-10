@@ -16,7 +16,15 @@ import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape }
 import { TIERS, TREE_TOP, buildFirTree, treeRadius } from './tree-model';
 import { Glitter, buildGlitter, sampleSurface, snowMaterial } from './snow';
 import { Lanterns, lanternFactory } from './lantern';
-import { Birds, ShootingStar, buildBirds, buildFootprints, buildPuff, buildShootingStar, puffScale } from './life';
+import {
+  Birds,
+  ShootingStar,
+  buildBirds,
+  buildFootprints,
+  buildPuff,
+  buildShootingStar,
+  puffScale,
+} from './life';
 
 /** A ball place: where the thread is tied and where the ball centre hangs */
 interface BallSlot {
@@ -53,8 +61,6 @@ const BALL_COLORS: Record<string, number> = {
 const ZOOM_NEAR = { distance: 8.5, elevation: 0.2, target: 2.9 };
 const ZOOM_FAR = { distance: 17, elevation: 0.34, target: 3.4 };
 const ZOOM_DEFAULT = 0.25;
-
-
 
 /**
  * Courtyard corners for figures from the shop, near the fence (background).
@@ -127,8 +133,16 @@ const STATIC_DECOR: [ModelName, number, number, number, number, number][] = [
 
 /** Obstacles for figures: snow piles, the bench and the present heaps */
 const STATIC_COLLIDERS: Circle[] = [
-  ...STATIC_DECOR.filter((d) => d[5] > 0).map(([, a, r, , , fr]) => ({ x: Math.cos(a) * r, z: Math.sin(a) * r, r: fr })),
-  ...CORNERS.map((c) => ({ x: Math.cos(c.angle) * c.radius, z: Math.sin(c.angle) * c.radius, r: 0.8 })),
+  ...STATIC_DECOR.filter((d) => d[5] > 0).map(([, a, r, , , fr]) => ({
+    x: Math.cos(a) * r,
+    z: Math.sin(a) * r,
+    r: fr,
+  })),
+  ...CORNERS.map((c) => ({
+    x: Math.cos(c.angle) * c.radius,
+    z: Math.sin(c.angle) * c.radius,
+    r: 0.8,
+  })),
 ];
 
 /**
@@ -155,7 +169,10 @@ const DECOR_PADS = CORNERS.flatMap((c, ci) => {
   const inward = centre.clone().negate().normalize();
   const tangent = new THREE.Vector3(-inward.z, 0, inward.x);
   return PAD_SPREAD[c.pads].map((phi, k) => {
-    const dir = inward.clone().multiplyScalar(Math.cos(phi)).addScaledVector(tangent, Math.sin(phi));
+    const dir = inward
+      .clone()
+      .multiplyScalar(Math.cos(phi))
+      .addScaledVector(tangent, Math.sin(phi));
     const dist = 0.95 + ((k * 37) % 10) / 60;
     return { corner: ci, pos: centre.clone().addScaledVector(dir, dist), dir };
   });
@@ -174,8 +191,20 @@ function normalFromHeight(height: HTMLCanvasElement, strength: number): THREE.Ca
   const at = (x: number, y: number) => src[(((y + h) % h) * w + ((x + w) % w)) * 4] / 255;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const dx = at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1);
-      const dy = at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1);
+      const dx =
+        at(x + 1, y - 1) +
+        2 * at(x + 1, y) +
+        at(x + 1, y + 1) -
+        at(x - 1, y - 1) -
+        2 * at(x - 1, y) -
+        at(x - 1, y + 1);
+      const dy =
+        at(x - 1, y + 1) +
+        2 * at(x, y + 1) +
+        at(x + 1, y + 1) -
+        at(x - 1, y - 1) -
+        2 * at(x, y - 1) -
+        at(x + 1, y - 1);
       let nx = -dx * strength;
       let ny = dy * strength;
       let nz = 1;
@@ -206,7 +235,10 @@ function toonGradient(): THREE.DataTexture {
   return tex;
 }
 
-function canvasTexture(size: number, draw: (ctx: CanvasRenderingContext2D, s: number) => void): THREE.CanvasTexture {
+function canvasTexture(
+  size: number,
+  draw: (ctx: CanvasRenderingContext2D, s: number) => void,
+): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   draw(canvas.getContext('2d')!, size);
@@ -289,7 +321,10 @@ export class TreeWorld {
   private readonly models = new Models(this.gradient);
   private version = 0;
   private readonly glowTex = glowTexture();
-  private readonly outlineMat = new THREE.MeshBasicMaterial({ color: 0x0b0a1e, side: THREE.BackSide });
+  private readonly outlineMat = new THREE.MeshBasicMaterial({
+    color: 0x0b0a1e,
+    side: THREE.BackSide,
+  });
   private readonly dynamic = new THREE.Group();
   private readonly levelGroup = new THREE.Group();
   private readonly clickables: THREE.Object3D[] = [];
@@ -314,7 +349,11 @@ export class TreeWorld {
     private readonly canvas: HTMLCanvasElement,
     private readonly callbacks: SceneCallbacks,
   ) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'low-power' });
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      powerPreference: 'low-power',
+    });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -339,7 +378,8 @@ export class TreeWorld {
     // Pause when not visible: saves battery
     this.observer = new IntersectionObserver(([e]) => {
       this.visible = e.isIntersecting;
-      this.visible ? this.start() : this.stop();
+      if (this.visible) this.start();
+      else this.stop();
     });
     this.observer.observe(canvas);
     const onVis = () => (document.hidden ? this.stop() : this.visible && this.start());
@@ -349,7 +389,10 @@ export class TreeWorld {
   }
 
   // ====== Materials helpers ====== //
-  private toon(color: number, extra: Partial<THREE.MeshToonMaterialParameters> = {}): THREE.MeshToonMaterial {
+  private toon(
+    color: number,
+    extra: Partial<THREE.MeshToonMaterialParameters> = {},
+  ): THREE.MeshToonMaterial {
     return new THREE.MeshToonMaterial({ color, gradientMap: this.gradient, ...extra });
   }
 
@@ -421,7 +464,10 @@ export class TreeWorld {
 
     this.buildStars();
 
-    const moon = new THREE.Mesh(new THREE.CircleGeometry(4, 32), new THREE.MeshBasicMaterial({ color: 0xfff4d6, fog: false }));
+    const moon = new THREE.Mesh(
+      new THREE.CircleGeometry(4, 32),
+      new THREE.MeshBasicMaterial({ color: 0xfff4d6, fog: false }),
+    );
     moon.position.set(-40, 42, -60);
     moon.lookAt(0, 0, 0);
     const moonGlow = this.glow(0xbfc8ff, 26, 0.5);
@@ -430,7 +476,9 @@ export class TreeWorld {
 
     this.shootingStar = buildShootingStar();
     this.scene.add(this.shootingStar.mesh);
-    this.staticAnimated.push({ update: (t) => this.shootingStar!.update(t, this.skyClear, this.azimuth) });
+    this.staticAnimated.push({
+      update: (t) => this.shootingStar!.update(t, this.skyClear, this.azimuth),
+    });
   }
 
   private shootingStar?: ShootingStar;
@@ -453,7 +501,11 @@ export class TreeWorld {
       const theta = rand(i * 1.31) * Math.PI * 2;
       // More stars near the horizon
       const phi = 0.02 + Math.pow(rand(i * 2.17 + 0.5), 2.6) * 1.3;
-      let dir = new THREE.Vector3(Math.cos(theta) * Math.cos(phi), Math.sin(phi), Math.sin(theta) * Math.cos(phi));
+      let dir = new THREE.Vector3(
+        Math.cos(theta) * Math.cos(phi),
+        Math.sin(phi),
+        Math.sin(theta) * Math.cos(phi),
+      );
       const inBand = i % 3 === 0;
       if (inBand) {
         // Pull a third of the stars towards the band (thick in the middle)
@@ -475,7 +527,11 @@ export class TreeWorld {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       fog: false,
-      uniforms: { time: { value: 0 }, opacity: { value: 1 }, pixel: { value: Math.min(devicePixelRatio || 1, 1.75) } },
+      uniforms: {
+        time: { value: 0 },
+        opacity: { value: 1 },
+        pixel: { value: Math.min(devicePixelRatio || 1, 1.75) },
+      },
       vertexShader: `
         attribute float size; attribute float phase;
         uniform float time; uniform float pixel;
@@ -533,7 +589,7 @@ export class TreeWorld {
     for (let r = 280; r < 512; r += 36) {
       const n = Math.round((2 * Math.PI * r) / 44);
       for (let k = 0; k < n; k++) {
-        const a = (k / n) * Math.PI * 2 + (Math.round(r / 36) % 2 ? 0.5 / n * Math.PI * 2 : 0);
+        const a = (k / n) * Math.PI * 2 + (Math.round(r / 36) % 2 ? (0.5 / n) * Math.PI * 2 : 0);
         const seed = k * 13 + r;
         for (const [ctx, isHeight] of [
           [cc, false],
@@ -601,7 +657,11 @@ export class TreeWorld {
     map.anisotropy = 4;
     const plaza = new THREE.Mesh(
       new THREE.CircleGeometry(7.2, 64),
-      this.toon(0xffffff, { map, normalMap: normalFromHeight(height, 5), normalScale: new THREE.Vector2(1.2, 1.2) }),
+      this.toon(0xffffff, {
+        map,
+        normalMap: normalFromHeight(height, 5),
+        normalScale: new THREE.Vector2(1.2, 1.2),
+      }),
     );
     plaza.rotation.x = -Math.PI / 2;
     plaza.position.y = 0.01;
@@ -650,13 +710,24 @@ export class TreeWorld {
       return this.toon(0xffffff, { map, normalMap });
     };
     const top = this.toon(0x8f93b8);
-    const low = new THREE.Mesh(new THREE.CylinderGeometry(3.0, 3.1, 0.28, 64), [blocks(5), top, top]);
+    const low = new THREE.Mesh(new THREE.CylinderGeometry(3.0, 3.1, 0.28, 64), [
+      blocks(5),
+      top,
+      top,
+    ]);
     low.position.y = 0.14;
-    const high = new THREE.Mesh(new THREE.CylinderGeometry(2.45, 2.55, 0.28, 64), [blocks(4), top, top]);
+    const high = new THREE.Mesh(new THREE.CylinderGeometry(2.45, 2.55, 0.28, 64), [
+      blocks(4),
+      top,
+      top,
+    ]);
     high.position.y = 0.42;
     const snow = new THREE.Mesh(new THREE.CylinderGeometry(2.38, 2.38, 0.06, 48), this.snowMat());
     snow.position.y = 0.58;
-    const snowLow = new THREE.Mesh(new THREE.CylinderGeometry(2.92, 2.92, 0.04, 48, 1, false), this.snowMat());
+    const snowLow = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.92, 2.92, 0.04, 48, 1, false),
+      this.snowMat(),
+    );
     snowLow.position.y = 0.29;
     this.scene.add(low, high, snow, snowLow);
   }
@@ -677,7 +748,7 @@ export class TreeWorld {
     const gapAt = 14; // entrance towards the cabin
     const postGeo = new THREE.BoxGeometry(0.32, 1.0, 0.32);
     // A plump rounded cap of snow on every post
-// (rolls over the edge and tucks back into the post: no flat cut underneath)
+    // (rolls over the edge and tucks back into the post: no flat cut underneath)
     const capGeo = new THREE.LatheGeometry(
       new THREE.SplineCurve([
         new THREE.Vector2(0, 0.17),
@@ -722,14 +793,23 @@ export class TreeWorld {
       const q = new THREE.Vector3(Math.cos(b * Math.PI * 2) * R, 0, Math.sin(b * Math.PI * 2) * R);
       for (const h of [0.35, 0.75]) {
         const len = p.distanceTo(new THREE.Vector3(q.x, 0.5, q.z));
-        const rail = this.outline(new THREE.Mesh(new THREE.BoxGeometry(len, 0.12, 0.1), wood), 1.06);
+        const rail = this.outline(
+          new THREE.Mesh(new THREE.BoxGeometry(len, 0.12, 0.1), wood),
+          1.06,
+        );
         rail.position.set((p.x + q.x) / 2, h, (p.z + q.z) / 2);
         rail.rotation.y = -Math.atan2(q.z - p.z, q.x - p.x);
         this.scene.add(rail);
       }
       for (let k = 1; k < 6; k++) {
         const t = k / 6;
-        bulbPositions.push(new THREE.Vector3(p.x + (q.x - p.x) * t, 0.92 - Math.sin(t * Math.PI) * 0.12, p.z + (q.z - p.z) * t));
+        bulbPositions.push(
+          new THREE.Vector3(
+            p.x + (q.x - p.x) * t,
+            0.92 - Math.sin(t * Math.PI) * 0.12,
+            p.z + (q.z - p.z) * t,
+          ),
+        );
       }
     }
 
@@ -791,7 +871,10 @@ export class TreeWorld {
     this.staticAnimated.push({ update: (t) => this.fringe?.update(t) });
 
     // Tap on the cabin: choose its lights
-    const hit = new THREE.Mesh(new THREE.BoxGeometry(5.8, 4.8, 4.6), new THREE.MeshBasicMaterial({ visible: false }));
+    const hit = new THREE.Mesh(
+      new THREE.BoxGeometry(5.8, 4.8, 4.6),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
     hit.position.y = 2.4;
     hit.userData = { kind: 'cabin' };
     cabin.group.add(hit);
@@ -799,7 +882,11 @@ export class TreeWorld {
 
     // Outside the fence, next to the entrance, facing the tree
     const a = (14 / 20) * Math.PI * 2 - 0.12;
-    cabin.group.position.set(Math.cos(a) * 12.5, terrainHeight(Math.cos(a) * 12.5, Math.sin(a) * 12.5), Math.sin(a) * 12.5);
+    cabin.group.position.set(
+      Math.cos(a) * 12.5,
+      terrainHeight(Math.cos(a) * 12.5, Math.sin(a) * 12.5),
+      Math.sin(a) * 12.5,
+    );
     cabin.group.lookAt(0, 0, 0);
     this.scene.add(cabin.group);
 
@@ -807,7 +894,12 @@ export class TreeWorld {
     cabin.group.updateMatrixWorld(true);
     const porch = cabin.group.localToWorld(new THREE.Vector3(0.95, 0, 3.75));
     const bend = cabin.group.localToWorld(new THREE.Vector3(0.75, 0, 5.2));
-    const path = [porch, bend, new THREE.Vector3(Math.cos(a) * 8.6, 0, Math.sin(a) * 8.6), new THREE.Vector3(Math.cos(a + 0.03) * 7.45, 0, Math.sin(a + 0.03) * 7.45)];
+    const path = [
+      porch,
+      bend,
+      new THREE.Vector3(Math.cos(a) * 8.6, 0, Math.sin(a) * 8.6),
+      new THREE.Vector3(Math.cos(a + 0.03) * 7.45, 0, Math.sin(a + 0.03) * 7.45),
+    ];
     path.forEach((p) => (p.y = terrainHeight(p.x, p.z)));
     this.scene.add(buildFootprints(path));
   }
@@ -834,7 +926,11 @@ export class TreeWorld {
       const s = 1.8 + rand(i * 7) * 1.8;
       placed[i % kinds.length].push(
         new THREE.Matrix4().compose(
-          new THREE.Vector3(Math.cos(a) * r, terrainHeight(Math.cos(a) * r, Math.sin(a) * r) - 0.1, Math.sin(a) * r),
+          new THREE.Vector3(
+            Math.cos(a) * r,
+            terrainHeight(Math.cos(a) * r, Math.sin(a) * r) - 0.1,
+            Math.sin(a) * r,
+          ),
           new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand(i) * 6.28),
           new THREE.Vector3(s, s * (0.9 + rand(i + 2) * 0.3), s),
         ),
@@ -863,7 +959,16 @@ export class TreeWorld {
       }
     };
     const jobs: Promise<void>[] = decor.map(([name, a, r, sc, rot]) =>
-      place(name, new THREE.Vector3(Math.cos(a) * r, terrainHeight(Math.cos(a) * r, Math.sin(a) * r) - 0.05, Math.sin(a) * r), sc, name === 'bench' ? -a - Math.PI / 2 : rot),
+      place(
+        name,
+        new THREE.Vector3(
+          Math.cos(a) * r,
+          terrainHeight(Math.cos(a) * r, Math.sin(a) * r) - 0.05,
+          Math.sin(a) * r,
+        ),
+        sc,
+        name === 'bench' ? -a - Math.PI / 2 : rot,
+      ),
     );
     // A heap of presents in the middle of every corner
     const heaps = CORNERS.map((_, ci) => this.buildHeap(ci));
@@ -881,7 +986,14 @@ export class TreeWorld {
   private readonly heapsReady = new Promise<void>((resolve) => (this.heapsDone = resolve));
 
   private async buildHeap(ci: number): Promise<void> {
-    const kinds: ModelName[] = ['present-a-cube', 'present-b-rectangle', 'present-a-round', 'present-b-cube', 'present-a-rectangle', 'present-b-round'];
+    const kinds: ModelName[] = [
+      'present-a-cube',
+      'present-b-rectangle',
+      'present-a-round',
+      'present-b-cube',
+      'present-a-rectangle',
+      'present-b-round',
+    ];
     const pick = (k: number) => kinds[(ci * 2 + k) % kinds.length];
     const bottom: [number, number, number][] = [
       // home offset x, z and scale
@@ -891,7 +1003,10 @@ export class TreeWorld {
       [0.05, -0.45, 1.5],
     ];
     try {
-      const objs = await Promise.all([...bottom.map((_, k) => this.models.get(pick(k))), this.models.get(pick(4))]);
+      const objs = await Promise.all([
+        ...bottom.map((_, k) => this.models.get(pick(k))),
+        this.models.get(pick(4)),
+      ]);
       const c = cornerCentre(ci);
       const bodies = bottom.map(([x, z, sc], k) => {
         const o = objs[k];
@@ -920,7 +1035,9 @@ export class TreeWorld {
       top.rotation.y = rand(ci + 0.5) * Math.PI;
       top.position.set(base.position.x, baseBox.max.y - 0.02, base.position.z);
       this.scene.add(top);
-      this.heapColliders.push(...circlesOf(makeBody(top.position.x, top.position.z, shape(top, top.rotation.y))));
+      this.heapColliders.push(
+        ...circlesOf(makeBody(top.position.x, top.position.z, shape(top, top.rotation.y))),
+      );
       this.renderOnce();
     } catch (err) {
       console.warn('Heap failed', err);
@@ -977,7 +1094,14 @@ export class TreeWorld {
     const rock = new THREE.Color(0x191c48);
     const rockLow = new THREE.Color(0x100f2c);
     const snow = new THREE.Color(0x6a76b4);
-    const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, ca: THREE.Color, cb: THREE.Color, cc: THREE.Color) => {
+    const tri = (
+      a: THREE.Vector3,
+      b: THREE.Vector3,
+      c: THREE.Vector3,
+      ca: THREE.Color,
+      cb: THREE.Color,
+      cc: THREE.Color,
+    ) => {
       pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
       col.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
     };
@@ -990,7 +1114,11 @@ export class TreeWorld {
       const cx = Math.cos(a) * dist;
       const cz = Math.sin(a) * dist;
       const sides = 8;
-      const apex = new THREE.Vector3(cx + (rand(i * 5) - 0.5) * h * 0.25, h - 1, cz + (rand(i * 7) - 0.5) * h * 0.25);
+      const apex = new THREE.Vector3(
+        cx + (rand(i * 5) - 0.5) * h * 0.25,
+        h - 1,
+        cz + (rand(i * 7) - 0.5) * h * 0.25,
+      );
       const line: THREE.Vector3[] = [];
       const base: THREE.Vector3[] = [];
       for (let k = 0; k < sides; k++) {
@@ -1127,9 +1255,26 @@ export class TreeWorld {
       ctx.stroke();
     };
     const crystals: { len: number; twigs: [number, number][]; width: number; hex: number }[] = [
-      { len: 50, twigs: [[22, 14], [36, 10]], width: 6, hex: 0 },
+      {
+        len: 50,
+        twigs: [
+          [22, 14],
+          [36, 10],
+        ],
+        width: 6,
+        hex: 0,
+      },
       { len: 48, twigs: [[30, 16]], width: 7, hex: 12 },
-      { len: 50, twigs: [[14, 9], [26, 13], [38, 9]], width: 5, hex: 7 },
+      {
+        len: 50,
+        twigs: [
+          [14, 9],
+          [26, 13],
+          [38, 9],
+        ],
+        width: 5,
+        hex: 7,
+      },
     ];
     for (let k = 0; k < 4; k++) {
       ctx.save();
@@ -1137,7 +1282,10 @@ export class TreeWorld {
       // Soft halo: the flake is fluffy, not a wire
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, cell / 2);
       g.addColorStop(0, k === 0 ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,0.5)');
-      g.addColorStop(k === 0 ? 0.3 : 0.45, k === 0 ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.16)');
+      g.addColorStop(
+        k === 0 ? 0.3 : 0.45,
+        k === 0 ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.16)',
+      );
       g.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = g;
       ctx.fillRect(-cell / 2, -cell / 2, cell, cell);
@@ -1152,7 +1300,11 @@ export class TreeWorld {
         if (c.hex) {
           ctx.lineWidth = c.width * 0.8;
           ctx.beginPath();
-          for (let a = 0; a <= 6; a++) ctx.lineTo(Math.cos((a / 6) * Math.PI * 2) * c.hex, Math.sin((a / 6) * Math.PI * 2) * c.hex);
+          for (let a = 0; a <= 6; a++)
+            ctx.lineTo(
+              Math.cos((a / 6) * Math.PI * 2) * c.hex,
+              Math.sin((a / 6) * Math.PI * 2) * c.hex,
+            );
           ctx.stroke();
         }
       }
@@ -1239,7 +1391,11 @@ export class TreeWorld {
         const a = (k / count) * Math.PI * 2 + t * 1.13;
         const tip = this.branchTip(bottom, a);
         if (!tip) continue;
-        const top = new THREE.Vector3(Math.cos(tip.a) * (tip.r - 0.06), tip.y - 0.03, Math.sin(tip.a) * (tip.r - 0.06));
+        const top = new THREE.Vector3(
+          Math.cos(tip.a) * (tip.r - 0.06),
+          tip.y - 0.03,
+          Math.sin(tip.a) * (tip.r - 0.06),
+        );
         const ballY = top.y - 0.42;
         const surface = this.surfaceRadius(ballY, tip.a);
         const r = Math.max(tip.r - 0.06, surface + BALL_R * 0.85);
@@ -1277,7 +1433,10 @@ export class TreeWorld {
   private surfaceRadius(y: number, a: number): number {
     if (!this.treeGroup) return treeRadius(y);
     const ray = new THREE.Raycaster();
-    ray.set(new THREE.Vector3(Math.cos(a) * 6, y, Math.sin(a) * 6), new THREE.Vector3(-Math.cos(a), 0, -Math.sin(a)));
+    ray.set(
+      new THREE.Vector3(Math.cos(a) * 6, y, Math.sin(a) * 6),
+      new THREE.Vector3(-Math.cos(a), 0, -Math.sin(a)),
+    );
     const hit = ray
       .intersectObject(this.treeGroup, true)
       .find((h) => !((h.object as THREE.Mesh).material instanceof THREE.ShaderMaterial));
@@ -1297,7 +1456,10 @@ export class TreeWorld {
       for (const dy of [0.02, 0.1, 0.18]) {
         const aa = a + da;
         const y = bottom + dy;
-        ray.set(new THREE.Vector3(Math.cos(aa) * 6, y, Math.sin(aa) * 6), new THREE.Vector3(-Math.cos(aa), 0, -Math.sin(aa)));
+        ray.set(
+          new THREE.Vector3(Math.cos(aa) * 6, y, Math.sin(aa) * 6),
+          new THREE.Vector3(-Math.cos(aa), 0, -Math.sin(aa)),
+        );
         const hit = ray
           .intersectObject(this.treeGroup, true)
           .find((h) => !((h.object as THREE.Mesh).material instanceof THREE.ShaderMaterial));
@@ -1338,7 +1500,10 @@ export class TreeWorld {
     this.addGarland(tree.garland);
     this.addStar(tree.star);
     const version = ++this.version;
-    tree.balls.filter((b) => b.state === 'box').slice(0, 6).forEach((b, i) => this.addGift(b, i, version));
+    tree.balls
+      .filter((b) => b.state === 'box')
+      .slice(0, 6)
+      .forEach((b, i) => this.addGift(b, i, version));
     if (tree.level >= 6) this.addTrain(version);
     this.lastDecor = tree.decor ?? [];
     this.placeCourtyard(this.lastDecor, version);
@@ -1352,7 +1517,13 @@ export class TreeWorld {
     this.animated.length = 0;
   }
 
-  private addBall(ball: TreeBall, slot: BallSlot, i: number, isNewHung: boolean, isNewLit: boolean): void {
+  private addBall(
+    ball: TreeBall,
+    slot: BallSlot,
+    i: number,
+    isNewHung: boolean,
+    isNewLit: boolean,
+  ): void {
     const color = BALL_COLORS[ball.color] ?? BALL_COLORS['red'];
     const isLit = ball.state === 'lit';
     // pivot: at the knot on the branch, sways; hang: turned along the thread
@@ -1375,10 +1546,16 @@ export class TreeWorld {
     );
     sphere.position.y = -L;
     this.hull(sphere, 0.018);
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.07, 8), this.toon(0xd9b25a));
+    const cap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.06, 0.07, 8),
+      this.toon(0xd9b25a),
+    );
     cap.position.y = -L + 0.27;
     const threadLen = Math.max(0.02, L - 0.3);
-    const string = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, threadLen, 4), new THREE.MeshBasicMaterial({ color: 0xd9c38a }));
+    const string = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.007, 0.007, threadLen, 4),
+      new THREE.MeshBasicMaterial({ color: 0xd9c38a }),
+    );
     string.position.y = -threadLen / 2;
     hang.add(sphere, cap, string);
 
@@ -1392,11 +1569,16 @@ export class TreeWorld {
       const sparkle = this.glow(0xfff6c9, 0.35, 1);
       sparkle.position.set(0.2, -L + 0.24, 0);
       hang.add(sparkle);
-      this.animated.push({ update: (t) => sparkle.material.opacity = 0.4 + 0.6 * Math.abs(Math.sin(t * 2 + i)) });
+      this.animated.push({
+        update: (t) => (sparkle.material.opacity = 0.4 + 0.6 * Math.abs(Math.sin(t * 2 + i))),
+      });
     }
 
     // Bigger invisible target: easy to tap with a finger
-    const hit = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+    const hit = new THREE.Mesh(
+      new THREE.SphereGeometry(0.42, 8, 6),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
     hit.position.y = -L;
     hit.userData = { kind: 'ball', ball };
     hang.add(hit);
@@ -1417,7 +1599,9 @@ export class TreeWorld {
         }
         if (glow) {
           const pulse = 1.4 + Math.sin(t * 2 + i) * 0.12;
-          glow.scale.setScalar(isNewLit && age < 1.6 ? pulse * (1 + 2.5 * Math.sin((age / 1.6) * Math.PI)) : pulse);
+          glow.scale.setScalar(
+            isNewLit && age < 1.6 ? pulse * (1 + 2.5 * Math.sin((age / 1.6) * Math.PI)) : pulse,
+          );
         }
       },
     });
@@ -1443,7 +1627,9 @@ export class TreeWorld {
         ctx.lineTo(s / 2, s / 2 + 20);
         ctx.stroke();
       }));
-    const ghost = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    const ghost = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }),
+    );
     ghost.scale.setScalar(0.55);
     // Slightly in front of the branches, with a warm glow behind
     const out = new THREE.Vector3(p.x, 0, p.z).normalize().multiplyScalar(0.12);
@@ -1451,7 +1637,10 @@ export class TreeWorld {
     const halo = this.glow(0xfff0b0, 1.3, 0.8);
     halo.position.copy(ghost.position);
     this.dynamic.add(halo);
-    const hit = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+    const hit = new THREE.Mesh(
+      new THREE.SphereGeometry(0.42, 8, 6),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
     hit.userData = { kind: 'add' };
     ghost.add(hit);
     this.clickables.push(hit);
@@ -1480,7 +1669,10 @@ export class TreeWorld {
       points.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
     }
     const curve = new THREE.CatmullRomCurve3(points);
-    const wire = new THREE.Mesh(new THREE.TubeGeometry(curve, 200, 0.01, 4), new THREE.MeshBasicMaterial({ color: 0x0f3b26 }));
+    const wire = new THREE.Mesh(
+      new THREE.TubeGeometry(curve, 200, 0.01, 4),
+      new THREE.MeshBasicMaterial({ color: 0x0f3b26 }),
+    );
     this.dynamic.add(wire);
 
     const count = 64;
@@ -1490,14 +1682,19 @@ export class TreeWorld {
       const p = curve.getPointAt(k / count);
       const lit = k < litCount;
       const color = colors[k % colors.length];
-      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshBasicMaterial({ color: lit ? color : 0x1d3a2c }));
+      const bulb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.045, 8, 6),
+        new THREE.MeshBasicMaterial({ color: lit ? color : 0x1d3a2c }),
+      );
       bulb.position.copy(p);
       this.dynamic.add(bulb);
       if (lit) {
         const g = this.glow(color, 0.45, 0.8);
         g.position.copy(p);
         this.dynamic.add(g);
-        this.animated.push({ update: (t) => (g.material.opacity = 0.45 + 0.45 * Math.abs(Math.sin(t * 1.8 + k * 0.7))) });
+        this.animated.push({
+          update: (t) => (g.material.opacity = 0.45 + 0.45 * Math.abs(Math.sin(t * 1.8 + k * 0.7))),
+        });
       }
     }
   }
@@ -1507,9 +1704,16 @@ export class TreeWorld {
     for (let i = 0; i < 10; i++) {
       const r = i % 2 ? 0.18 : 0.42;
       const a = (i / 10) * Math.PI * 2 + Math.PI / 2;
-      i ? shape.lineTo(Math.cos(a) * r, Math.sin(a) * r) : shape.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      if (i) shape.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      else shape.moveTo(Math.cos(a) * r, Math.sin(a) * r);
     }
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.12, bevelEnabled: true, bevelSize: 0.03, bevelThickness: 0.03, bevelSegments: 1 });
+    const geo = new THREE.ExtrudeGeometry(shape, {
+      depth: 0.12,
+      bevelEnabled: true,
+      bevelSize: 0.03,
+      bevelThickness: 0.03,
+      bevelSegments: 1,
+    });
     geo.center();
     const star = this.outline(
       new THREE.Mesh(
@@ -1540,7 +1744,14 @@ export class TreeWorld {
   }
 
   private async addGift(ball: TreeBall, i: number, version: number): Promise<void> {
-    const kinds: ModelName[] = ['present-a-cube', 'present-b-rectangle', 'present-a-round', 'present-b-cube', 'present-a-rectangle', 'present-b-round'];
+    const kinds: ModelName[] = [
+      'present-a-cube',
+      'present-b-rectangle',
+      'present-a-round',
+      'present-b-cube',
+      'present-a-rectangle',
+      'present-b-round',
+    ];
     const gift = await this.models.get(kinds[i % kinds.length]);
     if (version !== this.version) return;
     const size = 1.45 + rand(i + 4) * 0.35;
@@ -1553,7 +1764,10 @@ export class TreeWorld {
     holder.rotation.y = rand(i) * Math.PI;
     holder.add(gift);
 
-    const hit = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+    const hit = new THREE.Mesh(
+      new THREE.SphereGeometry(0.6, 8, 6),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
     hit.position.y = 0.35;
     hit.userData = { kind: 'ball', ball };
     holder.add(hit);
@@ -1579,7 +1793,11 @@ export class TreeWorld {
       rail.position.y = 0.07;
       this.dynamic.add(rail);
     }
-    const sleepers = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.05, 0.12), this.toon(0x6b4a3a), 64);
+    const sleepers = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(0.5, 0.05, 0.12),
+      this.toon(0x6b4a3a),
+      64,
+    );
     const m = new THREE.Matrix4();
     for (let k = 0; k < 64; k++) {
       const a = (k / 64) * Math.PI * 2;
@@ -1592,7 +1810,13 @@ export class TreeWorld {
     }
     this.dynamic.add(sleepers);
 
-    const kinds: ModelName[] = ['train-locomotive', 'train-tender', 'train-wagon', 'train-wagon-logs', 'train-wagon-short'];
+    const kinds: ModelName[] = [
+      'train-locomotive',
+      'train-tender',
+      'train-wagon',
+      'train-wagon-logs',
+      'train-wagon-short',
+    ];
     const cars = await Promise.all(kinds.map((k) => this.models.get(k)));
     if (version !== this.version) return;
     const lengths = [0.67, 0.34, 0.72, 0.72, 0.5].map((l) => l * 1.7 + 0.08);
@@ -1617,7 +1841,11 @@ export class TreeWorld {
         let angle = t * 0.22;
         holders.forEach((h, k) => {
           if (k > 0) angle -= (lengths[k - 1] / 2 + lengths[k] / 2) / R;
-          h.position.set(Math.cos(angle) * R, 0.08 + Math.abs(Math.sin(t * 9 + k)) * 0.01, Math.sin(angle) * R);
+          h.position.set(
+            Math.cos(angle) * R,
+            0.08 + Math.abs(Math.sin(t * 9 + k)) * 0.01,
+            Math.sin(angle) * R,
+          );
           // Cars look along the track (models face +X)
           h.rotation.y = -angle - Math.PI / 2;
         });
@@ -1656,13 +1884,18 @@ export class TreeWorld {
    * Figures from the shop on their places, and (in decorate mode) translucent
    * previews on free places. Positions are corrected so nothing intersects.
    */
-  private async placeCourtyard(decor: { item: string; pad: number }[], version: number): Promise<void> {
+  private async placeCourtyard(
+    decor: { item: string; pad: number }[],
+    version: number,
+  ): Promise<void> {
     const items = decor.filter((d) => DECOR_KINDS[d.item]);
     const objects = await Promise.all(
       items.map((d) => this.models.get(DECOR_KINDS[d.item].model).catch(() => null)),
     );
     const previewKind = this.previewItem ? DECOR_KINDS[this.previewItem] : null;
-    const previewProto = previewKind ? await this.models.get(previewKind.model, false).catch(() => null) : null;
+    const previewProto = previewKind
+      ? await this.models.get(previewKind.model, false).catch(() => null)
+      : null;
     // The heaps' real size matters: wait until they are built
     await Promise.race([this.heapsReady, new Promise((r) => setTimeout(r, 5000))]);
     if (version !== this.version) return;
@@ -1684,7 +1917,10 @@ export class TreeWorld {
       obstacles.push(...circlesOf(b));
       placedPads.add(pad);
       for (const c of circlesOf(b)) {
-        const hit = new THREE.Mesh(new THREE.CylinderGeometry(c.r, c.r, 1.4, 8), new THREE.MeshBasicMaterial({ visible: false }));
+        const hit = new THREE.Mesh(
+          new THREE.CylinderGeometry(c.r, c.r, 1.4, 8),
+          new THREE.MeshBasicMaterial({ visible: false }),
+        );
         hit.position.set(c.x, 0.7, c.z);
         hit.userData = { kind: 'pad', pad, item: d.item };
         this.clickables.push(hit);
@@ -1704,7 +1940,10 @@ export class TreeWorld {
         resolve([b], obstacles, COURTYARD_RING);
         const marker = this.arrowMarker(i);
         marker.position.set(b.x, terrainHeight(b.x, b.z), b.z);
-        const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 2.2, 8), new THREE.MeshBasicMaterial({ visible: false }));
+        const hit = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.6, 0.6, 2.2, 8),
+          new THREE.MeshBasicMaterial({ visible: false }),
+        );
         hit.position.y = 1.1;
         hit.userData = { kind: 'pad', pad: i, item: null };
         this.clickables.push(hit);
@@ -1722,7 +1961,10 @@ export class TreeWorld {
         // Tip right above the heap
         const big = this.arrowMarker(ci + 0.5, 1.8);
         big.position.set(c.x, 0.35, c.z);
-        const hit = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 3.5, 8), new THREE.MeshBasicMaterial({ visible: false }));
+        const hit = new THREE.Mesh(
+          new THREE.CylinderGeometry(1.2, 1.2, 3.5, 8),
+          new THREE.MeshBasicMaterial({ visible: false }),
+        );
         hit.position.y = 1.8;
         hit.userData = { kind: 'corner', corner: ci };
         this.clickables.push(hit);
@@ -1759,7 +2001,10 @@ export class TreeWorld {
         const marker = new THREE.Group();
         marker.add(ghost);
         for (const c of circlesOf(b)) {
-          const hit = new THREE.Mesh(new THREE.CylinderGeometry(c.r + 0.1, c.r + 0.1, 1.4, 8), new THREE.MeshBasicMaterial({ visible: false }));
+          const hit = new THREE.Mesh(
+            new THREE.CylinderGeometry(c.r + 0.1, c.r + 0.1, 1.4, 8),
+            new THREE.MeshBasicMaterial({ visible: false }),
+          );
           hit.position.set(c.x, 0.7, c.z);
           hit.userData = { kind: 'pad', pad: i, item: null };
           this.clickables.push(hit);
@@ -1888,7 +2133,12 @@ export class TreeWorld {
   }
 
   /** Best allowed pose of an object on a place, not intersecting the obstacles */
-  private fit(obj: THREE.Object3D, kind: DecorKind, pad: number, obstacles: Circle[]): { b: Body; yaw: number } {
+  private fit(
+    obj: THREE.Object3D,
+    kind: DecorKind,
+    pad: number,
+    obstacles: Circle[],
+  ): { b: Body; yaw: number } {
     const home = DECOR_PADS[pad];
     const base = facing(home.pos.x, home.pos.z, home.corner, pad);
     let best: { b: Body; yaw: number; cost: number } | null = null;
@@ -2000,7 +2250,8 @@ export class TreeWorld {
   /** Living fire: lantern flames and the fireplace behind the windows flicker a little */
   private flicker(t: number): void {
     if (!this.lampsOn) return;
-    const fire = (k: number) => 0.86 + 0.09 * Math.sin(t * 7.3 + k * 2.1) + 0.05 * Math.sin(t * 17.1 + k * 5.3);
+    const fire = (k: number) =>
+      0.86 + 0.09 * Math.sin(t * 7.3 + k * 2.1) + 0.05 * Math.sin(t * 17.1 + k * 5.3);
     this.lanterns.all.forEach((l, i) => {
       l.glow.material.opacity = 0.9 * fire(i);
       l.glow.scale.setScalar(l.glowSize * (0.94 + 0.08 * fire(i + 0.5)));
@@ -2132,11 +2383,19 @@ export class TreeWorld {
           const v = base[k * 3 + 1] + 0.5;
           const a = rb.start + u * rb.length;
           const fold =
-            1 + 0.07 * Math.sin(a * 7 + t * 0.25 * rb.speed + i) + 0.035 * Math.sin(a * 19 - t * 0.4 * rb.speed);
+            1 +
+            0.07 * Math.sin(a * 7 + t * 0.25 * rb.speed + i) +
+            0.035 * Math.sin(a * 19 - t * 0.4 * rb.speed);
           const r = rb.radius * fold;
           // Gentle waves of the lower edge: never dips behind the trees
-          const bottom = rb.base + 0.7 * Math.sin(a * 4 + t * 0.2 + i) + 0.3 * Math.sin(a * 11 - t * 0.3);
-          const top = rb.height * (0.55 + 0.45 * (0.5 + 0.5 * Math.sin(a * 6 + t * 0.15 + i * 3)) * (0.6 + 0.4 * Math.sin(a * 17 + i)));
+          const bottom =
+            rb.base + 0.7 * Math.sin(a * 4 + t * 0.2 + i) + 0.3 * Math.sin(a * 11 - t * 0.3);
+          const top =
+            rb.height *
+            (0.55 +
+              0.45 *
+                (0.5 + 0.5 * Math.sin(a * 6 + t * 0.15 + i * 3)) *
+                (0.6 + 0.4 * Math.sin(a * 17 + i)));
           pos.setXYZ(k, Math.cos(a) * r, bottom + v * top, Math.sin(a) * r);
         }
         pos.needsUpdate = true;
@@ -2147,7 +2406,8 @@ export class TreeWorld {
       this.animated.push({
         update: (t) => {
           mat.uniforms['time'].value = t * rb.speed;
-          mat.uniforms['opacity'].value = (0.85 + 0.15 * Math.sin(t * 0.45 + i * 1.7)) * Math.min(1, this.skyClear * 1.4);
+          mat.uniforms['opacity'].value =
+            (0.85 + 0.15 * Math.sin(t * 0.45 + i * 1.7)) * Math.min(1, this.skyClear * 1.4);
           mesh.visible = this.skyClear > 0.1;
           // Reshape ~15 times a second: smooth enough for slow waves, cheap
           if (t - last > 0.066) {
@@ -2246,12 +2506,17 @@ export class TreeWorld {
 
   private tap(e: PointerEvent): void {
     const rect = this.canvas.getBoundingClientRect();
-    const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    const ndc = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+    );
     const ray = new THREE.Raycaster();
     ray.setFromCamera(ndc, this.camera);
     const shown = (o: THREE.Object3D | null): boolean => !o || (o.visible && shown(o.parent));
-    const hit = ray.intersectObjects([...this.clickables, ...this.staticClickables], false).find((h) => shown(h.object.parent))
-      ?? null;
+    const hit =
+      ray
+        .intersectObjects([...this.clickables, ...this.staticClickables], false)
+        .find((h) => shown(h.object.parent)) ?? null;
     if (!hit) return;
     const data = hit.object.userData;
     if (data['kind'] === 'ball') this.callbacks.ball(data['ball']);
@@ -2341,7 +2606,10 @@ export class TreeWorld {
     this.focusBlend += (this.focusTo - this.focusBlend) * Math.min(1, dt * 2.5);
     if (this.focusTo === 1 && !this.dragging) {
       // Fly around to the corner along the shortest way
-      const diff = Math.atan2(Math.sin(this.focusAzimuth - this.azimuth), Math.cos(this.focusAzimuth - this.azimuth));
+      const diff = Math.atan2(
+        Math.sin(this.focusAzimuth - this.azimuth),
+        Math.cos(this.focusAzimuth - this.azimuth),
+      );
       this.azimuth += diff * Math.min(1, dt * 2.5);
       this.lastInteraction = t;
     } else if (!this.dragging) {

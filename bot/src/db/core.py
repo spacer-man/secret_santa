@@ -1,15 +1,14 @@
 import logging
 import os
 
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 from sqlmodel import SQLModel
 
-from .models import *
 from configs.db import DBConfig
 
+from .models import *  # noqa: F403 (registers all tables in SQLModel.metadata)
 
 log = logging.getLogger(__name__)
 
@@ -18,8 +17,8 @@ MIGRATIONS = (
     'ALTER TABLE "user" ALTER COLUMN timezone TYPE VARCHAR(16)',
     'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS language VARCHAR(8)',
     'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS referrer_id UUID REFERENCES "user"(id)',
-    'ALTER TABLE wish ADD COLUMN IF NOT EXISTS ball_color VARCHAR(16)',
-    'ALTER TABLE wish ADD COLUMN IF NOT EXISTS ball_pattern VARCHAR(16)',
+    "ALTER TABLE wish ADD COLUMN IF NOT EXISTS ball_color VARCHAR(16)",
+    "ALTER TABLE wish ADD COLUMN IF NOT EXISTS ball_pattern VARCHAR(16)",
 )
 
 
@@ -28,19 +27,18 @@ engine = create_async_engine(
     url=_db_url,
     future=True,
     # Tests share the engine between several event loops
-    **({"poolclass": NullPool}
-       if _db_url.startswith("sqlite") or os.environ.get("DB_NULL_POOL")
-       else {}))
+    **(
+        {"poolclass": NullPool}
+        if _db_url.startswith("sqlite") or os.environ.get("DB_NULL_POOL")
+        else {}
+    ),
+)
 
-new_db_session = async_sessionmaker(
-    bind=engine,
-    autoflush=True,
-    expire_on_commit=False)
+new_db_session = async_sessionmaker(bind=engine, autoflush=True, expire_on_commit=False)
 
 
 async def drop_relations() -> None:
     async with engine.connect() as conn:
-
         log.warning("Dropping database relations")
         await conn.run_sync(SQLModel.metadata.drop_all)
         await conn.commit()

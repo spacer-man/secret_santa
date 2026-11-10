@@ -99,7 +99,13 @@ export class CabinLights {
       const n = Math.max(1, Math.round(a.distanceTo(b) / 0.9));
       for (let k = 0; k <= n; k++) {
         const g = new THREE.Sprite(
-          new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }),
+          new THREE.SpriteMaterial({
+            map: glowTex,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          }),
         );
         g.position.copy(a.clone().lerp(b, k / n)).add(new THREE.Vector3(0, -0.2, 0));
         g.scale.setScalar(1.3);
@@ -119,13 +125,18 @@ export class CabinLights {
     const palette = PALETTES[skin];
     this.bulbs.forEach((b, i) => {
       // Candy and icy alternate along the line, others mix by position
-      const idx = skin === 'candy' || skin === 'icy' ? (b.along + b.depth) % palette.length : (b.along * 7 + b.depth * 3) % palette.length;
+      const idx =
+        skin === 'candy' || skin === 'icy'
+          ? (b.along + b.depth) % palette.length
+          : (b.along * 7 + b.depth * 3) % palette.length;
       this.colors[i].set(palette[idx]);
     });
     const avg = new THREE.Color(0, 0, 0);
     palette.forEach((c) => avg.add(new THREE.Color(c)));
     avg.multiplyScalar(1 / palette.length);
-    this.glows.forEach((g, k) => g.material.color.copy(skin === 'multi' ? new THREE.Color(palette[k % palette.length]) : avg));
+    this.glows.forEach((g, k) =>
+      g.material.color.copy(skin === 'multi' ? new THREE.Color(palette[k % palette.length]) : avg),
+    );
     this.light.color.copy(skin === 'multi' ? new THREE.Color(0xffd9b0) : avg);
   }
 
@@ -145,7 +156,10 @@ export class CabinLights {
           k = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(t * 1.4 - b.along * 0.25));
           break;
         case 'icy': // light drips down the strands
-          k = b.depth === 0 ? 0.75 : 0.3 + 0.7 * Math.max(0, Math.sin(t * 3 - b.depth * 1.1 + rand(b.seed) * 6)) ** 3;
+          k =
+            b.depth === 0
+              ? 0.75
+              : 0.3 + 0.7 * Math.max(0, Math.sin(t * 3 - b.depth * 1.1 + rand(b.seed) * 6)) ** 3;
           break;
         case 'candy': // alternate blink
           k = (Math.floor(t * 1.5) + b.along + b.depth) % 2 ? 1 : 0.35;
@@ -155,7 +169,11 @@ export class CabinLights {
     });
     this.mesh.instanceColor!.needsUpdate = true;
     const breathe = 0.85 + 0.15 * Math.sin(t * 1.3);
-    this.glows.forEach((g, k) => (g.material.opacity = (skin === 'multi' ? 0.35 + 0.25 * Math.sin(t * 4 - k) : 0.45) * breathe));
+    this.glows.forEach(
+      (g, k) =>
+        (g.material.opacity =
+          (skin === 'multi' ? 0.35 + 0.25 * Math.sin(t * 4 - k) : 0.45) * breathe),
+    );
     this.light.intensity = 3.5 * breathe;
   }
 }

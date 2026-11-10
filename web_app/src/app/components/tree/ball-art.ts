@@ -29,7 +29,13 @@ export const BALL_COLORS: Record<string, [string, string]> = {
         <svg:stop offset="100%" [attr.stop-color]="c[1][0]" stop-opacity="0" />
       </svg:radialGradient>
     }
-    <svg:pattern id="pat-stripes" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
+    <svg:pattern
+      id="pat-stripes"
+      width="6"
+      height="6"
+      patternUnits="userSpaceOnUse"
+      patternTransform="rotate(35)"
+    >
       <svg:rect width="2.4" height="6" fill="#fff" />
     </svg:pattern>
     <svg:pattern id="pat-dots" width="6" height="6" patternUnits="userSpaceOnUse">
@@ -39,7 +45,10 @@ export const BALL_COLORS: Record<string, [string, string]> = {
       <svg:polyline points="0,4 2,1.5 4,4 6,1.5 8,4" fill="none" stroke="#fff" stroke-width="1.1" />
     </svg:pattern>
     <svg:pattern id="pat-stars" width="9" height="9" patternUnits="userSpaceOnUse">
-      <svg:path d="M4.5 1.2l.9 2.1 2.3.2-1.7 1.5.5 2.2-2-1.2-2 1.2.5-2.2L1.3 3.5l2.3-.2z" fill="#fff" />
+      <svg:path
+        d="M4.5 1.2l.9 2.1 2.3.2-1.7 1.5.5 2.2-2-1.2-2 1.2.5-2.2L1.3 3.5l2.3-.2z"
+        fill="#fff"
+      />
     </svg:pattern>
     <svg:radialGradient id="inner-light" cx="50%" cy="55%">
       <svg:stop offset="0%" stop-color="#fff" stop-opacity="0.55" />
@@ -69,7 +78,9 @@ export class BallDefs {
     @switch (pattern()) {
       @case ('snowflake') {
         <svg:g stroke="#fff" stroke-width="1.1" stroke-linecap="round" opacity="0.75">
-          <svg:path d="M0-6V6M-5.2-3L5.2 3M-5.2 3L5.2-3M0-6l-1.5-1.5M0-6l1.5-1.5M0 6l-1.5 1.5M0 6l1.5 1.5" />
+          <svg:path
+            d="M0-6V6M-5.2-3L5.2 3M-5.2 3L5.2-3M0-6l-1.5-1.5M0-6l1.5-1.5M0 6l-1.5 1.5M0 6l1.5 1.5"
+          />
         </svg:g>
       }
       @case ('plain') {}
@@ -82,9 +93,21 @@ export class BallDefs {
     } @else {
       <svg:circle r="10" fill="#0a0a1e" opacity="0.32" />
     }
-    <svg:ellipse cx="-3.6" cy="-4.2" rx="3" ry="1.8" fill="#fff" opacity="0.55" transform="rotate(-35 -3.6 -4.2)" />
+    <svg:ellipse
+      cx="-3.6"
+      cy="-4.2"
+      rx="3"
+      ry="1.8"
+      fill="#fff"
+      opacity="0.55"
+      transform="rotate(-35 -3.6 -4.2)"
+    />
     @if (sparkles()) {
-      <svg:path class="sparkle" d="M12-12l1 2.6 2.6 1-2.6 1-1 2.6-1-2.6-2.6-1 2.6-1z" fill="#fff6c9" />
+      <svg:path
+        class="sparkle"
+        d="M12-12l1 2.6 2.6 1-2.6 1-1 2.6-1-2.6-2.6-1 2.6-1z"
+        fill="#fff6c9"
+      />
     }
   `,
 })

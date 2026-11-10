@@ -2,7 +2,8 @@
 export function confetti(count = 160): void {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const canvas = document.createElement('canvas');
-  canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:1000';
+  canvas.style.cssText =
+    'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:1000';
   document.body.appendChild(canvas);
   const ctx = canvas.getContext('2d')!;
   const w = (canvas.width = innerWidth);

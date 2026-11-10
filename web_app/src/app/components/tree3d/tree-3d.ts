@@ -1,4 +1,14 @@
-import { Component, ElementRef, OnDestroy, afterNextRender, effect, input, output, signal, viewChild } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  OnDestroy,
+  afterNextRender,
+  effect,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 import type { TreeBall, TreeData } from '../../core/api';
 import { TreeScene } from '../tree/tree-scene';
 import type { TreeWorld } from './scene';
@@ -29,7 +39,10 @@ import type { LightSkin } from './cabin-lights';
     }
   `,
   styles: `
-    :host { display: block; position: relative; }
+    :host {
+      display: block;
+      position: relative;
+    }
     .zoom {
       position: absolute;
       right: 0.7rem;
@@ -60,7 +73,9 @@ import type { LightSkin } from './cabin-lights';
       opacity: 0;
       transition: opacity 0.6s ease;
     }
-    .scene3d.ready { opacity: 1; }
+    .scene3d.ready {
+      opacity: 1;
+    }
   `,
 })
 export class Tree3d implements OnDestroy {
@@ -127,7 +142,8 @@ export class Tree3d implements OnDestroy {
       this.world.setSnowfall(this.snowfall());
       this.world.setCabinLights(this.cabinLights() as LightSkin | null);
       // For screenshots/tests only: ?debug exposes the scene
-      if (new URLSearchParams(location.search).has('debug')) (window as unknown as { santaTree: TreeWorld }).santaTree = this.world;
+      if (new URLSearchParams(location.search).has('debug'))
+        (window as unknown as { santaTree: TreeWorld }).santaTree = this.world;
       this.world.setTree(this.tree(), this.newHung(), this.newLit());
       this.ready.set(true);
     } catch (err) {

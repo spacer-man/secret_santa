@@ -3,7 +3,6 @@ from aiogram.types import CallbackQuery, Message
 
 from handlers import buttons
 
-
 main_router = Router(name="main")
 
 

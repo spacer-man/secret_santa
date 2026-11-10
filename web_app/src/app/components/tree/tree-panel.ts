@@ -60,32 +60,40 @@ function readSeen(): Record<string, string> | null {
           <button class="mandarin-chip" (click)="openWallet()">🍊 {{ t.mandarins }}</button>
         </div>
         <div class="scene-wrap">
-        <tree-3d
-          #scene3d
-          [tree]="t"
-          [decorMode]="decorMode()"
-          [snowfall]="snowfall()"
-          [cabinLights]="shownLights()"
-          (cabinClick)="openLights()"
-          (padClick)="openPad($event)"
-          (focused)="cornerFocused.set(true)"
-          (focusLost)="cornerFocused.set(false)"
-          [newHung]="newHung()"
-          [newLit]="newLit()"
-          (ballClick)="openBall($event)"
-          (addBall)="router.navigateByUrl('/new')"
-          (starClick)="sheet.set({ kind: 'star' })"
-        />
-        @if (decorMode()) {
-          <p class="drag-hint decor-hint">✨ {{ i18n.t(cornerFocused() ? 'decorHintPlace' : 'decorHint') }}</p>
-          <button class="decor-btn active" (click)="toggleDecor()">✓ {{ i18n.t('decorDone') }}</button>
-        } @else {
-          <p class="drag-hint">↔ {{ i18n.t('dragHint') }}</p>
-          <button class="decor-btn" (click)="toggleDecor()">⛄ {{ i18n.t('decorate') }}</button>
-        }
-        <button class="snow-btn" (click)="sheet.set({ kind: 'snow' })" [attr.aria-label]="i18n.t('snowfall')">
-          {{ snowModes[snowfall()].icon }}
-        </button>
+          <tree-3d
+            #scene3d
+            [tree]="t"
+            [decorMode]="decorMode()"
+            [snowfall]="snowfall()"
+            [cabinLights]="shownLights()"
+            (cabinClick)="openLights()"
+            (padClick)="openPad($event)"
+            (focused)="cornerFocused.set(true)"
+            (focusLost)="cornerFocused.set(false)"
+            [newHung]="newHung()"
+            [newLit]="newLit()"
+            (ballClick)="openBall($event)"
+            (addBall)="router.navigateByUrl('/new')"
+            (starClick)="sheet.set({ kind: 'star' })"
+          />
+          @if (decorMode()) {
+            <p class="drag-hint decor-hint">
+              ✨ {{ i18n.t(cornerFocused() ? 'decorHintPlace' : 'decorHint') }}
+            </p>
+            <button class="decor-btn active" (click)="toggleDecor()">
+              ✓ {{ i18n.t('decorDone') }}
+            </button>
+          } @else {
+            <p class="drag-hint">↔ {{ i18n.t('dragHint') }}</p>
+            <button class="decor-btn" (click)="toggleDecor()">⛄ {{ i18n.t('decorate') }}</button>
+          }
+          <button
+            class="snow-btn"
+            (click)="sheet.set({ kind: 'snow' })"
+            [attr.aria-label]="i18n.t('snowfall')"
+          >
+            {{ snowModes[snowfall()].icon }}
+          </button>
         </div>
         <div class="level">
           <div class="row between small">
@@ -107,14 +115,25 @@ function readSeen(): Record<string, string> | null {
     }
 
     @if (sheet(); as s) {
-      <div class="sheet-backdrop" [class.clear]="s.kind === 'lights'" (click)="closeSheet()"></div>
+      <div
+        class="sheet-backdrop"
+        [class.clear]="s.kind === 'lights'"
+        tabindex="-1"
+        (click)="closeSheet()"
+        (keydown.escape)="closeSheet()"
+      ></div>
       <div class="sheet" [class.compact]="s.kind === 'lights'" role="dialog">
         @switch (s.kind) {
           @case ('ball') {
             @if (s.kind === 'ball') {
               <svg viewBox="-40 -40 80 80" class="sheet-ball">
                 <defs ballDefs></defs>
-                <g ballArt [color]="s.ball.color" [pattern]="s.ball.pattern" [state]="s.ball.state"></g>
+                <g
+                  ballArt
+                  [color]="s.ball.color"
+                  [pattern]="s.ball.pattern"
+                  [state]="s.ball.state"
+                ></g>
               </svg>
               <p>{{ stateText(s.ball) }}</p>
               @if (s.wish) {
@@ -148,7 +167,12 @@ function readSeen(): Record<string, string> | null {
             <h2>{{ i18n.t('snowfall') }}</h2>
             <div class="snow-modes">
               @for (m of snowModes; track m.key; let i = $index) {
-                <button class="snow-mode" [class.selected]="snowfall() === i" [class.locked]="!isUnlocked(i)" (click)="pickSnow(i)">
+                <button
+                  class="snow-mode"
+                  [class.selected]="snowfall() === i"
+                  [class.locked]="!isUnlocked(i)"
+                  (click)="pickSnow(i)"
+                >
                   <span class="snow-icon">{{ m.icon }}</span>
                   <span>{{ i18n.dict.snowModes[m.key] }}</span>
                   @if (!isUnlocked(i)) {
@@ -164,12 +188,21 @@ function readSeen(): Record<string, string> | null {
           @case ('lights') {
             <h3 class="compact-title">🏠 {{ i18n.t('cabinLights') }}</h3>
             <div class="skin-strip">
-              <button class="snow-mode" [class.selected]="!shownLights()" (click)="pickLights(null)">
+              <button
+                class="snow-mode"
+                [class.selected]="!shownLights()"
+                (click)="pickLights(null)"
+              >
                 <span class="snow-icon">🌑</span>
                 <span>{{ i18n.dict.lightSkins['none'] }}</span>
               </button>
               @for (l of lightSkins; track l.key) {
-                <button class="snow-mode" [class.selected]="shownLights() === l.key" [class.locked]="!ownsLights(l.key)" (click)="pickLights(l.key)">
+                <button
+                  class="snow-mode"
+                  [class.selected]="shownLights() === l.key"
+                  [class.locked]="!ownsLights(l.key)"
+                  (click)="pickLights(l.key)"
+                >
                   <span class="snow-icon">{{ lightIcons[l.key] }}</span>
                   <span>{{ i18n.dict.lightSkins[l.key] }}</span>
                   @if (!ownsLights(l.key)) {
@@ -189,14 +222,20 @@ function readSeen(): Record<string, string> | null {
             <h3>{{ i18n.t('howToEarn') }}</h3>
             <ul class="earn">
               @for (r of rewards(); track r.reason) {
-                <li><span>{{ reasonText(r.reason) }}</span><b>+{{ r.amount }} 🍊</b></li>
+                <li>
+                  <span>{{ reasonText(r.reason) }}</span
+                  ><b>+{{ r.amount }} 🍊</b>
+                </li>
               }
             </ul>
             @if (s.kind === 'wallet' && s.history?.length) {
               <h3>{{ i18n.t('history') }}</h3>
               <ul class="earn">
                 @for (tx of s.history; track $index) {
-                  <li><span>{{ reasonText(tx.reason) }}</span><b>+{{ tx.amount }}</b></li>
+                  <li>
+                    <span>{{ reasonText(tx.reason) }}</span
+                    ><b>+{{ tx.amount }}</b>
+                  </li>
                 }
               </ul>
             }
@@ -232,7 +271,13 @@ export class TreePanel {
   protected readonly snowNote = signal('');
   // Fringe lights under the cabin roof: skins for mandarins (try on = preview)
   protected readonly lightSkins = LIGHT_SKINS;
-  protected readonly lightIcons: Record<string, string> = { multi: '🌈', warm: '🤍', gold: '✨', icy: '🧊', candy: '🍭' };
+  protected readonly lightIcons: Record<string, string> = {
+    multi: '🌈',
+    warm: '🤍',
+    gold: '✨',
+    icy: '🧊',
+    candy: '🍭',
+  };
   private readonly ownLights = signal<string | null>(readStored(LIGHTS_KEY));
   private readonly ownedLightSkins = signal<string[]>([]); // filled by the shop
   private readonly previewLights = signal<string | null | undefined>(undefined);
@@ -254,7 +299,10 @@ export class TreePanel {
   });
 
   protected readonly rewards = computed(() =>
-    Object.entries(this.store.config()?.rewards ?? {}).map(([reason, amount]) => ({ reason, amount })),
+    Object.entries(this.store.config()?.rewards ?? {}).map(([reason, amount]) => ({
+      reason,
+      amount,
+    })),
   );
 
   constructor() {
@@ -279,7 +327,9 @@ export class TreePanel {
     } catch {}
     if (!seen) return; // First visit: nothing is "new"
 
-    const hung = tree.balls.filter((b) => b.state !== 'box' && (!seen[b.id] || seen[b.id] === 'box'));
+    const hung = tree.balls.filter(
+      (b) => b.state !== 'box' && (!seen[b.id] || seen[b.id] === 'box'),
+    );
     const lit = tree.balls.filter((b) => b.state === 'lit' && seen[b.id] !== 'lit');
     this.newHung.set(hung.map((b) => b.id));
     this.newLit.set(lit.map((b) => b.id));
@@ -300,7 +350,8 @@ export class TreePanel {
     try {
       const wish = (await this.api.wishes()).find((w) => w.id === ball.id);
       const current = this.sheet();
-      if (current?.kind === 'ball' && current.ball.id === ball.id) this.sheet.set({ kind: 'ball', ball, wish });
+      if (current?.kind === 'ball' && current.ball.id === ball.id)
+        this.sheet.set({ kind: 'ball', ball, wish });
     } catch {}
   }
 
@@ -380,7 +431,9 @@ export class TreePanel {
   }
 
   stateText(ball: TreeBall): string {
-    return this.i18n.t(ball.state === 'box' ? 'ballBox' : ball.state === 'lit' ? 'ballLit' : 'ballHung');
+    return this.i18n.t(
+      ball.state === 'box' ? 'ballBox' : ball.state === 'lit' ? 'ballLit' : 'ballHung',
+    );
   }
 
   reasonText(reason: string): string {

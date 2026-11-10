@@ -57,10 +57,7 @@ export class Store {
   }
 
   private async doLoad(): Promise<void> {
-    const [config] = await Promise.all([
-      this.api.config(),
-      this.refreshStats(),
-    ]);
+    const [config] = await Promise.all([this.api.config(), this.refreshStats()]);
     this.config.set(config);
     if (this.api.canAuth) {
       try {

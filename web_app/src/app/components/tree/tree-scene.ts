@@ -34,7 +34,7 @@ function tierPath([top, bottom, hw]: [number, number, number], i: number): strin
   return d + ' Z';
 }
 
-function snowPath([top, bottom, hw]: [number, number, number], i: number): string {
+function snowPath([, bottom, hw]: [number, number, number], i: number): string {
   // Snow lying on the lower edge of the tier
   const y = bottom - 4;
   const w = hw * 0.96;
@@ -126,7 +126,12 @@ function makeGarland() {
       // Point on the quadratic curve
       const x = (1 - t) ** 2 * x0 + 2 * (1 - t) * t * cx + t ** 2 * x1;
       const y = (1 - t) ** 2 * y0 + 2 * (1 - t) * t * cy + t ** 2 * y1;
-      bulbs.push({ x, y, color: GARLAND_COLORS[bulbs.length % GARLAND_COLORS.length], delay: (bulbs.length % 5) * 0.3 });
+      bulbs.push({
+        x,
+        y,
+        color: GARLAND_COLORS[bulbs.length % GARLAND_COLORS.length],
+        delay: (bulbs.length % 5) * 0.3,
+      });
     }
   }
   return { d, bulbs };
@@ -138,7 +143,13 @@ const GARLAND = makeGarland();
   selector: 'tree-scene',
   imports: [BallArt, BallDefs],
   template: `
-    <svg viewBox="0 0 360 430" class="scene" [class]="'lvl-' + level()" role="img" aria-label="New Year tree">
+    <svg
+      viewBox="0 0 360 430"
+      class="scene"
+      [class]="'lvl-' + level()"
+      role="img"
+      aria-label="New Year tree"
+    >
       <defs ballDefs></defs>
       <defs>
         <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
@@ -174,20 +185,42 @@ const GARLAND = makeGarland();
       <!-- Sky -->
       <rect width="360" height="430" fill="url(#sky)" />
       @if (level() >= 9) {
-        <path class="aurora" d="M-20 70 C60 20 120 110 200 50 S320 30 380 80 L380 120 C300 80 240 140 160 100 S40 90 -20 120Z" fill="url(#aurora)" />
+        <path
+          class="aurora"
+          d="M-20 70 C60 20 120 110 200 50 S320 30 380 80 L380 120 C300 80 240 140 160 100 S40 90 -20 120Z"
+          fill="url(#aurora)"
+        />
       }
       @for (s of stars; track $index) {
-        <circle class="twinkle" [attr.cx]="s.x" [attr.cy]="s.y" [attr.r]="s.r" fill="#fff" [style.animation-delay.s]="s.delay" />
+        <circle
+          class="twinkle"
+          [attr.cx]="s.x"
+          [attr.cy]="s.y"
+          [attr.r]="s.r"
+          fill="#fff"
+          [style.animation-delay.s]="s.delay"
+        />
       }
       <circle cx="58" cy="58" r="17" fill="#fff6dc" opacity="0.9" />
       <circle cx="51" cy="52" r="15" fill="#18123a" opacity="0.55" />
 
       <!-- Hills and village -->
       <path d="M0 300 Q70 250 150 285 T300 270 T360 280 V430 H0Z" fill="#1d2550" />
-      <path d="M0 300 Q70 250 150 285 T300 270 T360 280 V292 Q300 282 240 290 T120 296 T0 312Z" fill="#c9d6f2" opacity="0.5" />
+      <path
+        d="M0 300 Q70 250 150 285 T300 270 T360 280 V292 Q300 282 240 290 T120 296 T0 312Z"
+        fill="#c9d6f2"
+        opacity="0.5"
+      />
       @if (level() >= 5) {
         @for (l of villageLights; track $index) {
-          <circle class="twinkle warm" [attr.cx]="l[0]" [attr.cy]="l[1]" r="1.6" fill="#ffd27a" [style.animation-delay.s]="l[2]" />
+          <circle
+            class="twinkle warm"
+            [attr.cx]="l[0]"
+            [attr.cy]="l[1]"
+            r="1.6"
+            fill="#ffd27a"
+            [style.animation-delay.s]="l[2]"
+          />
         }
       }
 
@@ -199,7 +232,13 @@ const GARLAND = makeGarland();
         <rect x="0" y="12" width="44" height="30" fill="#3b2a2a" />
         <path d="M-6 14 L22 -8 L50 14Z" fill="#5a3b33" />
         <path d="M-7 15 L22 -9 L51 15 L46 15 L22 -3 L-2 15Z" fill="#eef4ff" />
-        <rect x="8" y="20" width="11" height="10" [attr.fill]="level() >= 3 ? '#ffd27a' : '#1b1730'" />
+        <rect
+          x="8"
+          y="20"
+          width="11"
+          height="10"
+          [attr.fill]="level() >= 3 ? '#ffd27a' : '#1b1730'"
+        />
         <rect x="26" y="22" width="10" height="20" fill="#2a1d1d" />
         <rect x="32" y="-6" width="6" height="12" fill="#4a3330" />
       </g>
@@ -210,11 +249,25 @@ const GARLAND = makeGarland();
       <!-- Tree -->
       <rect x="168" y="345" width="24" height="30" rx="3" fill="#5b3a26" />
       <!-- Warm light from lit balls -->
-      <ellipse cx="180" cy="230" rx="170" ry="190" fill="url(#tree-light)" [attr.opacity]="treeGlow()" />
+      <ellipse
+        cx="180"
+        cy="230"
+        rx="170"
+        ry="190"
+        fill="url(#tree-light)"
+        [attr.opacity]="treeGlow()"
+      />
       @for (t of tiers; track $index) {
         <path [attr.d]="t.tier" fill="url(#needles)" />
         <path [attr.d]="t.shade" fill="#03140d" opacity="0.32" />
-        <path [attr.d]="t.needles" fill="none" stroke="#3fae73" stroke-opacity="0.35" stroke-width="1.2" stroke-linecap="round" />
+        <path
+          [attr.d]="t.needles"
+          fill="none"
+          stroke="#3fae73"
+          stroke-opacity="0.35"
+          stroke-width="1.2"
+          stroke-linecap="round"
+        />
         <path [attr.d]="t.snow" fill="#f4f8ff" opacity="0.92" />
       }
 
@@ -222,29 +275,66 @@ const GARLAND = makeGarland();
       @if (garland() > 0) {
         <path [attr.d]="garlandPath" fill="none" stroke="#173322" stroke-width="1" />
         @for (b of garlandBulbs(); track $index) {
-          <circle [attr.cx]="b.x" [attr.cy]="b.y" r="2.6" [attr.fill]="b.lit ? b.color : '#2a3a33'" [class.blink]="b.lit" [style.animation-delay.s]="b.delay" />
+          <circle
+            [attr.cx]="b.x"
+            [attr.cy]="b.y"
+            r="2.6"
+            [attr.fill]="b.lit ? b.color : '#2a3a33'"
+            [class.blink]="b.lit"
+            [style.animation-delay.s]="b.delay"
+          />
         }
       }
 
       <!-- Empty places invite to write -->
       @for (s of emptySlots(); track $index) {
-        <g class="empty-slot" [attr.transform]="'translate(' + s.x + ' ' + s.y + ')'" (click)="addBall.emit()">
-          <circle r="10" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-dasharray="3 3" />
+        <g
+          class="empty-slot"
+          [attr.transform]="'translate(' + s.x + ' ' + s.y + ')'"
+          (click)="addBall.emit()"
+        >
+          <circle
+            r="10"
+            fill="none"
+            stroke="#ffffff"
+            stroke-opacity="0.55"
+            stroke-dasharray="3 3"
+          />
           <path d="M-4 0H4M0-4V4" stroke="#fff" stroke-opacity="0.7" stroke-width="1.4" />
         </g>
       }
 
       <!-- Balls -->
       @for (b of placed(); track b.ball.id) {
-        <g class="ball-slot" [attr.transform]="'translate(' + b.x + ' ' + b.y + ') scale(1.3)'" (click)="ballClick.emit(b.ball)">
-          <g class="sway" [class.new-hung]="b.isNewHung" [class.new-lit]="b.isNewLit" [style.animation-delay.s]="b.sway">
-            <g ballArt [color]="b.ball.color" [pattern]="b.ball.pattern" [state]="b.ball.state" [sparkles]="b.sparkles"></g>
+        <g
+          class="ball-slot"
+          [attr.transform]="'translate(' + b.x + ' ' + b.y + ') scale(1.3)'"
+          (click)="ballClick.emit(b.ball)"
+        >
+          <g
+            class="sway"
+            [class.new-hung]="b.isNewHung"
+            [class.new-lit]="b.isNewLit"
+            [style.animation-delay.s]="b.sway"
+          >
+            <g
+              ballArt
+              [color]="b.ball.color"
+              [pattern]="b.ball.pattern"
+              [state]="b.ball.state"
+              [sparkles]="b.sparkles"
+            ></g>
           </g>
         </g>
       }
 
       <!-- Star -->
-      <g transform="translate(180 50)" [class.star-on]="star()" class="star" (click)="starClick.emit()">
+      <g
+        transform="translate(180 50)"
+        [class.star-on]="star()"
+        class="star"
+        (click)="starClick.emit()"
+      >
         @if (star()) {
           <circle r="34" fill="url(#star-glow)" class="star-glow" />
         }
@@ -258,39 +348,144 @@ const GARLAND = makeGarland();
 
       <!-- Gifts under the tree: wishes waiting for moderation -->
       @for (g of boxes(); track g.ball.id; let i = $index) {
-        <g class="box" [attr.transform]="'translate(' + g.x + ' ' + g.y + ')'" (click)="ballClick.emit(g.ball)">
+        <g
+          class="box"
+          [attr.transform]="'translate(' + g.x + ' ' + g.y + ')'"
+          (click)="ballClick.emit(g.ball)"
+        >
           <rect x="-12" y="-14" width="24" height="18" rx="2" [attr.fill]="g.fill" />
-          <rect x="-13" y="-17" width="26" height="5" rx="1.5" [attr.fill]="g.fill" opacity="0.85" />
+          <rect
+            x="-13"
+            y="-17"
+            width="26"
+            height="5"
+            rx="1.5"
+            [attr.fill]="g.fill"
+            opacity="0.85"
+          />
           <rect x="-2" y="-17" width="4" height="21" fill="#ffd36b" />
-          <path d="M0-17c-6-8-12-2-4 0M0-17c6-8 12-2 4 0" fill="none" stroke="#ffd36b" stroke-width="1.6" />
+          <path
+            d="M0-17c-6-8-12-2-4 0M0-17c6-8 12-2 4 0"
+            fill="none"
+            stroke="#ffd36b"
+            stroke-width="1.6"
+          />
         </g>
       }
     </svg>
   `,
   styles: `
-    :host { display: block; }
-    .scene { width: 100%; height: auto; display: block; border-radius: 1.1rem; }
-    .twinkle { animation: tw 3.5s ease-in-out infinite; }
-    .warm { animation-duration: 2.2s; }
-    @keyframes tw { 50% { opacity: 0.25; } }
-    .aurora { animation: aur 9s ease-in-out infinite; transform-origin: center; }
-    @keyframes aur { 50% { opacity: 0.55; transform: translateY(6px) scaleX(1.05); } }
-    .blink { animation: blink 1.6s ease-in-out infinite; }
-    @keyframes blink { 50% { opacity: 0.35; } }
-    .ball-slot, .box, .empty-slot, .star { cursor: pointer; }
-    .empty-slot { animation: tw 2.6s ease-in-out infinite; }
-    .sway { transform-box: view-box; animation: sway 5s ease-in-out infinite; transform-origin: 0 -17px; }
-    @keyframes sway { 50% { transform: rotate(4deg); } }
-    .sway.new-hung { animation: drop 1s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
-    @keyframes drop { from { transform: translateY(-90px); opacity: 0; } 60% { opacity: 1; } }
-    :host ::ng-deep .halo { transform-box: fill-box; transform-origin: center; animation: glow 2.8s ease-in-out infinite; }
-    @keyframes glow { 50% { opacity: 0.6; transform: scale(0.88); } }
-    :host ::ng-deep .sparkle { transform-box: fill-box; transform-origin: center; animation: tw 1.8s ease-in-out infinite; }
-    .new-lit ::ng-deep .halo { animation: ignite 1.6s ease-out both; }
-    @keyframes ignite { 0% { transform: scale(0.2); opacity: 0; } 40% { transform: scale(1.6); opacity: 1; } }
-    .star-glow { animation: pulse 2.4s ease-in-out infinite; }
-    @keyframes pulse { 50% { opacity: 0.55; } }
-    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+    :host {
+      display: block;
+    }
+    .scene {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 1.1rem;
+    }
+    .twinkle {
+      animation: tw 3.5s ease-in-out infinite;
+    }
+    .warm {
+      animation-duration: 2.2s;
+    }
+    @keyframes tw {
+      50% {
+        opacity: 0.25;
+      }
+    }
+    .aurora {
+      animation: aur 9s ease-in-out infinite;
+      transform-origin: center;
+    }
+    @keyframes aur {
+      50% {
+        opacity: 0.55;
+        transform: translateY(6px) scaleX(1.05);
+      }
+    }
+    .blink {
+      animation: blink 1.6s ease-in-out infinite;
+    }
+    @keyframes blink {
+      50% {
+        opacity: 0.35;
+      }
+    }
+    .ball-slot,
+    .box,
+    .empty-slot,
+    .star {
+      cursor: pointer;
+    }
+    .empty-slot {
+      animation: tw 2.6s ease-in-out infinite;
+    }
+    .sway {
+      transform-box: view-box;
+      animation: sway 5s ease-in-out infinite;
+      transform-origin: 0 -17px;
+    }
+    @keyframes sway {
+      50% {
+        transform: rotate(4deg);
+      }
+    }
+    .sway.new-hung {
+      animation: drop 1s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+    }
+    @keyframes drop {
+      from {
+        transform: translateY(-90px);
+        opacity: 0;
+      }
+      60% {
+        opacity: 1;
+      }
+    }
+    :host ::ng-deep .halo {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: glow 2.8s ease-in-out infinite;
+    }
+    @keyframes glow {
+      50% {
+        opacity: 0.6;
+        transform: scale(0.88);
+      }
+    }
+    :host ::ng-deep .sparkle {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: tw 1.8s ease-in-out infinite;
+    }
+    .new-lit ::ng-deep .halo {
+      animation: ignite 1.6s ease-out both;
+    }
+    @keyframes ignite {
+      0% {
+        transform: scale(0.2);
+        opacity: 0;
+      }
+      40% {
+        transform: scale(1.6);
+        opacity: 1;
+      }
+    }
+    .star-glow {
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      50% {
+        opacity: 0.55;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation: none !important;
+      }
+    }
   `,
   host: { '[class.has-lit]': 'hasLit()' },
 })

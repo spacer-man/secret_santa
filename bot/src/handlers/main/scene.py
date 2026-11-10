@@ -1,31 +1,33 @@
+import contextlib
+
 from aiogram import F
 from aiogram.filters import CommandObject, CommandStart
-from aiogram.fsm.scene import on
-from aiogram.fsm.scene import Scene
+from aiogram.fsm.scene import Scene, on
 from aiogram.types import CallbackQuery, FSInputFile, Message
 
 from configs.labels import LabelsConfig
-
-from . import keyboards
 from handlers import buttons
 from handlers.consts import Scenes
 from handlers.depends import user_service
 from handlers.referral import invite_link, parse_ref_code
 
+from . import keyboards
+
 
 class MainScene(
-        Scene,
-        reset_data_on_enter=True,
-        reset_history_on_enter=True,
-        callback_query_without_state=True,
-        ):
+    Scene,
+    reset_data_on_enter=True,
+    reset_history_on_enter=True,
+    callback_query_without_state=True,
+):
     """Main bot scene"""
+
     @on.message(CommandStart())
     async def first_greeting(
-            self,
-            message: Message,
-            command: CommandObject,
-            ) -> None:
+        self,
+        message: Message,
+        command: CommandObject,
+    ) -> None:
         if await user_service.is_registered(telegram_id=message.chat.id):
             await self.main_menu(message=message)
         else:
@@ -40,10 +42,8 @@ class MainScene(
 
     @on.message.enter()
     async def main_menu(self, message: Message) -> None:
-        try:
+        with contextlib.suppress(Exception):
             await message.delete()
-        except Exception:
-            pass
 
         link = None
         user = await user_service.get(telegram_id=message.chat.id)
@@ -52,7 +52,8 @@ class MainScene(
 
         await message.answer_photo(
             photo=FSInputFile(path=LabelsConfig().menu_label),
-            reply_markup=keyboards.main_menu(invite_link=link))
+            reply_markup=keyboards.main_menu(invite_link=link),
+        )
 
     @on.callback_query(F.data == buttons.NEW_WISH)
     async def new_wish(self, _) -> None:

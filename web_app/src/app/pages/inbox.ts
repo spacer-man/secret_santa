@@ -25,7 +25,9 @@ import { MediaList } from '../components/media';
             <p class="small muted">{{ i18n.t('react') }}</p>
             <div class="reactions">
               @for (r of reactions(); track r) {
-                <button class="reaction" [class.selected]="g.reaction === r" (click)="react(g, r)">{{ r }}</button>
+                <button class="reaction" [class.selected]="g.reaction === r" (click)="react(g, r)">
+                  {{ r }}
+                </button>
               }
             </div>
 
@@ -41,7 +43,11 @@ import { MediaList } from '../components/media';
                   [placeholder]="i18n.t('replyPlaceholder')"
                   [(ngModel)]="drafts[g.id]"
                 ></textarea>
-                <button class="btn btn-secondary" [disabled]="!drafts[g.id]?.trim()" (click)="reply(g)">
+                <button
+                  class="btn btn-secondary"
+                  [disabled]="!drafts[g.id]?.trim()"
+                  (click)="reply(g)"
+                >
                   {{ i18n.t('replySend') }}
                 </button>
               </div>

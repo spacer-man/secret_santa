@@ -4,7 +4,16 @@ import { Component, ElementRef, OnDestroy, afterNextRender, viewChild } from '@a
 @Component({
   selector: 'snow',
   template: `<canvas #canvas aria-hidden="true"></canvas>`,
-  styles: `canvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }`,
+  styles: `
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+  `,
 })
 export class Snow implements OnDestroy {
   private readonly canvas = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');

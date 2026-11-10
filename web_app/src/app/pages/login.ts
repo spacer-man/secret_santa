@@ -1,4 +1,12 @@
-import { Component, ElementRef, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  afterNextRender,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { Router } from '@angular/router';
 import { Api } from '../core/api';
 import { I18n } from '../core/i18n';
@@ -26,7 +34,9 @@ declare global {
         <p class="error">{{ error() }}</p>
       }
       @if (botLink()) {
-        <a class="link" [href]="botLink()" target="_blank" rel="noopener">{{ i18n.t('loginOrBot') }} →</a>
+        <a class="link" [href]="botLink()" target="_blank" rel="noopener"
+          >{{ i18n.t('loginOrBot') }} →</a
+        >
       }
     </section>
   `,

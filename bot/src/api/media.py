@@ -2,22 +2,23 @@
 Media files are stored in the database as bytes.
 They are served by signed URLs, so <img>/<video>/<audio> can load them without headers.
 """
+
 import time
 from uuid import UUID
 
 from fastapi import Request, Response
 
 from db.models import MediaType
-from . import auth
 
+from . import auth
 
 MEDIA_URL_TTL = 24 * 3600
 
 
 def media_url(media_id: UUID, bot_token: str) -> str:
     token = auth.sign(
-        {"m": media_id.hex, "exp": int(time.time()) + MEDIA_URL_TTL},
-        bot_token, "media")
+        {"m": media_id.hex, "exp": int(time.time()) + MEDIA_URL_TTL}, bot_token, "media"
+    )
     return f"/api/media/{media_id}?t={token}"
 
 
@@ -84,7 +85,7 @@ def ranged_response(request: Request, data: bytes, mime: str) -> Response:
             if start_raw:
                 start = int(start_raw)
                 end = int(end_raw) if end_raw else size - 1
-            else:   # Suffix: last N bytes
+            else:  # Suffix: last N bytes
                 start = max(0, size - int(end_raw))
                 end = size - 1
             end = min(end, size - 1)
@@ -94,6 +95,6 @@ def ranged_response(request: Request, data: bytes, mime: str) -> Response:
             return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
         headers["Content-Range"] = f"bytes {start}-{end}/{size}"
         return Response(
-            content=data[start:end + 1], status_code=206,
-            media_type=mime, headers=headers)
+            content=data[start : end + 1], status_code=206, media_type=mime, headers=headers
+        )
     return Response(content=data, media_type=mime, headers=headers)

@@ -9,7 +9,8 @@ import { BALL_COLORS, BallArt, BallDefs } from '../components/tree/ball-art';
 
 const MAX_FILES = 5;
 const MAX_SIZE = 10 * 1024 * 1024;
-const ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/mp4,audio/x-m4a,audio/aac,audio/ogg';
+const ACCEPT =
+  'image/jpeg,image/png,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/mp4,audio/x-m4a,audio/aac,audio/ogg';
 
 interface Picked {
   file: File;
@@ -34,13 +35,27 @@ interface Picked {
           <p class="small muted">{{ i18n.t('ballLook') }}</p>
           <div class="swatches">
             @for (c of colors(); track c) {
-              <button class="swatch" [class.selected]="c === color()" [style.background]="swatch(c)" (click)="color.set(c)" [attr.aria-label]="c"></button>
+              <button
+                class="swatch"
+                [class.selected]="c === color()"
+                [style.background]="swatch(c)"
+                (click)="color.set(c)"
+                [attr.aria-label]="c"
+              ></button>
             }
           </div>
           <div class="patterns">
             @for (p of patterns(); track p) {
-              <button class="pattern-btn" [class.selected]="p === pattern()" (click)="pattern.set(p)" [attr.aria-label]="p">
-                <svg viewBox="-12 -14 24 26"><defs ballDefs></defs><g ballArt [color]="color()" [pattern]="p"></g></svg>
+              <button
+                class="pattern-btn"
+                [class.selected]="p === pattern()"
+                (click)="pattern.set(p)"
+                [attr.aria-label]="p"
+              >
+                <svg viewBox="-12 -14 24 26">
+                  <defs ballDefs></defs>
+                  <g ballArt [color]="color()" [pattern]="p"></g>
+                </svg>
               </button>
             }
           </div>
@@ -78,7 +93,9 @@ interface Picked {
                   <span class="audio">🎵 {{ p.file.name }}</span>
                 }
               }
-              <button class="remove" type="button" (click)="remove(i)" aria-label="Remove">✕</button>
+              <button class="remove" type="button" (click)="remove(i)" aria-label="Remove">
+                ✕
+              </button>
             </div>
           }
         </div>
@@ -114,9 +131,19 @@ export class NewWishPage {
   protected readonly sending = signal(false);
   protected readonly error = signal('');
   protected readonly idea = signal('');
-  protected readonly colors = computed(() => this.store.config()?.ball_colors ?? Object.keys(BALL_COLORS));
+  protected readonly colors = computed(
+    () => this.store.config()?.ball_colors ?? Object.keys(BALL_COLORS),
+  );
   protected readonly patterns = computed(
-    () => this.store.config()?.ball_patterns ?? ['plain', 'stripes', 'dots', 'snowflake', 'zigzag', 'stars'],
+    () =>
+      this.store.config()?.ball_patterns ?? [
+        'plain',
+        'stripes',
+        'dots',
+        'snowflake',
+        'zigzag',
+        'stars',
+      ],
   );
   protected readonly color = signal(Object.keys(BALL_COLORS)[Math.floor(Math.random() * 8)]);
   protected readonly pattern = signal('snowflake');
@@ -148,7 +175,11 @@ export class NewWishPage {
         this.error.set(this.i18n.t('tooLarge'));
         continue;
       }
-      const kind = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'audio';
+      const kind = file.type.startsWith('image/')
+        ? 'image'
+        : file.type.startsWith('video/')
+          ? 'video'
+          : 'audio';
       this.files.update((list) => [...list, { file, kind, url: URL.createObjectURL(file) }]);
     }
   }

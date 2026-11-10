@@ -49,8 +49,18 @@ export class Wave {
         const target = newYearMoment(tz, now);
         const p = split(target - now);
         const [d, h, m] = [this.i18n.t('d'), this.i18n.t('h'), this.i18n.t('m')];
-        const left = p.days > 0 ? `${p.days}${d} ${p.hours}${h}` : `${p.hours}${h} ${String(p.minutes).padStart(2, '0')}${m}`;
-        return { tz, count, share: (count / max) * 100, done: target <= now, left, mine: tz === mine };
+        const left =
+          p.days > 0
+            ? `${p.days}${d} ${p.hours}${h}`
+            : `${p.hours}${h} ${String(p.minutes).padStart(2, '0')}${m}`;
+        return {
+          tz,
+          count,
+          share: (count / max) * 100,
+          done: target <= now,
+          left,
+          mine: tz === mine,
+        };
       });
   });
 }

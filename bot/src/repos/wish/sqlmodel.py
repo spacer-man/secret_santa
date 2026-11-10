@@ -1,9 +1,8 @@
 import json
+from collections.abc import Generator
 from datetime import datetime
 from typing import (
     Any,
-    Generator,
-    Optional,
     Unpack,
 )
 from uuid import UUID
@@ -11,10 +10,9 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import delete, select, update
 
-from .abc import EditWishArgs, NewWishArgs
-from .abc import WishDTO
-from .abc import WishRepository
 from db.models import ValidStatus, Wish
+
+from .abc import EditWishArgs, NewWishArgs, WishDTO, WishRepository
 
 
 class SQLModelWishRepository(WishRepository):
@@ -22,10 +20,10 @@ class SQLModelWishRepository(WishRepository):
         self.session = session
 
     async def get_with_min_recipients(
-            self,
-            recipient: Optional[UUID],
-            since: Optional[datetime] = None,
-            ) -> Generator[WishDTO]:
+        self,
+        recipient: UUID | None,
+        since: datetime | None = None,
+    ) -> Generator[WishDTO]:
         """
         Get approved wishes with minimal recipients count.
         Wishes written by the recipient are excluded.
@@ -41,7 +39,7 @@ class SQLModelWishRepository(WishRepository):
         if recipient:
             stmt = stmt.where(Wish.author_id != recipient)
         if since:
-            stmt = stmt.where(Wish.timestamp >= since)  # type: ignore
+            stmt = stmt.where(Wish.timestamp >= since)
         stmt = stmt.order_by(Wish.recipients_count)  # type: ignore
 
         query_result = await self.session.execute(stmt)
@@ -51,13 +49,14 @@ class SQLModelWishRepository(WishRepository):
 
         min_recipients_count: int = scalars[0].recipients_count
         wishes = (
-            WishDTO.model_validate({
-                **wish.model_dump(),
-                "text_entities": (
-                    json.loads(wish.text_entities)
-                    if wish.text_entities else None
-                ),
-            })
+            WishDTO.model_validate(
+                {
+                    **wish.model_dump(),
+                    "text_entities": (
+                        json.loads(wish.text_entities) if wish.text_entities else None
+                    ),
+                }
+            )
             for wish in scalars
             if wish.recipients_count == min_recipients_count
         )
@@ -65,11 +64,7 @@ class SQLModelWishRepository(WishRepository):
         return wishes
 
     async def increment_recipients(self, wish_id: UUID) -> None:
-        stmt = (
-            update(Wish)
-            .filter_by(id=wish_id)
-            .values(recipients_count=Wish.recipients_count + 1)
-        )
+        stmt = update(Wish).filter_by(id=wish_id).values(recipients_count=Wish.recipients_count + 1)
         await self.session.execute(stmt)
 
     async def get_one(self, wish_id: UUID) -> WishDTO | None:
@@ -77,33 +72,35 @@ class SQLModelWishRepository(WishRepository):
 
         query_result = await self.session.execute(stmt)
         if wish := query_result.scalar_one_or_none():
-            return WishDTO.model_validate({
-                **wish.model_dump(),
-                "text_entities": (
-                    json.loads(wish.text_entities)
-                    if wish.text_entities else None
-                ),
-            })
+            return WishDTO.model_validate(
+                {
+                    **wish.model_dump(),
+                    "text_entities": (
+                        json.loads(wish.text_entities) if wish.text_entities else None
+                    ),
+                }
+            )
 
         return None
 
     async def get_many(
-            self,
-            filter_by: Optional[dict[str, Any]] = None,
-            ) -> Generator[WishDTO]:
+        self,
+        filter_by: dict[str, Any] | None = None,
+    ) -> Generator[WishDTO]:
         stmt = select(Wish)
         if filter_by:
             stmt = stmt.filter_by(**filter_by)
 
         query_result = await self.session.execute(stmt)
         wishes = (
-            WishDTO.model_validate({
-                **wish.model_dump(),
-                "text_entities": (
-                    json.loads(wish.text_entities)
-                    if wish.text_entities else None
-                ),
-            })
+            WishDTO.model_validate(
+                {
+                    **wish.model_dump(),
+                    "text_entities": (
+                        json.loads(wish.text_entities) if wish.text_entities else None
+                    ),
+                }
+            )
             for wish in query_result.scalars()
         )
 
@@ -121,11 +118,7 @@ class SQLModelWishRepository(WishRepository):
             if value is not None and field != "id":
                 update_values[field] = value
 
-        stmt = (
-            update(Wish)
-            .filter_by(id=kwargs["id"])
-            .values(**update_values)
-        )
+        stmt = update(Wish).filter_by(id=kwargs["id"]).values(**update_values)
         await self.session.execute(stmt)
 
     async def delete(self, filter_by: dict[str, Any]) -> None:

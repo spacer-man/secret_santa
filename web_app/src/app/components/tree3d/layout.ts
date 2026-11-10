@@ -67,7 +67,9 @@ export function shape(obj: THREE.Object3D, yaw: number): Part[] {
     const span = long / 2 - r;
     for (let i = 0; i < n; i++) {
       const t = n === 1 ? 0 : -span + (2 * span * i) / (n - 1);
-      local.push(alongX ? { dx: centre.x + t, dz: centre.z, r } : { dx: centre.x, dz: centre.z + t, r });
+      local.push(
+        alongX ? { dx: centre.x + t, dz: centre.z, r } : { dx: centre.x, dz: centre.z + t, r },
+      );
     }
   }
   // rotation.y = yaw maps local (x, z) to (x cos + z sin, -x sin + z cos)

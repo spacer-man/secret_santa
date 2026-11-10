@@ -2,7 +2,6 @@ from uuid import UUID
 
 from aiogram import Bot
 
-
 REF_PREFIX = "r_"
 
 
@@ -14,7 +13,7 @@ def parse_ref_code(code: str | None) -> UUID | None:
     if not code or not code.startswith(REF_PREFIX):
         return None
     try:
-        return UUID(hex=code[len(REF_PREFIX):])
+        return UUID(hex=code[len(REF_PREFIX) :])
     except ValueError:
         return None
 

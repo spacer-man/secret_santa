@@ -16,7 +16,6 @@ from services.notify import AiogramNotifyService, NotifyService
 from services.user import UserService
 from services.wish import WishService
 
-
 user_repo_type: type[UserRepository] = SQLModelUserRepository
 wish_repo_type: type[WishRepository] = SQLModelWishRepository
 media_repo_type: type[MediaRepository] = SQLModelMediaRepository
@@ -24,19 +23,19 @@ media_repo_type: type[MediaRepository] = SQLModelMediaRepository
 
 user_service: UserService = UserService(user_repo_type=user_repo_type)
 wish_service: WishService = WishService(
-    user_repo_type=user_repo_type,
-    wish_repo_type=wish_repo_type,
-    media_repo_type=media_repo_type)
+    user_repo_type=user_repo_type, wish_repo_type=wish_repo_type, media_repo_type=media_repo_type
+)
 
 bot = Bot(
     token=BotConfig().token.get_secret_value(),
-    default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
+    default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
+)
 notify_service: NotifyService = AiogramNotifyService(
-    bot=bot,
-    reciever_tg_ids=NotifyConfig().wish_validate_tg_ids)
+    bot=bot, reciever_tg_ids=NotifyConfig().wish_validate_tg_ids
+)
 
 
 is_registered = IsRegistered(user_service=user_service)
 delivery_service: DeliveryService = DeliveryService(
-    wish_service=wish_service,
-    wish_repo_type=wish_repo_type)
+    wish_service=wish_service, wish_repo_type=wish_repo_type
+)

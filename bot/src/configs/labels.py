@@ -10,15 +10,15 @@ class LabelsConfig(BaseSettings):
 
     @property
     def menu_label(self) -> Path:
-        return (self.ROOT_DIR / f"menu.{self.size}.png")
+        return self.ROOT_DIR / f"menu.{self.size}.png"
 
     @property
     def wish_list_label(self) -> Path:
-        return (self.ROOT_DIR / f"wish.list.{self.size}.png")
+        return self.ROOT_DIR / f"wish.list.{self.size}.png"
 
     @property
     def wish_new_label(self) -> Path:
-        return (self.ROOT_DIR / f"wish.new.{self.size}.png")
+        return self.ROOT_DIR / f"wish.new.{self.size}.png"
 
     def gift(self, color: Literal["white", "red", "blue"]) -> Path:
-        return (self.ROOT_DIR / f"gift.{color}.{self.size}.png")
+        return self.ROOT_DIR / f"gift.{color}.{self.size}.png"

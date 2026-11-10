@@ -44,7 +44,10 @@ function buildBird(toon: Toon): { root: THREE.Group; body: THREE.Group; wings: T
   const breast = withOutline(new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 8), red), 0.002);
   breast.scale.set(0.92, 0.9, 1.12);
   breast.position.y = 0.105;
-  const back = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), grey);
+  const back = new THREE.Mesh(
+    new THREE.SphereGeometry(0.1, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    grey,
+  );
   back.scale.set(0.95, 0.95, 1.16);
   back.position.set(0, 0.108, -0.012);
   back.rotation.x = -0.75;
@@ -60,7 +63,10 @@ function buildBird(toon: Toon): { root: THREE.Group; body: THREE.Group; wings: T
   tail.rotation.x = 0.35;
   body.add(breast, back, head, cheek, beak, tail);
   for (const sx of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.01, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    const eye = new THREE.Mesh(
+      new THREE.SphereGeometry(0.01, 6, 4),
+      new THREE.MeshBasicMaterial({ color: 0xffffff }),
+    );
     eye.position.set(sx * 0.04, 0.212, 0.108);
     body.add(eye);
   }
@@ -163,7 +169,8 @@ export function buildBirds(perches: THREE.Vector3[], toon: Toon, count = 3): Bir
     }
   };
 
-  const angleLerp = (a: number, b: number, k: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
+  const angleLerp = (a: number, b: number, k: number) =>
+    a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
   const rest = (b: Bird) => {
     b.act = 'idle';
     b.t = 0;
@@ -278,7 +285,9 @@ export function buildShootingStar(): ShootingStar {
         // In the part of the sky the camera looks at (beyond the tree)
         const a = azimuth + Math.PI + (rand(n * 2.3) - 0.5) * 0.7;
         const el = 0.2 + rand(n * 3.1) * 0.22;
-        start.set(Math.sin(a) * Math.cos(el), Math.sin(el), Math.cos(a) * Math.cos(el)).multiplyScalar(R);
+        start
+          .set(Math.sin(a) * Math.cos(el), Math.sin(el), Math.cos(a) * Math.cos(el))
+          .multiplyScalar(R);
         out.copy(start).normalize();
         // Flies sideways and a little down
         const way = rand(n * 4.7) < 0.5 ? -1 : 1;
@@ -295,9 +304,17 @@ export function buildShootingStar(): ShootingStar {
         return;
       }
       pos.copy(start).addScaledVector(dir, k * 26);
-      mesh.matrix.makeBasis(dir.clone().multiplyScalar(LENGTH), side.clone().multiplyScalar(WIDTH), out);
+      mesh.matrix.makeBasis(
+        dir.clone().multiplyScalar(LENGTH),
+        side.clone().multiplyScalar(WIDTH),
+        out,
+      );
       // The head of the streak is at +X of the plane
-      mesh.matrix.setPosition(pos.x - (dir.x * LENGTH) / 2, pos.y - (dir.y * LENGTH) / 2, pos.z - (dir.z * LENGTH) / 2);
+      mesh.matrix.setPosition(
+        pos.x - (dir.x * LENGTH) / 2,
+        pos.y - (dir.y * LENGTH) / 2,
+        pos.z - (dir.z * LENGTH) / 2,
+      );
       mesh.matrixWorldNeedsUpdate = true;
       mat.opacity = Math.sin(k * Math.PI) * Math.min(1, clear);
     },
@@ -314,7 +331,15 @@ export function buildFootprints(path: THREE.Vector3[], step = 0.4): THREE.Instan
   geo.rotateX(-Math.PI / 2);
   const mesh = new THREE.InstancedMesh(
     geo,
-    new THREE.MeshBasicMaterial({ color: 0x5b68a8, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+    new THREE.MeshBasicMaterial({
+      color: 0x5b68a8,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    }),
     n,
   );
   const m = new THREE.Matrix4();
@@ -325,8 +350,15 @@ export function buildFootprints(path: THREE.Vector3[], step = 0.4): THREE.Instan
     const p = curve.getPointAt(u);
     const tan = curve.getTangentAt(u);
     const sideways = new THREE.Vector3(-tan.z, 0, tan.x).multiplyScalar((i % 2 ? 1 : -1) * 0.11);
-    q.setFromAxisAngle(up, Math.atan2(tan.x, tan.z) + (rand(i) - 0.5) * 0.25 + (i % 2 ? 0.12 : -0.12));
-    m.compose(new THREE.Vector3(p.x + sideways.x, p.y + 0.012, p.z + sideways.z), q, new THREE.Vector3(0.075, 1, 0.135));
+    q.setFromAxisAngle(
+      up,
+      Math.atan2(tan.x, tan.z) + (rand(i) - 0.5) * 0.25 + (i % 2 ? 0.12 : -0.12),
+    );
+    m.compose(
+      new THREE.Vector3(p.x + sideways.x, p.y + 0.012, p.z + sideways.z),
+      q,
+      new THREE.Vector3(0.075, 1, 0.135),
+    );
     mesh.setMatrixAt(i, m);
   }
   return mesh;

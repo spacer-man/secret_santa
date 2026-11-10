@@ -1,16 +1,11 @@
-from typing import NotRequired
-from typing import Required
-from typing import TypedDict
-from typing import Unpack
+from typing import NotRequired, Required, TypedDict, Unpack
 from uuid import UUID
 
 from db import new_db_session
-from services import mandarins
 from repos.user.abc import UserDTO, UserRepository
-from .exceptions import (
-    UserAlreadyRegisteredError,
-    UserIsNotRegisteredError
-)
+from services import mandarins
+
+from .exceptions import UserAlreadyRegisteredError, UserIsNotRegisteredError
 
 
 class NewUserArgs(TypedDict, total=False):
@@ -25,17 +20,16 @@ class EditUserTZArgs(TypedDict):
     telegram_id: Required[int]
 
 
-class UserService(object):
+class UserService:
     def __init__(self, user_repo_type: type[UserRepository]) -> None:
         self.repo_type = user_repo_type
 
     async def _is_user_registered(
-            self,
-            telegram_id: int,
-            repo: UserRepository,
-            ) -> bool:
-        return not not await repo.get_one(
-            filter_by={"telegram_id": telegram_id})
+        self,
+        telegram_id: int,
+        repo: UserRepository,
+    ) -> bool:
+        return bool(await repo.get_one(filter_by={"telegram_id": telegram_id}))
 
     async def is_registered(self, telegram_id: int) -> bool:
         """
@@ -45,9 +39,7 @@ class UserService(object):
         """
         async with new_db_session() as db_session:
             repo = self.repo_type(session=db_session)
-            return await self._is_user_registered(
-                telegram_id=telegram_id,
-                repo=repo)
+            return await self._is_user_registered(telegram_id=telegram_id, repo=repo)
 
     async def register(self, **kwargs: Unpack[NewUserArgs]) -> UUID:
         """
@@ -60,22 +52,20 @@ class UserService(object):
             repo = self.repo_type(session=db_session)
 
             telegram_id = kwargs["telegram_id"]
-            if await self._is_user_registered(
-                    telegram_id=telegram_id,
-                    repo=repo):
+            if await self._is_user_registered(telegram_id=telegram_id, repo=repo):
                 raise UserAlreadyRegisteredError(
-                    "User with telegram_id=%d already registered" % telegram_id)
+                    f"User with telegram_id={telegram_id} already registered"
+                )
 
             referrer_id = kwargs.get("referrer_id")
-            if referrer_id and not await repo.get_one(
-                    filter_by={"id": referrer_id}):
+            if referrer_id and not await repo.get_one(filter_by={"id": referrer_id}):
                 kwargs.pop("referrer_id")
 
             user_id = await repo.create(**kwargs)
             if referrer_id := kwargs.get("referrer_id"):
                 await mandarins.award(
-                    db_session, referrer_id,
-                    mandarins.Reason.FRIEND_JOINED, user_id)
+                    db_session, referrer_id, mandarins.Reason.FRIEND_JOINED, user_id
+                )
 
             await db_session.commit()
         return user_id
@@ -91,9 +81,9 @@ class UserService(object):
             return await repo.get_one(filter_by={"id": user_id})
 
     async def edit_user(
-            self,
-            **kwargs: Unpack[EditUserTZArgs],
-            ) -> None:
+        self,
+        **kwargs: Unpack[EditUserTZArgs],
+    ) -> None:
         """
         Edit user timezone if user was registered.
         Else raise exception.
@@ -106,11 +96,10 @@ class UserService(object):
         async with new_db_session() as db_session:
             repo = self.repo_type(session=db_session)
 
-            if not (user := await repo.get_one(
-                filter_by={"telegram_id": telegram_id})):
-
+            if not (user := await repo.get_one(filter_by={"telegram_id": telegram_id})):
                 raise UserIsNotRegisteredError(
-                    "User with telegram_id=%d already registered" % telegram_id)
+                    f"User with telegram_id={telegram_id} is not registered"
+                )
 
             await repo.edit(id=user.id, timezone=timezone)
 

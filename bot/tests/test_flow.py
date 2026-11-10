@@ -3,6 +3,7 @@ End-to-end checks of the New Year flow on SQLite.
 
 Run from bot/:  .venv/bin/python -m pytest tests
 """
+
 import asyncio
 import hashlib
 import hmac
@@ -11,33 +12,36 @@ import os
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import patch
 from urllib.parse import urlencode
 
 _db_file = Path(tempfile.mkdtemp()) / "test.db"
-os.environ.update({
-    "DB_URL": os.environ.get("TEST_DB_URL", f"sqlite+aiosqlite:///{_db_file}"),
-    "BOT_TOKEN": "123456:TEST-TOKEN",
-    "WISH_VALIDATE_TG_IDS": "1",
-    "AUTHOR_SUPPORT_LINK": "https://example.com",
-    "STATE_STORAGE_REDIS_URL": "",
-    "DB_NULL_POOL": "1",
-})
+os.environ.update(
+    {
+        "DB_URL": os.environ.get("TEST_DB_URL", f"sqlite+aiosqlite:///{_db_file}"),
+        "BOT_TOKEN": "123456:TEST-TOKEN",
+        "WISH_VALIDATE_TG_IDS": "1",
+        "AUTHOR_SUPPORT_LINK": "https://example.com",
+        "STATE_STORAGE_REDIS_URL": "",
+        "DB_NULL_POOL": "1",
+    }
+)
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-import pytest  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
+import pytest
+from fastapi.testclient import TestClient
 
-import db  # noqa: E402
-import timezones  # noqa: E402
-from api import auth  # noqa: E402
-from api import app as api_module  # noqa: E402
-from db.models import ValidStatus  # noqa: E402
-from repos.wish.sqlmodel import SQLModelWishRepository  # noqa: E402
-from services.delivery import DeliveryService  # noqa: E402
-from services.mailer.service import MailerService  # noqa: E402
+import db
+import timezones
+from api import app as api_module
+from api import auth
+from db.models import ValidStatus
+from repos.wish.sqlmodel import SQLModelWishRepository
+from services.delivery import DeliveryService
+from services.mailer.service import MailerService
 
 TOKEN = os.environ["BOT_TOKEN"]
 
@@ -80,10 +84,10 @@ def test_timezones():
     assert timezones.offset_minutes("UTC-3:30") == -210
     assert timezones.offset_minutes("UTC+0") == 0
     assert "UTC+14" in timezones.ALL_TIMEZONES
-    now = datetime(2026, 12, 31, 10, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 12, 31, 10, 0, tzinfo=UTC)
     assert timezones.new_year_year("UTC+14", now) == 2027
     assert timezones.new_year_year("UTC+13", now) is None
-    assert timezones.new_year_year("UTC-12", datetime(2027, 1, 1, 12, tzinfo=timezone.utc)) == 2027
+    assert timezones.new_year_year("UTC-12", datetime(2027, 1, 1, 12, tzinfo=UTC)) == 2027
 
 
 def test_init_data_auth():
@@ -102,16 +106,18 @@ def test_session_token():
 
 # ====== Flow ====== #
 def test_full_new_year_flow():
-    client = TestClient(api_module.app)    # lifespan (real bot) is not started
+    client = TestClient(api_module.app)  # lifespan (real bot) is not started
     api_module.state["bot_username"] = "santa_bot"
 
     class Notify:
-        checked = []
+        checked: ClassVar[list] = []
+
         async def new_wish_to_check(self, wish):
             self.checked.append(wish.id)
 
     class Bot:
-        messages = []
+        messages: ClassVar[list] = []
+
         async def send_message(self, chat_id, text, **_):
             self.messages.append((chat_id, text))
 
@@ -140,16 +146,21 @@ def test_full_new_year_flow():
     assert r.status_code == 201
     alice_wish = r.json()["id"]
     r = client.post(
-        "/api/wishes", headers=h(1002), data={"text": "Happy New Year from Bob!"},
-        files=[("files", ("a.png", png, "image/png"))])
+        "/api/wishes",
+        headers=h(1002),
+        data={"text": "Happy New Year from Bob!"},
+        files=[("files", ("a.png", png, "image/png"))],
+    )
     assert r.status_code == 201
     bob_wish = r.json()["id"]
     assert client.post("/api/wishes", headers=h(1002), data={"text": "short"}).status_code == 422
     assert len(Notify.checked) == 2
 
     # Moderation
-    from handlers.depends import wish_service
     from uuid import UUID
+
+    from handlers.depends import wish_service
+
     for wish_id in (alice_wish, bob_wish):
         run(wish_service.update_wish_status(UUID(wish_id), ValidStatus.APPROVED))
 
@@ -162,16 +173,16 @@ def test_full_new_year_flow():
     assert client.get(media_url.replace("t=", "t=x")).status_code == 403
 
     # Before the New Year
-    with patch("services.delivery.utc_now", return_value=datetime(2026, 12, 31, 9, tzinfo=timezone.utc)):
+    with patch("services.delivery.utc_now", return_value=datetime(2026, 12, 31, 9, tzinfo=UTC)):
         assert client.get("/api/gift", headers=h(1003)).json()["status"] == "waiting"
         assert client.post("/api/gift/open", headers=h(1003)).status_code == 409
 
     # 10:00 UTC 31 Dec: the New Year in UTC+14 only
     delivery_service = DeliveryService(wish_service, SQLModelWishRepository)
     bot = FakeBot()
-    mailer = MailerService(bot=bot, delivery_service=delivery_service)
+    mailer = MailerService(bot=bot, delivery_service=delivery_service)  # ty: ignore[invalid-argument-type]
     mailer.send_gift = lambda reciever: bot.send_photo(reciever)
-    ny_kiribati = datetime(2026, 12, 31, 10, 0, tzinfo=timezone.utc)
+    ny_kiribati = datetime(2026, 12, 31, 10, 0, tzinfo=UTC)
     run(mailer.check_ny_and_send_wishes(now=ny_kiribati))
     run(mailer.check_ny_and_send_wishes(now=ny_kiribati))  # no duplicates
     assert bot.sent == [1003]
@@ -182,16 +193,27 @@ def test_full_new_year_flow():
         reopened = client.post("/api/gift/open", headers=h(1003)).json()
     gift = opened["delivery"]
     assert gift["wish"]["text"] in ("С Новым годом от Алисы!", "Happy New Year from Bob!")
-    assert reopened["delivery"]["wish"] == gift["wish"]    # same gift every time
+    assert reopened["delivery"]["wish"] == gift["wish"]  # same gift every time
 
     # Reaction + anonymous reply reach the author
-    r = client.post(f"/api/inbox/{gift['id']}/react", headers=h(1003),
-                    json={"reaction": "🔥", "reply": "Спасибо!"})
+    r = client.post(
+        f"/api/inbox/{gift['id']}/react",
+        headers=h(1003),
+        json={"reaction": "🔥", "reply": "Спасибо!"},
+    )
     assert r.status_code == 200
-    assert client.post(f"/api/inbox/{gift['id']}/react", headers=h(1003),
-                       json={"reaction": "💩"}).status_code == 422
-    assert client.post(f"/api/inbox/{gift['id']}/react", headers=h(1001),
-                       json={"reaction": "🔥"}).status_code == 422   # not their gift
+    assert (
+        client.post(
+            f"/api/inbox/{gift['id']}/react", headers=h(1003), json={"reaction": "💩"}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            f"/api/inbox/{gift['id']}/react", headers=h(1001), json={"reaction": "🔥"}
+        ).status_code
+        == 422
+    )  # not their gift
     author_tg = 1001 if "Алисы" in gift["wish"]["text"] else 1002
     assert Bot.messages[-1][0] == author_tg and "Спасибо!" in Bot.messages[-1][1]
     feedback = client.get("/api/wishes", headers=h(author_tg)).json()[0]["feedback"]
@@ -203,7 +225,7 @@ def test_full_new_year_flow():
     assert client.delete(f"/api/wishes/{delivered_wish}", headers=h(author_tg)).status_code == 409
 
     # Midnight in India: Bob gets Alice's wish (the least delivered one, not his own)
-    ny_india = datetime(2026, 12, 31, 18, 30, tzinfo=timezone.utc)
+    ny_india = datetime(2026, 12, 31, 18, 30, tzinfo=UTC)
     run(mailer.check_ny_and_send_wishes(now=ny_india))
     assert bot.sent == [1003, 1002]
     with patch("services.delivery.utc_now", return_value=ny_india):
@@ -219,11 +241,11 @@ def test_full_new_year_flow():
         fake_dt.now.return_value = ny_india
         carol = client.get("/api/tree", headers=h(1003)).json()
     assert carol["star"] is True and carol["balls"] == []
-    assert carol["mandarins"] == 50     # opened the gift
+    assert carol["mandarins"] == 50  # opened the gift
 
     alice_tree = client.get("/api/tree", headers=h(1001)).json()
     ball = alice_tree["balls"][0]
-    assert ball["state"] == "lit"       # Alice's wish reached Bob (and maybe Carol)
+    assert ball["state"] == "lit"  # Alice's wish reached Bob (and maybe Carol)
     assert alice_tree["garland"] == 2
     # 2 friends joined + Bob's wish approved + her wish approved/delivered
     history = client.get("/api/mandarins", headers=h(1001)).json()
@@ -237,10 +259,19 @@ def test_full_new_year_flow():
     assert client.get("/api/mandarins", headers=h(1001)).json()["balance"] == history["balance"]
 
     # Ball look: chosen in the app, validated
-    r = client.post("/api/wishes", headers=h(1003),
-                    data={"text": "Greetings from Kiribati!", "ball_color": "gold", "ball_pattern": "stars"})
+    r = client.post(
+        "/api/wishes",
+        headers=h(1003),
+        data={"text": "Greetings from Kiribati!", "ball_color": "gold", "ball_pattern": "stars"},
+    )
     assert r.status_code == 201
     box = client.get("/api/tree", headers=h(1003)).json()["balls"][0]
     assert (box["color"], box["pattern"], box["state"]) == ("gold", "stars", "box")
-    assert client.post("/api/wishes", headers=h(1003),
-                       data={"text": "Greetings again!!", "ball_color": "rainbow"}).status_code == 422
+    assert (
+        client.post(
+            "/api/wishes",
+            headers=h(1003),
+            data={"text": "Greetings again!!", "ball_color": "rainbow"},
+        ).status_code
+        == 422
+    )

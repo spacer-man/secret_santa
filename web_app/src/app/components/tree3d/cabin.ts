@@ -51,7 +51,12 @@ const OVER = 0.45; // roof overhang
  *
  * `peak`: y of the ridge line, `ex`/`ez`: half sizes of the roof in plan.
  */
-function roofSnowGeometry(peak: number, slope: number, ex: number, ez: number): THREE.BufferGeometry {
+function roofSnowGeometry(
+  peak: number,
+  slope: number,
+  ex: number,
+  ez: number,
+): THREE.BufferGeometry {
   const tan = Math.tan(slope);
   // Top of the roof slab above the ridge line (the slab is 0.16 thick)
   const slabTop = 0.08 / Math.cos(slope);
@@ -65,7 +70,10 @@ function roofSnowGeometry(peak: number, slope: number, ex: number, ez: number): 
     for (let k = 0; k <= core; k++) half.push({ t: k / core, phi: 0 });
     for (let k = 1; k <= lip; k++) half.push({ t: 1, phi: (k / lip) * PHI_MAX });
     return [
-      ...half.slice(1).reverse().map((h) => ({ ...h, sign: -1 })),
+      ...half
+        .slice(1)
+        .reverse()
+        .map((h) => ({ ...h, sign: -1 })),
       ...half.map((h) => ({ ...h, sign: 1 })),
     ];
   };
@@ -77,20 +85,26 @@ function roofSnowGeometry(peak: number, slope: number, ex: number, ez: number): 
     for (const a of xs) {
       // Along the eave: soft lobes of different size hanging over the edge
       const zc = b.sign * b.t * ez;
-      const lobe = 0.5 + 0.5 * Math.sin(zc * 3.1 + a.sign * 1.3) * Math.sin(zc * 1.3 + 0.7 + a.sign);
+      const lobe =
+        0.5 + 0.5 * Math.sin(zc * 3.1 + a.sign * 1.3) * Math.sin(zc * 1.3 + 0.7 + a.sign);
       const overX = 0.11 + 0.1 * lobe;
       const overZ = 0.08;
 
       // The lip bulges out by R, then comes back and ends inside the roof slab
       const lip = (phi: number, over: number) =>
-        phi <= Math.PI / 2 ? R * Math.sin(phi) : R - (over + 0.04) * ((phi - Math.PI / 2) / (PHI_MAX - Math.PI / 2));
+        phi <= Math.PI / 2
+          ? R * Math.sin(phi)
+          : R - (over + 0.04) * ((phi - Math.PI / 2) / (PHI_MAX - Math.PI / 2));
       const x = a.sign * (a.t * (ex + overX - R) + lip(a.phi, overX));
       const z = b.sign * (b.t * (ez + overZ - R) + lip(b.phi, overZ));
       // Rounded ridge: |x| smoothed near zero (always above the real roof)
       const soft = Math.sqrt(x * x + 0.3 * 0.3) - 0.3;
       // Lumpy blanket: slow waves, a bit thicker towards the eaves
       const lumps =
-        1 + 0.16 * Math.sin(x * 2.3 + z * 1.1 + 0.5) * Math.sin(z * 1.9 - x * 0.7) + 0.1 * Math.sin(z * 4.3 + x * 3.1) + 0.12 * (Math.abs(x) / ex);
+        1 +
+        0.16 * Math.sin(x * 2.3 + z * 1.1 + 0.5) * Math.sin(z * 1.9 - x * 0.7) +
+        0.1 * Math.sin(z * 4.3 + x * 3.1) +
+        0.12 * (Math.abs(x) / ex);
       const topY = peak + slabTop - tan * soft + THICK * lumps;
       // The lip goes all the way down into the real roof surface under it:
       // the snow lies on the roof everywhere, no gap at the ridge or the eaves
@@ -140,7 +154,10 @@ function chimneySnowGeometry(): THREE.BufferGeometry {
       // then the lip tucks back into the bricks: no cut-off edge in the air
       const over = Math.min(1, sj / 0.68);
       const tuck = THREE.MathUtils.smoothstep(sj, 0.68, 1);
-      const r = inner + (outer - inner) * (0.5 - 0.5 * Math.cos(Math.PI * over)) - (outer - 0.235 * sq) * tuck;
+      const r =
+        inner +
+        (outer - inner) * (0.5 - 0.5 * Math.cos(Math.PI * over)) -
+        (outer - 0.235 * sq) * tuck;
       const y = Math.sin(Math.PI * over) * 0.12 * lump - 0.15 * sj * sj - 0.005;
       pos.push(c * r, y, sn * r);
     }
@@ -172,7 +189,10 @@ export function buildCabin(kit: Kit): Cabin {
   const stone = kit.toon(0x7d7f9c);
 
   // Foundation
-  const base = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(W * 2 + 0.3, 0.3, D * 2 + 0.3), stone), 1.02);
+  const base = kit.outline(
+    new THREE.Mesh(new THREE.BoxGeometry(W * 2 + 0.3, 0.3, D * 2 + 0.3), stone),
+    1.02,
+  );
   base.position.y = 0.15;
   g.add(base);
 
@@ -196,7 +216,10 @@ export function buildCabin(kit: Kit): Cabin {
     }
   }
   // Inner fill so there are no gaps between round logs
-  const core = new THREE.Mesh(new THREE.BoxGeometry(W * 2 - 0.1, H, D * 2 - 0.1), kit.toon(0x5a3424));
+  const core = new THREE.Mesh(
+    new THREE.BoxGeometry(W * 2 - 0.1, H, D * 2 - 0.1),
+    kit.toon(0x5a3424),
+  );
   core.position.y = 0.3 + H / 2;
   g.add(core);
 
@@ -216,7 +239,10 @@ export function buildCabin(kit: Kit): Cabin {
     g.add(m);
   }
   // Round attic window
-  const attic = new THREE.Mesh(new THREE.CircleGeometry(0.22, 16), new THREE.MeshBasicMaterial({ color: 0x1c1a33 }));
+  const attic = new THREE.Mesh(
+    new THREE.CircleGeometry(0.22, 16),
+    new THREE.MeshBasicMaterial({ color: 0x1c1a33 }),
+  );
   attic.position.set(0, top + 0.55, D + 0.08);
   windows.push(attic);
   const atticFrame = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.04, 6, 16), trim);
@@ -235,7 +261,10 @@ export function buildCabin(kit: Kit): Cabin {
     pivot.rotation.z = side === 1 ? -slope : slope;
     const dir = side; // slab goes down to this side
 
-    const slab = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(slabLen, 0.16, D * 2 + OVER * 2), roofMat), 1.02);
+    const slab = kit.outline(
+      new THREE.Mesh(new THREE.BoxGeometry(slabLen, 0.16, D * 2 + OVER * 2), roofMat),
+      1.02,
+    );
     slab.position.set((dir * slabLen) / 2, 0, 0);
     pivot.add(slab);
 
@@ -254,15 +283,24 @@ export function buildCabin(kit: Kit): Cabin {
     g.add(pivot);
   }
   // One soft blanket of snow over both slopes and the ridge
-  const roofSnow = new THREE.Mesh(roofSnowGeometry(top + RIDGE, slope, slabLen * Math.cos(slope), D + OVER), snow);
+  const roofSnow = new THREE.Mesh(
+    roofSnowGeometry(top + RIDGE, slope, slabLen * Math.cos(slope), D + OVER),
+    snow,
+  );
   g.add(roofSnow);
 
   // Chimney with smoke
-  const chimney = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.3, 0.5), kit.toon(0x8a5a4a)), 1.04);
+  const chimney = kit.outline(
+    new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.3, 0.5), kit.toon(0x8a5a4a)),
+    1.04,
+  );
   chimney.position.set(-1.0, top + RIDGE * 0.55 + 0.5, -0.6);
   // Open chimney: a dark flue inside, snow only on the rim (smoke comes out)
   const topY = chimney.position.y + 0.65;
-  const flue = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), new THREE.MeshBasicMaterial({ color: 0x120a08 }));
+  const flue = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.32, 0.32),
+    new THREE.MeshBasicMaterial({ color: 0x120a08 }),
+  );
   flue.rotation.x = -Math.PI / 2;
   flue.position.set(chimney.position.x, topY + 0.005, chimney.position.z);
   g.add(chimney, flue);
@@ -273,17 +311,26 @@ export function buildCabin(kit: Kit): Cabin {
   // Icicles hanging from the snowy rim, of different length, irregularly spaced
   [0.25, 0.95, 1.5, 2.3, 2.75, 3.6, 4.35, 4.9, 5.75].forEach((th, k) => {
     const len = 0.1 + rand(k * 5.3 + 2) * 0.24;
-    const sq = 1 / Math.pow(Math.pow(Math.abs(Math.cos(th)), 4) + Math.pow(Math.abs(Math.sin(th)), 4), 0.25);
+    const sq =
+      1 / Math.pow(Math.pow(Math.abs(Math.cos(th)), 4) + Math.pow(Math.abs(Math.sin(th)), 4), 0.25);
     const icicle = new THREE.Mesh(new THREE.ConeGeometry(0.022 + len * 0.05, len, 5), icicleMat);
     icicle.rotation.z = Math.PI;
-    icicle.position.set(chimney.position.x + Math.cos(th) * 0.27 * sq, topY - 0.09 - len / 2, chimney.position.z + Math.sin(th) * 0.27 * sq);
+    icicle.position.set(
+      chimney.position.x + Math.cos(th) * 0.27 * sq,
+      topY - 0.09 - len / 2,
+      chimney.position.z + Math.sin(th) * 0.27 * sq,
+    );
     g.add(icicle);
   });
 
   // Snow piled up around the chimney where it comes out of the roof
   const pile = new THREE.Mesh(new THREE.SphereGeometry(0.46, 16, 10), snow);
   pile.scale.set(1, 0.42, 1.05);
-  pile.position.set(chimney.position.x - 0.05, top + RIDGE + 0.1 - Math.tan(slope) * (Math.abs(chimney.position.x) - 0.12) + 0.14, chimney.position.z);
+  pile.position.set(
+    chimney.position.x - 0.05,
+    top + RIDGE + 0.1 - Math.tan(slope) * (Math.abs(chimney.position.x) - 0.12) + 0.14,
+    chimney.position.z,
+  );
   pile.rotation.z = slope * 0.8;
   g.add(pile);
 
@@ -295,7 +342,11 @@ export function buildCabin(kit: Kit): Cabin {
     g.add(puff);
     smoke.push(puff);
   }
-  const smokeOrigin = new THREE.Vector3(chimney.position.x, chimney.position.y + 0.62, chimney.position.z);
+  const smokeOrigin = new THREE.Vector3(
+    chimney.position.x,
+    chimney.position.y + 0.62,
+    chimney.position.z,
+  );
 
   // Windows: frame, cross bars, sill with snow, shutters
   const shutterMat = kit.toon(0x2f6b4f);
@@ -303,11 +354,17 @@ export function buildCabin(kit: Kit): Cabin {
     const win = new THREE.Group();
     win.position.set(x, y, z);
     win.rotation.y = ry;
-    const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.62), new THREE.MeshBasicMaterial({ color: 0x1c1a33 }));
+    const glass = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.7, 0.62),
+      new THREE.MeshBasicMaterial({ color: 0x1c1a33 }),
+    );
     glass.position.z = 0.02;
     windows.push(glass);
     const frame = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.78, 0.06), trim), 1.03);
-    const hole = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.64), new THREE.MeshBasicMaterial({ color: 0x14122a }));
+    const hole = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.72, 0.64),
+      new THREE.MeshBasicMaterial({ color: 0x14122a }),
+    );
     hole.position.z = 0.031;
     const barV = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.64, 0.04), trim);
     const barH = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.05, 0.04), trim);
@@ -320,7 +377,10 @@ export function buildCabin(kit: Kit): Cabin {
     sillSnow.position.set(0, -0.36, 0.1);
     win.add(frame, hole, glass, barV, barH, sill, sillSnow);
     for (const sx of [-1, 1]) {
-      const shutter = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.8, 0.04), shutterMat), 1.04);
+      const shutter = kit.outline(
+        new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.8, 0.04), shutterMat),
+        1.04,
+      );
       shutter.position.set(sx * 0.6, 0, 0.02);
       win.add(shutter);
     }
@@ -332,13 +392,22 @@ export function buildCabin(kit: Kit): Cabin {
   addWindow(0.4, 1.45, -D - LOG - 0.02, Math.PI);
 
   // Door with a wreath
-  const door = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.45, 0.08), kit.toon(0x5b3424)), 1.03);
+  const door = kit.outline(
+    new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.45, 0.08), kit.toon(0x5b3424)),
+    1.03,
+  );
   door.position.set(0.95, 0.3 + 0.72, D + LOG + 0.02);
-  const doorFrame = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(0.98, 1.58, 0.05), trim), 1.02);
+  const doorFrame = kit.outline(
+    new THREE.Mesh(new THREE.BoxGeometry(0.98, 1.58, 0.05), trim),
+    1.02,
+  );
   doorFrame.position.set(door.position.x, door.position.y + 0.04, D + LOG - 0.01);
   const knob = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), kit.toon(0xffd36b));
   knob.position.set(1.22, 0.95, D + LOG + 0.08);
-  const wreath = kit.hull(new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.07, 6, 14), kit.toon(0x1f7a4a)), 0.012);
+  const wreath = kit.hull(
+    new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.07, 6, 14), kit.toon(0x1f7a4a)),
+    0.012,
+  );
   wreath.position.set(0.95, 1.38, D + LOG + 0.1);
   const bow = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), kit.toon(0xd81e3a));
   bow.position.set(0.95, 1.2, D + LOG + 0.16);
@@ -376,7 +445,10 @@ export function buildCabin(kit: Kit): Cabin {
   const woodEnd = kit.toon(0xc49a6c);
   for (let row = 0; row < 3; row++) {
     for (let k = 0; k < 4 - row; k++) {
-      const log = kit.hull(new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.7, 7), [logA, woodEnd, woodEnd]), 0.01);
+      const log = kit.hull(
+        new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.7, 7), [logA, woodEnd, woodEnd]),
+        0.01,
+      );
       log.rotation.x = Math.PI / 2;
       log.position.set(W + 0.45, 0.13 + row * 0.2, -0.9 + k * 0.23 + row * 0.115);
       g.add(log);

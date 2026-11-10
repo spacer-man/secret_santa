@@ -18,13 +18,24 @@ const ru = {
   snowfall: 'Снегопад',
   cabinLights: 'Гирлянда на доме',
   lightsLocked: 'Это примерка: гирлянда откроется в лавке за %s 🍊 — она появится совсем скоро',
-  lightSkins: { none: 'Без гирлянды', multi: 'Разноцветная', warm: 'Тёплая белая', gold: 'Золотая', icy: 'Ледяная', candy: 'Леденец' } as Record<string, string>,
+  lightSkins: {
+    none: 'Без гирлянды',
+    multi: 'Разноцветная',
+    warm: 'Тёплая белая',
+    gold: 'Золотая',
+    icy: 'Ледяная',
+    candy: 'Леденец',
+  } as Record<string, string>,
   snowLocked: 'Этот снегопад откроется в лавке за %s 🍊 — она появится совсем скоро',
-  snowModes: { clear: 'Ясно', light: 'Лёгкий', snowfall: 'Снегопад', blizzard: 'Метель' } as Record<string, string>,
+  snowModes: { clear: 'Ясно', light: 'Лёгкий', snowfall: 'Снегопад', blizzard: 'Метель' } as Record<
+    string,
+    string
+  >,
   decorDone: 'Готово',
   decorHint: 'Нажми на стрелку над подарками',
   decorHintPlace: 'Выбери место для фигуры',
-  padFree: 'Здесь можно поставить фигуру: снеговика, оленя, сани… Лавка с фигурами откроется совсем скоро — копи мандаринки 🍊',
+  padFree:
+    'Здесь можно поставить фигуру: снеговика, оленя, сани… Лавка с фигурами откроется совсем скоро — копи мандаринки 🍊',
   padTaken: 'Это место уже украшено. Скоро фигуры можно будет менять местами',
   corners: {
     porch: 'Уголок у крыльца',
@@ -36,12 +47,14 @@ const ru = {
   festiveLevel: 'Уровень праздника',
   levelMax: 'Максимальный уровень! 🎆',
   levelHint: 'Шары, огоньки гирлянды и звезда поднимают уровень — и ёлка вокруг меняется',
-  ballBox: 'Лежит в коробке под ёлкой: поздравление на проверке. После одобрения шар повесится на ёлку.',
+  ballBox:
+    'Лежит в коробке под ёлкой: поздравление на проверке. После одобрения шар повесится на ёлку.',
   ballHung: 'Висит на ёлке. Загорится в новогоднюю ночь, когда поздравление дойдёт до получателя.',
   ballLit: 'Горит! Поздравление дошло до получателя ✨',
   starOff: 'Звезда загорится, когда ты откроешь свой подарок в новогоднюю ночь.',
   starOn: 'Звезда горит: ты получил подарок от Тайного Санты!',
-  emptyTree: 'Твоя ёлка ждёт первый шар. Каждое поздравление станет шаром, а в Новый год он загорится!',
+  emptyTree:
+    'Твоя ёлка ждёт первый шар. Каждое поздравление станет шаром, а в Новый год он загорится!',
   newHung: 'Новый шар на ёлке! 🎄',
   newLit: 'Твой шар загорелся — поздравление дошло! ✨',
   mandarins: 'Мандаринки',
@@ -86,7 +99,8 @@ const ru = {
   invite: 'Позвать друзей',
   inviteHint: 'Чем больше участников, тем больше поздравлений 🎁',
   invited: 'Приглашено',
-  inviteText: '🎅 Давай сыграем в Тайного Санту! В Новый год каждый получит анонимное поздравление от случайного человека со всего мира 🌍🎁',
+  inviteText:
+    '🎅 Давай сыграем в Тайного Санту! В Новый год каждый получит анонимное поздравление от случайного человека со всего мира 🌍🎁',
   copied: 'Ссылка скопирована',
   giftReady: 'Тебе пришёл подарок!',
   giftTap: 'Нажми, чтобы открыть',
@@ -106,7 +120,8 @@ const ru = {
   change: 'Изменить',
   // New wish
   newWishTitle: 'Новогоднее поздравление',
-  newWishText: 'Напиши тёплые слова незнакомцу. Можно добавить фото, видео или аудио. Поздравление проверят модераторы.',
+  newWishText:
+    'Напиши тёплые слова незнакомцу. Можно добавить фото, видео или аудио. Поздравление проверят модераторы.',
   placeholder: 'С Новым годом! Желаю тебе…',
   addMedia: 'Фото / видео / аудио',
   send: 'Отправить 🎁',
@@ -136,7 +151,8 @@ const ru = {
   // Inbox
   inbox: 'Мои подарки',
   noGifts: 'Подарков пока нет. Они появятся в новогоднюю ночь!',
-  emptyGift: 'В этот раз поздравлений не хватило 😔 Но Санта всё равно желает тебе волшебного года!',
+  emptyGift:
+    'В этот раз поздравлений не хватило 😔 Но Санта всё равно желает тебе волшебного года!',
   fromSanta: 'Поздравление от Тайного Санты',
   react: 'Как тебе? Автор увидит реакцию, но не узнает, кто ты',
   replyPlaceholder: 'Анонимный ответ автору…',
@@ -163,13 +179,26 @@ const en: Dict = {
   snowfall: 'Snowfall',
   cabinLights: 'House lights',
   lightsLocked: 'This is a try-on: these lights unlock in the shop for %s 🍊 — it opens very soon',
-  lightSkins: { none: 'No lights', multi: 'Multicolor', warm: 'Warm white', gold: 'Gold', icy: 'Icy', candy: 'Candy' } as Record<string, string>,
+  lightSkins: {
+    none: 'No lights',
+    multi: 'Multicolor',
+    warm: 'Warm white',
+    gold: 'Gold',
+    icy: 'Icy',
+    candy: 'Candy',
+  } as Record<string, string>,
   snowLocked: 'This snowfall unlocks in the shop for %s 🍊 — it opens very soon',
-  snowModes: { clear: 'Clear', light: 'Light', snowfall: 'Snowfall', blizzard: 'Blizzard' } as Record<string, string>,
+  snowModes: {
+    clear: 'Clear',
+    light: 'Light',
+    snowfall: 'Snowfall',
+    blizzard: 'Blizzard',
+  } as Record<string, string>,
   decorDone: 'Done',
   decorHint: 'Tap an arrow above the presents',
   decorHintPlace: 'Pick a place for a figure',
-  padFree: 'You can put a figure here: a snowman, a reindeer, a sled… The figure shop opens very soon — save your mandarins 🍊',
+  padFree:
+    'You can put a figure here: a snowman, a reindeer, a sled… The figure shop opens very soon — save your mandarins 🍊',
   padTaken: 'This place is already decorated. Soon you’ll be able to move figures around',
   corners: {
     porch: 'Porch corner',
@@ -181,12 +210,15 @@ const en: Dict = {
   festiveLevel: 'Festive level',
   levelMax: 'Max level! 🎆',
   levelHint: 'Balls, garland lights and the star raise the level — and the scene around changes',
-  ballBox: 'In a box under the tree: the greeting is being reviewed. Once approved, the ball goes on the tree.',
-  ballHung: 'On the tree. It lights up on New Year’s night when the greeting reaches its recipient.',
+  ballBox:
+    'In a box under the tree: the greeting is being reviewed. Once approved, the ball goes on the tree.',
+  ballHung:
+    'On the tree. It lights up on New Year’s night when the greeting reaches its recipient.',
   ballLit: 'It’s glowing! The greeting reached its recipient ✨',
   starOff: 'The star lights up when you open your gift on New Year’s night.',
   starOn: 'The star is glowing: you got a gift from Secret Santa!',
-  emptyTree: 'Your tree is waiting for its first ball. Each greeting becomes a ball that lights up at New Year!',
+  emptyTree:
+    'Your tree is waiting for its first ball. Each greeting becomes a ball that lights up at New Year!',
   newHung: 'A new ball on the tree! 🎄',
   newLit: 'Your ball lit up — the greeting was delivered! ✨',
   mandarins: 'Mandarins',
@@ -227,7 +259,8 @@ const en: Dict = {
   invite: 'Invite friends',
   inviteHint: 'More participants — more greetings 🎁',
   invited: 'Invited',
-  inviteText: '🎅 Let’s play Secret Santa! On New Year everyone gets an anonymous greeting from a random person around the world 🌍🎁',
+  inviteText:
+    '🎅 Let’s play Secret Santa! On New Year everyone gets an anonymous greeting from a random person around the world 🌍🎁',
   copied: 'Link copied',
   giftReady: 'You’ve got a gift!',
   giftTap: 'Tap to open',
@@ -246,7 +279,8 @@ const en: Dict = {
   timezone: 'Time zone',
   change: 'Change',
   newWishTitle: 'New Year greeting',
-  newWishText: 'Write warm words to a stranger. You can add photos, video or audio. Moderators will check it.',
+  newWishText:
+    'Write warm words to a stranger. You can add photos, video or audio. Moderators will check it.',
   placeholder: 'Happy New Year! I wish you…',
   addMedia: 'Photo / video / audio',
   send: 'Send 🎁',
@@ -274,7 +308,8 @@ const en: Dict = {
   confirmDelete: 'Delete the greeting?',
   inbox: 'My gifts',
   noGifts: 'No gifts yet. They’ll appear on New Year’s night!',
-  emptyGift: 'There weren’t enough greetings this time 😔 But Santa still wishes you a magical year!',
+  emptyGift:
+    'There weren’t enough greetings this time 😔 But Santa still wishes you a magical year!',
   fromSanta: 'A greeting from Secret Santa',
   react: 'How do you like it? The author will see your reaction, but not who you are',
   replyPlaceholder: 'Anonymous reply to the author…',

@@ -4,8 +4,6 @@ from uuid import UUID
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
-from . import keyboards
-from . import messages
 from db.models import ValidStatus
 from handlers import buttons
 from handlers import keyboards as common_keyboards
@@ -13,6 +11,7 @@ from handlers.depends import wish_service
 from services.mandarins import REWARDS, Reason
 from services.notify.aiogram.keyboards import OptionPrefix
 
+from . import keyboards, messages
 
 log = logging.getLogger(__name__)
 
@@ -21,9 +20,8 @@ wish_validate_router = Router(name="wishes.validate")
 
 
 @wish_validate_router.callback_query(
-        F.data.startswith(OptionPrefix.APPROVE)
-        | F.data.startswith(OptionPrefix.REJECT)
-        )
+    F.data.startswith(OptionPrefix.APPROVE) | F.data.startswith(OptionPrefix.REJECT)
+)
 async def approve_or_reject_wish(call: CallbackQuery) -> None:
     callback_data = call.data
     message = call.message
@@ -35,35 +33,34 @@ async def approve_or_reject_wish(call: CallbackQuery) -> None:
         data_prefix = OptionPrefix.APPROVE
         new_wish_valid_status = ValidStatus.APPROVED
         status_message = messages.APPROVED
-    else:   # callback_data.startswith(OptionPrefix.REJECT):
+    else:  # callback_data.startswith(OptionPrefix.REJECT):
         data_prefix = OptionPrefix.REJECT
         new_wish_valid_status = ValidStatus.REJECTED
         status_message = messages.REJECTED
 
     # Verify that postfix is a valid UUID
     try:
-        wish_id = UUID(callback_data[len(data_prefix):])
+        wish_id = UUID(callback_data[len(data_prefix) :])
     except Exception:
         return None
 
     # Update wish valid status
-    await wish_service.update_wish_status(
-        wish_id=wish_id,
-        valid_status=new_wish_valid_status)
+    await wish_service.update_wish_status(wish_id=wish_id, valid_status=new_wish_valid_status)
 
     await notify_wish_author(call, wish_id, new_wish_valid_status)
 
     # Show successful validate processed
     await message.edit_text(
         text=messages.VERIFIED_WISH_ACTIONS % {"status": status_message},
-        reply_markup=keyboards.HIDE_WISH)
+        reply_markup=keyboards.HIDE_WISH,
+    )
 
 
 async def notify_wish_author(
-        call: CallbackQuery,
-        wish_id: UUID,
-        status: ValidStatus,
-        ) -> None:
+    call: CallbackQuery,
+    wish_id: UUID,
+    status: ValidStatus,
+) -> None:
     bot = call.bot
     wish = await wish_service.get_one(wish_id)
     if not (bot and wish):
@@ -78,7 +75,8 @@ async def notify_wish_author(
             chat_id=wish.author_telegram_id,
             text=text,
             parse_mode=None,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[app_row]) if app_row else None)
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[app_row]) if app_row else None,
+        )
     except Exception:
         log.warning("Failed to notify wish author", exc_info=True)
 
@@ -94,6 +92,4 @@ async def hide_wish(call: CallbackQuery) -> None:
     if replyed := message.reply_to_message:
         messages_to_delete.append(replyed.message_id)
 
-    await bot.delete_messages(
-        chat_id=message.chat.id,
-        message_ids=messages_to_delete)
+    await bot.delete_messages(chat_id=message.chat.id, message_ids=messages_to_delete)

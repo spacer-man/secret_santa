@@ -11,7 +11,6 @@ import setup
 from configs.bot import WEBHOOK_HOST, WEBHOOK_PATH, WEBHOOK_PORT, WebhookConfig
 from configs.webapp import WebAppConfig
 
-
 log = logging.getLogger()
 
 
@@ -20,27 +19,29 @@ async def setup_menu_button(bot: Bot) -> None:
     if not (url := WebAppConfig().url_for()):
         return None
     try:
-        await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(
-            text="🎄 Санта", web_app=WebAppInfo(url=url)))
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(text="🎄 Санта", web_app=WebAppInfo(url=url))
+        )
     except Exception:
         log.warning("Failed to set the menu button", exc_info=True)
 
 
 async def run_webhook(
-        bot: Bot,
-        dp: Dispatcher,
-        config: WebhookConfig,
-        port: int = WEBHOOK_PORT,
-        ) -> None:
+    bot: Bot,
+    dp: Dispatcher,
+    config: WebhookConfig,
+    port: int = WEBHOOK_PORT,
+) -> None:
     secret = config.secret.get_secret_value() or None
     await bot.set_webhook(
-        url=config.url,
-        secret_token=secret,
-        allowed_updates=dp.resolve_used_update_types())
+        url=config.url, secret_token=secret, allowed_updates=dp.resolve_used_update_types()
+    )
 
     app = web.Application()
     SimpleRequestHandler(
-        dispatcher=dp, bot=bot, secret_token=secret,
+        dispatcher=dp,
+        bot=bot,
+        secret_token=secret,
     ).register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
 

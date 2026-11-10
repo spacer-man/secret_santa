@@ -4,6 +4,8 @@
  * "skin" bought for mandarins: colours + animation.
  */
 import * as THREE from 'three';
+import { pushForward } from './glow';
+import { FACING_DECAY } from './lantern';
 
 import type { LightSkin } from './skins';
 
@@ -41,7 +43,7 @@ export class CabinLights {
   private mesh?: THREE.InstancedMesh;
   private wire?: THREE.LineSegments;
   private glows: THREE.Sprite[] = [];
-  private readonly light = new THREE.PointLight(0xffd9a0, 0, 7, 1.6);
+  private readonly light = new THREE.PointLight(0xffd9a0, 0, 7, FACING_DECAY);
   private skin: LightSkin | null = null;
   private readonly colors: THREE.Color[] = [];
   private readonly tmp = new THREE.Color();
@@ -99,13 +101,16 @@ export class CabinLights {
       const n = Math.max(1, Math.round(a.distanceTo(b) / 0.9));
       for (let k = 0; k <= n; k++) {
         const g = new THREE.Sprite(
-          new THREE.SpriteMaterial({
-            map: glowTex,
-            transparent: true,
-            opacity: 0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-          }),
+          pushForward(
+            new THREE.SpriteMaterial({
+              map: glowTex,
+              transparent: true,
+              opacity: 0,
+              blending: THREE.AdditiveBlending,
+              depthWrite: false,
+            }),
+            0.6,
+          ),
         );
         g.position.copy(a.clone().lerp(b, k / n)).add(new THREE.Vector3(0, -0.2, 0));
         g.scale.setScalar(1.3);

@@ -29,13 +29,21 @@ let patched = false;
 export function facingLights(): void {
   if (patched) return;
   patched = true;
-  const call = 'getPointLightInfo( pointLight, geometryPosition, directLight );';
-  THREE.ShaderChunk.lights_fragment_begin = THREE.ShaderChunk.lights_fragment_begin.replace(
-    call,
-    `${call}
-		if ( abs( pointLight.decay - ${FACING_DECAY.toFixed(2)} ) < 0.01 )
-			directLight.color *= smoothstep( 0.0, 0.25, dot( geometryNormal, directLight.direction ) );`,
-  );
+  const facing = 'smoothstep( 0.0, 0.25, dot( geometryNormal, directLight.direction ) )';
+  const point = 'getPointLightInfo( pointLight, geometryPosition, directLight );';
+  // Spot lights are only the light from the cabin windows: always "facing"
+  const spot = 'getSpotLightInfo( spotLight, geometryPosition, directLight );';
+  THREE.ShaderChunk.lights_fragment_begin = THREE.ShaderChunk.lights_fragment_begin
+    .replace(
+      point,
+      `${point}
+		if ( abs( pointLight.decay - ${FACING_DECAY.toFixed(2)} ) < 0.01 ) directLight.color *= ${facing};`,
+    )
+    .replace(
+      spot,
+      `${spot}
+		directLight.color *= ${facing};`,
+    );
 }
 
 /** Power of a lit lantern's real light */

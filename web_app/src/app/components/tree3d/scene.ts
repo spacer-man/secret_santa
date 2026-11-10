@@ -15,6 +15,7 @@ import { ModelName, Models } from './models';
 import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape } from './layout';
 import { TIERS, TREE_TOP, buildFirTree, treeRadius } from './tree-model';
 import { Glitter, buildGlitter, sampleSurface, snowMaterial } from './snow';
+import { pushForward } from './glow';
 import { FACING_DECAY, LANTERN_LIGHT, Lanterns, facingLights, lanternFactory } from './lantern';
 import {
   Birds,
@@ -109,6 +110,9 @@ const DECOR_KINDS: Record<string, DecorKind> = {
   'candy-cane-green': { model: 'candy-cane-green', scale: 2.2, yaws: ANY },
   lantern: { model: 'lantern', scale: 1.8, yaws: ANY },
 };
+
+/** Power of the real light from a cabin window */
+const WINDOW_LIGHT = 14;
 
 /** Figures stand between the train track and the fence */
 const COURTYARD_RING = { min: 4.3, max: 8.25 };
@@ -440,14 +444,17 @@ export class TreeWorld {
 
   private glow(color: number, size: number, opacity = 1): THREE.Sprite {
     const s = new THREE.Sprite(
-      new THREE.SpriteMaterial({
-        map: this.glowTex,
-        color,
-        transparent: true,
-        opacity,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
+      pushForward(
+        new THREE.SpriteMaterial({
+          map: this.glowTex,
+          color,
+          transparent: true,
+          opacity,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+        size * 0.4,
+      ),
     );
     s.scale.setScalar(size);
     return s;
@@ -851,6 +858,7 @@ export class TreeWorld {
 
   private windows: THREE.Mesh[] = [];
   private cabinLights: THREE.Sprite[] = [];
+  private readonly windowLights: THREE.SpotLight[] = [];
   private fringe?: CabinLights;
   private readonly staticClickables: THREE.Object3D[] = [];
 
@@ -873,6 +881,18 @@ export class TreeWorld {
     });
     this.windows = cabin.windows;
     this.cabinLights = cabin.lights;
+    if (this.realLights) {
+      // Real light from the windows: a warm cone outwards and down onto the snow
+      cabin.pool.visible = false;
+      for (const w of cabin.windowSpots) {
+        const out = new THREE.Vector3(Math.sin(w.ry), 0, Math.cos(w.ry));
+        const spot = new THREE.SpotLight(0xffb45a, 0, 7.5, 1.05, 0.85, 1.4);
+        spot.position.copy(w.position).addScaledVector(out, 0.1);
+        spot.target.position.copy(w.position).addScaledVector(out, 2.6).setY(0);
+        cabin.group.add(spot, spot.target);
+        this.windowLights.push(spot);
+      }
+    }
     this.roofSnow = cabin.roofSnow;
     this.staticAnimated.push(cabin);
 
@@ -2350,6 +2370,7 @@ export class TreeWorld {
       if (l.light) l.light.intensity = LANTERN_LIGHT * fire(i);
     });
     this.cabinLights.forEach((l, i) => (l.material.opacity = 0.7 * fire(i + 10)));
+    this.windowLights.forEach((l, i) => (l.intensity = WINDOW_LIGHT * fire(i + 20)));
   }
 
   private applyLevel(level: number): void {
@@ -2364,6 +2385,7 @@ export class TreeWorld {
       } else m.color.set(lampsOn ? 0xffd27a : 0x1c1a33);
     });
     this.cabinLights.forEach((l) => (l.material.opacity = lampsOn ? 0.7 : 0));
+    this.windowLights.forEach((l) => (l.intensity = lampsOn ? WINDOW_LIGHT : 0));
     if (this.fenceBulbs) this.fenceBulbs.visible = level >= 5;
 
     this.levelGroup.clear();

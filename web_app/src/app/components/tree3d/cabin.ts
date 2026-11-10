@@ -22,6 +22,10 @@ export interface Cabin {
   group: THREE.Group;
   windows: THREE.Mesh[];
   lights: THREE.Sprite[];
+  /** The fake pool of window light on the snow (hidden when real lights are used) */
+  pool: THREE.Sprite;
+  /** Windows that look at the courtyard: centre and outward turn (for real light) */
+  windowSpots: { position: THREE.Vector3; ry: number }[];
   /** Roof edges (under the eaves) for the fringe lights */
   roofEdges: [THREE.Vector3, THREE.Vector3][];
   /** The snow blanket on the roof (for the glitter) */
@@ -350,6 +354,7 @@ export function buildCabin(kit: Kit): Cabin {
 
   // Windows: frame, cross bars, sill with snow, shutters
   const shutterMat = kit.toon(0x2f6b4f);
+  const windowSpots: Cabin['windowSpots'] = [];
   const addWindow = (x: number, y: number, z: number, ry: number) => {
     const win = new THREE.Group();
     win.position.set(x, y, z);
@@ -360,6 +365,8 @@ export function buildCabin(kit: Kit): Cabin {
     );
     glass.position.z = 0.02;
     windows.push(glass);
+    // The back window looks into the forest: its light is never seen
+    if (ry !== Math.PI) windowSpots.push({ position: new THREE.Vector3(x, y, z), ry });
     const frame = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.78, 0.06), trim), 1.03);
     const hole = new THREE.Mesh(
       new THREE.PlaneGeometry(0.72, 0.64),
@@ -502,6 +509,8 @@ export function buildCabin(kit: Kit): Cabin {
     group: g,
     windows,
     lights,
+    pool,
+    windowSpots,
     roofEdges,
     roofSnow,
     update(t: number, dt: number) {

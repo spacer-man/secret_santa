@@ -22,11 +22,57 @@ dependencies = [
 ]
 
 
-[tool.pyright]
-venv = ".venv"
-venvPath = "."
-
 [dependency-groups]
 dev = [
     "aiosqlite>=0.22.0",
+    "httpx>=0.28.1",
+    "pytest>=8.4",
+    "ruff>=0.14",
+    "ty>=0.0.1a30",
 ]
+
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "SIM",      # simplify
+    "ASYNC",    # asyncio pitfalls
+    "RUF",      # ruff-specific
+]
+ignore = [
+    "E501",                       # line length: the formatter handles it
+    "B008",                       # FastAPI Depends()/Query() in defaults
+    "RUF001", "RUF002", "RUF003", # Cyrillic letters in strings/comments are fine
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "api", "configs", "db", "handlers", "middlewares", "repos", "services", "setup", "timezones",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]           # tests set env vars before importing the app
+
+[tool.ruff.format]
+quote-style = "double"
+
+
+[tool.ty.environment]
+python = ".venv"
+extra-paths = ["src"]
+
+[tool.ty.src]
+include = ["src", "tests"]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

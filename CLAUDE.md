@@ -26,7 +26,7 @@
   - `src/services/tree.py` — данные ёлки: шары (box/hung/lit), звезда, гирлянда, уровень праздника 1–10.
   - `src/db/core.py` — `create_all` + идемпотентные `ALTER ... IF NOT EXISTS` (миграции без alembic),
     advisory lock (бот и API стартуют одновременно).
-  - Тесты: `cd bot && .venv/bin/python -m pytest tests` (SQLite); на Postgres:
+  - Тесты: `cd bot && uv run pytest` (SQLite); на Postgres:
     `TEST_DB_URL=postgresql+asyncpg://... ` (локально был postgres 16 в `/usr/lib/postgresql/16/bin`).
 - `web_app/` — Angular 21 (standalone, signals). Один фронт = Telegram Mini App + сайт + PWA.
   - Зависимости ставить **bun** (`bun install`), не npm (у npm баг с этим lock-файлом). Сборка `npx ng build`.
@@ -132,9 +132,52 @@
 снять Playwright'ом (chromium предустановлен) с подменой `/api/**` моками и `localStorage['santa.session']='x'`.
 Смотреть скриншоты самому перед отчётом. Не оставлять `web_app/dist` и `.angular` в репо.
 
+## Качество кода (CI: `.github/workflows/ci.yml`)
+
+- **Перед каждым коммитом:** `./scripts/check.sh --fix` — форматирует, автоисправляет и прогоняет всё то же, что CI.
+  Коммитить только когда он зелёный. Без `--fix` — только проверка.
+- Бэкенд (`bot/`, всё через `uv run --no-sync …`, зависимости `uv sync --group dev`):
+  - форматирование и линт — **ruff** (`ruff format`, `ruff check --fix`); настройки в `bot/pyproject.toml` (строка 100);
+  - типы — **ty** (`ty check`): новый код с аннотациями, без `Any` без нужды; подавлять только точечно
+    `# ty: ignore[rule]` с причиной;
+  - тесты — `pytest` (в CI ещё и на Postgres 17);
+  - `requirements.txt` (из него ставит Docker) генерируется из `uv.lock`: после смены зависимостей
+    `uv export --locked --no-dev --no-hashes --no-emit-project --no-header -o requirements.txt`.
+- Фронт (`web_app/`):
+  - форматирование — **`bun fmt`** (встроенный в bun ≥1.4, читает блок `prettier` в package.json и `.editorconfig`;
+    prettier ставить не нужно): `bun run format` / `bun run format:check`. Скрипт нельзя называть `fmt` — `bun fmt` его вызовет;
+  - линт — **ESLint** + angular-eslint (`bun run lint`, конфиг `eslint.config.js`);
+  - типы — `bun run typecheck` (tsc, strict) + `ng build` (strictTemplates проверяет шаблоны);
+  - `bun run check` — всё сразу.
+- Скрипты — `shellcheck scripts/*.sh`.
+
+## Формат коммитов
+
+`<эмодзи> <тип>(<область>): <Описание>` — описание по-английски, с заглавной буквы, в повелительном наклонении,
+без точки в конце, до ~72 символов. Область — необязательна, но желательна (`tree3d`, `api`, `bot`, `mailer`,
+`shop`, `ci`, `deps`, `docs`…). Пример: `✨ feat(tree3d): Add new snowfall effect`.
+
+| Эмодзи | Тип | Когда |
+|---|---|---|
+| ✨ | feat | новая возможность |
+| 🐛 | fix | исправление бага |
+| ♻️ | refactor | переделка без изменения поведения |
+| ⚡️ | perf | производительность |
+| 🎨 | style | форматирование, стиль кода |
+| 💄 | ui | вид / вёрстка / визуал без новой механики |
+| ✅ | test | тесты |
+| 📝 | docs | документация, CLAUDE.md |
+| 🔧 | chore | конфиги, скрипты, служебное |
+| 👷 | ci | CI |
+| ⬆️ | deps | обновление зависимостей |
+| 🗃️ | db | схема БД / миграции |
+| 🔥 | remove | удаление кода/файлов |
+
+Тело коммита (по желанию) — что и зачем, через пустую строку после заголовка.
+
 ## Правила работы
 
 - Коммитить и пушить в рабочую ветку; PR не создавать без просьбы.
-- Перед сдачей: бэкенд-тесты, `ng build`, скриншоты изменённого.
+- Перед сдачей: `./scripts/check.sh --fix` (бэкенд-тесты, типы, линт, `ng build`), скриншоты изменённого.
 - Тяжёлые независимые куски можно отдавать субагенту (владелец просил экономить лимиты; механика — Sonnet),
   разводя их по разным файлам.

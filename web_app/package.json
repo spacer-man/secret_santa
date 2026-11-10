@@ -6,7 +6,12 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "format": "bun fmt src eslint.config.js",
+    "format:check": "bun fmt --check src eslint.config.js",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "check": "bun run format:check && bun run lint && bun run typecheck && ng build"
   },
   "prettier": {
     "printWidth": 100,
@@ -37,9 +42,13 @@
     "@angular/build": "^21.0.3",
     "@angular/cli": "^21.0.3",
     "@angular/compiler-cli": "^21.0.0",
+    "@eslint/js": "^9",
     "@types/three": "0.180.0",
+    "angular-eslint": "^21.0.0",
+    "eslint": "^9.0.0",
     "jsdom": "^27.1.0",
     "typescript": "~5.9.2",
+    "typescript-eslint": "^8.0.0",
     "vitest": "^4.0.8"
   }
 }

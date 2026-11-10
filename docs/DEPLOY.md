@@ -58,7 +58,28 @@
 
 Позже приложение можно выложить в Google Play как TWA (через Bubblewrap, разовый взнос $25). В App Store публиковаться не нужно.
 
-## Локальная разработка
+## Локальная разработка через туннель (Mini App в Telegram без деплоя)
+
+Mini App и вебхук Telegram работают только по HTTPS, поэтому локально всё открывается через туннель.
+Одна команда поднимает API, бота (на вебхуке), фронт (`ng serve` с живой перезагрузкой) и публичный HTTPS-адрес:
+
+```bash
+cp .env.dev.example .env.dev    # впишите BOT_TOKEN тестового бота и свой Telegram ID
+./scripts/dev-tunnel.sh
+```
+
+- Нужен **отдельный тестовый бот** (@BotFather → `/newbot`): скрипт ставит ему вебхук и кнопку меню «🎄 Санта»
+  на адрес туннеля, а по Ctrl+C снимает их.
+- Туннель выбирается сам: `cloudflared` (бесплатно, без регистрации — рекомендуется) → `ngrok` → `ssh` на localhost.run
+  (ничего ставить не надо). Явно: `TUNNEL=ngrok ./scripts/dev-tunnel.sh`.
+  Поставить cloudflared: `brew install cloudflared` или пакет со страницы Cloudflare (Downloads).
+- База по умолчанию — SQLite в `.dev/santa.db`, состояния бота — в памяти. Postgres/Redis можно задать в `.env.dev`.
+- Логи: `.dev/logs/` (и в терминале с префиксами `[web]`, `[api]`, `[bot]`).
+- Адрес туннеля меняется при каждом запуске, поэтому вход на **сайте** через Telegram Login Widget не заработает
+  (нужен `/setdomain`). Mini App внутри Telegram работает и без него.
+- Схема: туннель → `ng serve :4200` → `/api` на `:8000`, `/telegram/webhook` на `:8080` (`web_app/proxy.conf.json`).
+
+## Локальная разработка без туннеля
 
 ```bash
 # Бот: оставьте WEBHOOK_URL пустым — бот будет работать через polling

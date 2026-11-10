@@ -173,7 +173,13 @@ function readSeen(): Record<string, string> | null {
           }
           @case ('pad') {
             @if (s.kind === 'pad') {
-              <div class="sheet-emoji">{{ s.item ? shop.icon(s.item) : '✨' }}</div>
+              <div class="sheet-emoji">
+                @if (s.item && shop.image(s.item); as src) {
+                  <img class="sheet-figure" [src]="src" alt="" />
+                } @else {
+                  {{ s.item ? shop.icon(s.item) : '✨' }}
+                }
+              </div>
               <h2>{{ cornerName(s.corner) }}</h2>
               @if (s.item && !padReplacing()) {
                 <p class="muted">
@@ -197,7 +203,12 @@ function readSeen(): Record<string, string> | null {
                     [disabled]="shop.busy()"
                     (click)="padPlace(s.pad, f.key)"
                   >
-                    {{ shop.icon(f.key) }} {{ shop.name(f.key) }} — {{ i18n.t('padPutHere') }}
+                    @if (shop.image(f.key); as src) {
+                      <img class="pick-figure" [src]="src" alt="" />
+                    } @else {
+                      {{ shop.icon(f.key) }}
+                    }
+                    {{ shop.name(f.key) }} — {{ i18n.t('padPutHere') }}
                   </button>
                 }
                 @if (padReplacing()) {

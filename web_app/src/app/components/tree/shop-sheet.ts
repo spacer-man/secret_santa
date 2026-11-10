@@ -43,7 +43,13 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       <div class="shop-grid">
         @for (it of list(); track it.key) {
           <div class="shop-card" [attr.data-rarity]="it.rarity" [class.owned]="it.owned">
-            <div class="card-icon">{{ shop.icon(it.key) }}</div>
+            <div class="card-icon">
+              @if (shop.image(it.key); as src) {
+                <img [src]="src" alt="" loading="lazy" />
+              } @else {
+                {{ shop.icon(it.key) }}
+              }
+            </div>
             <b class="card-name">{{ shop.name(it.key) }}</b>
             <span class="rarity">{{ rarityText(it.rarity) }}</span>
             <div class="card-action">
@@ -99,9 +105,13 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
           </div>
           <div class="set-icons">
             @for (key of set.items; track key) {
-              <span [class.have]="shop.item(key)?.owned" [title]="shop.name(key)">{{
-                shop.icon(key)
-              }}</span>
+              <span [class.have]="shop.item(key)?.owned" [title]="shop.name(key)">
+                @if (shop.image(key); as src) {
+                  <img [src]="src" alt="" loading="lazy" />
+                } @else {
+                  {{ shop.icon(key) }}
+                }
+              </span>
             }
           </div>
           <span class="set-bonus">{{
@@ -189,6 +199,36 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     .card-icon {
       font-size: 2.3rem;
       line-height: 1.1;
+    }
+    .card-icon {
+      position: relative;
+    }
+    /* Glow of the rarity colour behind the figure */
+    .card-icon:has(img)::before {
+      content: '';
+      position: absolute;
+      inset: -0.2rem 8%;
+      border-radius: 50%;
+      background: radial-gradient(
+        closest-side,
+        color-mix(in srgb, var(--accent) 55%, transparent),
+        color-mix(in srgb, var(--accent) 16%, transparent) 60%,
+        transparent
+      );
+    }
+    .card-icon img {
+      position: relative;
+      display: block;
+      width: 5.2rem;
+      height: 5.2rem;
+      margin: -0.3rem auto -0.2rem;
+      filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 85%, transparent))
+        drop-shadow(0 3px 5px rgba(0, 0, 0, 0.4));
+    }
+    .set-icons img {
+      display: block;
+      width: 2rem;
+      height: 2rem;
     }
     .card-name {
       font-size: 0.92rem;

@@ -14,12 +14,11 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import func
 from sqlmodel import col, select
 
 from db import new_db_session
-from db.models import Delivery, User, ValidStatus, Wish
-from services import mandarins
+from db.models import Delivery, ValidStatus, Wish
+from services import mandarins, shop
 from services.delivery import DeliveryService, current_season_year, season_start
 
 BALL_COLORS = ("red", "gold", "silver", "blue", "green", "purple", "pink", "orange")
@@ -40,12 +39,19 @@ class Ball(BaseModel):
     replies: int
 
 
+class Decor(BaseModel):
+    item: str
+    pad: int
+
+
 class Tree(BaseModel):
     year: int
     balls: list[Ball]
     star: bool
     garland: int
     mandarins: int
+    decor: list[Decor]
+    owned: list[str]
     level: int
     points: int
     level_from: int
@@ -73,6 +79,8 @@ async def build_tree(
     now = now or datetime.now(UTC)
     year = current_season_year(now)
 
+    friends = await shop.ensure_milestones(user_id)  # also grants milestone decorations
+
     async with new_db_session() as session:
         wishes = (
             await session.scalars(
@@ -91,13 +99,8 @@ async def build_tree(
                 .where(col(Delivery.opened_at).is_not(None))
             )
         )
-        friends = (
-            await session.scalar(
-                select(func.count(col(User.id))).where(User.referrer_id == user_id)
-            )
-            or 0
-        )
         balance = await mandarins.balance(session, user_id)
+        owned = await shop.owned_items(session, user_id)
 
     feedback = await delivery_service.feedback(w.id for w in wishes)
     balls = []
@@ -126,6 +129,7 @@ async def build_tree(
         + sum(sum(b.reactions.values()) for b in balls) * POINTS["reaction"]
         + min(friends, MAX_GARLAND) * POINTS["friend"]
         + (POINTS["star"] if star else 0)
+        + shop.decor_points(owned)
     )
     level, level_from, level_to = festive_level(points)
 
@@ -135,6 +139,8 @@ async def build_tree(
         star=star,
         garland=min(friends, MAX_GARLAND),
         mandarins=balance,
+        decor=[Decor(item=u.item_key, pad=u.pad) for u, _ in owned if u.pad is not None],
+        owned=[u.item_key for u, _ in owned],
         level=level,
         points=points,
         level_from=level_from,

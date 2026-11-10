@@ -94,3 +94,36 @@ class MandarinTx(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True))
     )
+
+
+class ShopItem(SQLModel, table=True):
+    """
+    Decoration in the shop (catalog lives in the DB, seeded from services/shop.py).
+
+    ``friends_required`` > 0 marks a milestone gift: it can't be bought and is
+    granted automatically once the user has invited that many friends.
+    """
+
+    key: str = Field(primary_key=True, max_length=32)
+    category: str = Field(max_length=16)  # figure | lights | weather
+    rarity: str = Field(max_length=16)  # common | rare | epic | legendary
+    price: int
+    set_key: str | None = Field(default=None, max_length=32)
+    friends_required: int = Field(default=0)
+    sort: int = Field(default=0)
+    active: bool = Field(default=True)
+
+
+class UserItem(SQLModel, table=True):
+    """A decoration owned by a user (one copy of each)"""
+
+    __table_args__ = (UniqueConstraint("user_id", "item_key"),)
+
+    id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
+    user_id: UUID = Field(foreign_key="user.id", index=True)
+    item_key: str = Field(foreign_key="shopitem.key", max_length=32)
+    # Courtyard place of a figure (None: owned but not placed)
+    pad: int | None = Field(default=None)
+    acquired_at: datetime = Field(
+        default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True))
+    )

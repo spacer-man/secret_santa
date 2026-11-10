@@ -113,6 +113,48 @@ function roofSnowGeometry(peak: number, slope: number, ex: number, ez: number): 
   return geo;
 }
 
+/**
+ * Snow on the chimney rim: a soft lumpy ring following the square top (a
+ * rounded square), open in the middle for the smoke; the outer side hangs
+ * over the bricks. Local space: y = 0 is the top of the chimney.
+ */
+function chimneySnowGeometry(): THREE.BufferGeometry {
+  const N = 40; // around
+  const M = 9; // across the ring
+  const pos: number[] = [];
+  for (let i = 0; i < N; i++) {
+    const th = (i / N) * Math.PI * 2;
+    const c = Math.cos(th);
+    const sn = Math.sin(th);
+    // Rounded square: 1 on the sides, ~1.19 on the corners
+    const sq = 1 / Math.pow(Math.pow(Math.abs(c), 4) + Math.pow(Math.abs(sn), 4), 0.25);
+    const lump = 1 + 0.22 * Math.sin(th * 3 + 0.6) + 0.14 * Math.sin(th * 5 + 2.1);
+    const inner = 0.165 * sq;
+    const outer = (0.3 + 0.03 * lump) * sq;
+    for (let j = 0; j <= M; j++) {
+      const phi = (j / M) * Math.PI;
+      // From the inner edge (on the bricks) over the top to the outer edge (below the top)
+      const r = inner + (outer - inner) * (0.5 - 0.5 * Math.cos(phi));
+      const y = Math.sin(phi) * 0.12 * lump - 0.07 * (j / M) ** 2 - 0.005;
+      pos.push(c * r, y, sn * r);
+    }
+  }
+  const index: number[] = [];
+  for (let i = 0; i < N; i++) {
+    const n = (i + 1) % N;
+    for (let j = 0; j < M; j++) {
+      const p = i * (M + 1) + j;
+      const q = n * (M + 1) + j;
+      index.push(p, q, p + 1, p + 1, q, q + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 export function buildCabin(kit: Kit): Cabin {
   const g = new THREE.Group();
   const windows: THREE.Mesh[] = [];
@@ -218,16 +260,16 @@ export function buildCabin(kit: Kit): Cabin {
   flue.rotation.x = -Math.PI / 2;
   flue.position.set(chimney.position.x, topY + 0.005, chimney.position.z);
   g.add(chimney, flue);
-  for (const [dx, dz, w, d] of [
-    [0, 0.24, 0.6, 0.12],
-    [0, -0.24, 0.6, 0.12],
-    [0.24, 0, 0.12, 0.36],
-    [-0.24, 0, 0.12, 0.36],
-  ]) {
-    const rim = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, d), snow);
-    rim.position.set(chimney.position.x + dx, topY + 0.04, chimney.position.z + dz);
-    g.add(rim);
-  }
+  // A plump ring of snow on the rim, hanging a little over the bricks
+  const rim = new THREE.Mesh(chimneySnowGeometry(), snow);
+  rim.position.set(chimney.position.x, topY, chimney.position.z);
+  g.add(rim);
+  // Snow piled up around the chimney where it comes out of the roof
+  const pile = new THREE.Mesh(new THREE.SphereGeometry(0.46, 16, 10), snow);
+  pile.scale.set(1, 0.42, 1.05);
+  pile.position.set(chimney.position.x - 0.05, top + RIDGE + 0.1 - Math.tan(slope) * (Math.abs(chimney.position.x) - 0.12) + 0.14, chimney.position.z);
+  pile.rotation.z = slope * 0.8;
+  g.add(pile);
 
   const smoke: THREE.Sprite[] = [];
   for (let i = 0; i < 9; i++) {

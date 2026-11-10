@@ -16,6 +16,28 @@ export interface LanternKit {
   light?(): THREE.PointLight | null;
 }
 
+/**
+ * Toon shading gives even the faces turned away from a light its darkest band,
+ * so a lamp would light its own hood from below. Lights with this exact `decay`
+ * shine only on the faces that look at them (see `facingLights()`); the glow
+ * inside the tree keeps the usual toon behaviour.
+ */
+export const FACING_DECAY = 1.7;
+
+let patched = false;
+/** Patches three.js once: point lights marked by `FACING_DECAY` skip back faces */
+export function facingLights(): void {
+  if (patched) return;
+  patched = true;
+  const call = 'getPointLightInfo( pointLight, geometryPosition, directLight );';
+  THREE.ShaderChunk.lights_fragment_begin = THREE.ShaderChunk.lights_fragment_begin.replace(
+    call,
+    `${call}
+		if ( abs( pointLight.decay - ${FACING_DECAY.toFixed(2)} ) < 0.01 )
+			directLight.color *= smoothstep( 0.0, 0.25, dot( geometryNormal, directLight.direction ) );`,
+  );
+}
+
 /** Power of a lit lantern's real light */
 export const LANTERN_LIGHT = 5.5;
 

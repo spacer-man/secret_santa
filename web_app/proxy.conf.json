@@ -3,5 +3,9 @@
     "target": "http://localhost:8000",
     "secure": false,
     "changeOrigin": true
+  },
+  "/telegram/webhook": {
+    "target": "http://localhost:8080",
+    "secure": false
   }
 }

@@ -9,6 +9,8 @@ export interface Kit {
   toon(color: number, extra?: Partial<THREE.MeshToonMaterialParameters>): THREE.MeshToonMaterial;
   /** Soft snow material */
   snow(): THREE.MeshToonMaterial;
+  /** The courtyard lantern asset */
+  lantern(scale?: number): { group: THREE.Group };
   hull(mesh: THREE.Mesh, thickness?: number): THREE.Mesh;
   outline(mesh: THREE.Mesh, scale?: number): THREE.Mesh;
   glow(color: number, size: number, opacity?: number): THREE.Sprite;
@@ -120,7 +122,7 @@ function roofSnowGeometry(peak: number, slope: number, ex: number, ez: number): 
  */
 function chimneySnowGeometry(): THREE.BufferGeometry {
   const N = 40; // around
-  const M = 9; // across the ring
+  const M = 13; // across the ring
   const pos: number[] = [];
   for (let i = 0; i < N; i++) {
     const th = (i / N) * Math.PI * 2;
@@ -132,10 +134,13 @@ function chimneySnowGeometry(): THREE.BufferGeometry {
     const inner = 0.165 * sq;
     const outer = (0.3 + 0.03 * lump) * sq;
     for (let j = 0; j <= M; j++) {
-      const phi = (j / M) * Math.PI;
-      // From the inner edge (on the bricks) over the top to the outer edge (below the top)
-      const r = inner + (outer - inner) * (0.5 - 0.5 * Math.cos(phi));
-      const y = Math.sin(phi) * 0.12 * lump - 0.07 * (j / M) ** 2 - 0.005;
+      const sj = j / M;
+      // From the inner edge (on the bricks) over the top, out over the edge,
+      // then the lip tucks back into the bricks: no cut-off edge in the air
+      const over = Math.min(1, sj / 0.68);
+      const tuck = THREE.MathUtils.smoothstep(sj, 0.68, 1);
+      const r = inner + (outer - inner) * (0.5 - 0.5 * Math.cos(Math.PI * over)) - (outer - 0.235 * sq) * tuck;
+      const y = Math.sin(Math.PI * over) * 0.12 * lump - 0.15 * sj * sj - 0.005;
       pos.push(c * r, y, sn * r);
     }
   }
@@ -349,17 +354,12 @@ export function buildCabin(kit: Kit): Cabin {
   for (const px of [1.9]) {
     const post = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.12), plank), 1.06);
     post.position.set(px, 0.85, D + 1.2);
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.18), snow);
-    cap.position.set(px, 1.39, D + 1.2);
-    g.add(post, cap);
+    g.add(post);
+    // The same lantern as on the fence, on the porch post
+    const lamp = kit.lantern(0.8);
+    lamp.group.position.set(px, 1.35, D + 1.2);
+    g.add(lamp.group);
   }
-  const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.24, 0.18), kit.toon(0xffd27a, { emissive: 0xffa040 }));
-  lamp.position.set(1.9, 1.58, D + 1.2);
-  const lampGlow = kit.glow(0xffc070, 1.8, 0);
-  lampGlow.position.copy(lamp.position);
-  windows.push(lamp);
-  lights.push(lampGlow);
-  g.add(lamp, lampGlow);
 
   // Firewood stack by the side wall
   const woodEnd = kit.toon(0xc49a6c);

@@ -15,6 +15,7 @@ import { ModelName, Models } from './models';
 import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape } from './layout';
 import { TIERS, TREE_TOP, buildFirTree, treeRadius } from './tree-model';
 import { Glitter, buildGlitter, sampleSurface, snowMaterial } from './snow';
+import { Lanterns, lanternFactory } from './lantern';
 import { Birds, ShootingStar, buildBirds, buildFootprints, buildShootingStar } from './life';
 
 /** A ball place: where the thread is tied and where the ball centre hangs */
@@ -660,8 +661,12 @@ export class TreeWorld {
     this.scene.add(low, high, snow, snowLow);
   }
 
-  private lanterns: THREE.Mesh[] = [];
-  private lanternGlows: THREE.Sprite[] = [];
+  /** All lanterns of the courtyard are one asset (lantern.ts) */
+  private readonly lanterns: Lanterns = lanternFactory({
+    toon: (c, e) => this.toon(c, e),
+    snow: () => this.snowMat(),
+    glow: (c, sz, o) => this.glow(c, sz, o),
+  });
   private fenceBulbs?: THREE.InstancedMesh;
 
   private buildFence(): void {
@@ -672,8 +677,22 @@ export class TreeWorld {
     const gapAt = 14; // entrance towards the cabin
     const postGeo = new THREE.BoxGeometry(0.32, 1.0, 0.32);
     // A plump rounded cap of snow on every post
-    const capGeo = new THREE.SphereGeometry(0.29, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2);
-    capGeo.scale(1, 0.62, 1);
+// (rolls over the edge and tucks back into the post: no flat cut underneath)
+    const capGeo = new THREE.LatheGeometry(
+      new THREE.SplineCurve([
+        new THREE.Vector2(0, 0.17),
+        new THREE.Vector2(0.1, 0.162),
+        new THREE.Vector2(0.19, 0.125),
+        new THREE.Vector2(0.25, 0.06),
+        new THREE.Vector2(0.268, -0.01),
+        new THREE.Vector2(0.24, -0.075),
+        new THREE.Vector2(0.18, -0.1),
+        new THREE.Vector2(0.11, -0.085),
+      ])
+        .getPoints(18)
+        .reverse(), // bottom to top: the lathe faces outwards
+      16,
+    );
     const bulbPositions: THREE.Vector3[] = [];
 
     for (let i = 0; i < posts; i++) {
@@ -682,25 +701,20 @@ export class TreeWorld {
       if (i === gapAt) continue; // entrance: no lonely post in front of the cabin
       const post = this.outline(new THREE.Mesh(postGeo, wood), 1.08);
       post.position.copy(p);
-      const cap = new THREE.Mesh(capGeo, snow);
-      cap.position.set(p.x, 0.99, p.z);
-      cap.rotation.y = a * 3;
-      cap.scale.set(1 + rand(i) * 0.12, 0.85 + rand(i + 5) * 0.35, 1 + rand(i + 9) * 0.12);
-      this.scene.add(post, cap);
-      if (i % 4 !== 1) this.perches.push(new THREE.Vector3(p.x, 0.99 + 0.18 * cap.scale.y, p.z));
-
+      this.scene.add(post);
       if (i % 4 === 1) {
         // Lantern on the post
-        const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.38, 0.3), this.toon(0x3a3550, { emissive: 0x000000 }));
-        lamp.position.set(p.x, 1.35, p.z);
-        const roof = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.2, 4), this.toon(0x2a2438));
-        roof.position.set(p.x, 1.64, p.z);
-        roof.rotation.y = Math.PI / 4;
-        const g = this.glow(0xffc070, 2.4, 0);
-        g.position.copy(lamp.position);
-        this.lanterns.push(lamp);
-        this.lanternGlows.push(g);
-        this.scene.add(lamp, roof, g);
+        const lantern = this.lanterns.build(1.15);
+        lantern.group.position.set(p.x, 1.0, p.z);
+        lantern.group.rotation.y = -a;
+        this.scene.add(lantern.group);
+      } else {
+        const cap = new THREE.Mesh(capGeo, snow);
+        cap.position.set(p.x, 1.0, p.z);
+        cap.rotation.y = a * 3;
+        cap.scale.set(1 + rand(i) * 0.12, 0.85 + rand(i + 5) * 0.35, 1 + rand(i + 9) * 0.12);
+        this.scene.add(cap);
+        this.perches.push(new THREE.Vector3(p.x, 1.0 + 0.165 * cap.scale.y, p.z));
       }
 
       if (i === gapAt || i === gapAt - 1) continue;
@@ -760,6 +774,7 @@ export class TreeWorld {
     const cabin = buildCabin({
       toon: (c, e) => this.toon(c, e),
       snow: () => this.snowMat(),
+      lantern: (sc) => this.lanterns.build(sc),
       hull: (m) => withOutline(m),
       outline: (m, sc) => this.outline(m, sc),
       glow: (c, sz, o) => this.glow(c, sz, o),
@@ -1140,9 +1155,10 @@ export class TreeWorld {
     const BALL_R = 0.25;
     const perTier: BallSlot[][] = [];
     TIERS.forEach(([bottom, , radius], t) => {
-      // Not under the lowest tier (the podium is right below) and not the tiny top one
-      if (t === 0 || radius < 0.6) return;
-      const count = Math.max(3, Math.floor((Math.PI * 2 * radius) / 0.85));
+      // Not under the lowest tier (the podium is right below)
+      if (t === 0) return;
+      // As many as fit side by side with a little air between the balls
+      const count = Math.max(3, Math.floor((Math.PI * 2 * radius) / 0.62));
       const list: BallSlot[] = [];
       for (let k = 0; k < count; k++) {
         const a = (k / count) * Math.PI * 2 + t * 1.13;
@@ -1157,10 +1173,27 @@ export class TreeWorld {
       }
       perTier.push(list);
     });
-    const total = perTier.reduce((n, l) => n + l.length, 0);
+    // Order of filling: every next ball goes to the place farthest from all
+    // the taken ones, so any number of balls is spread evenly over the whole
+    // tree (all sides, all heights) instead of gathering in clusters
+    const rest = perTier.flat();
     const slots: BallSlot[] = [];
-    for (let k = 0; slots.length < total; k++) {
-      for (const list of perTier) if (k < list.length) slots.push(list[k]);
+    const far = rest.map(() => Infinity);
+    // The first one: in the middle of the tree, on the side the camera starts at
+    const front = new THREE.Vector3(Math.sin(0.6) * 1.4, 2.7, Math.cos(0.6) * 1.4);
+    let next = 0;
+    rest.forEach((s, i) => {
+      if (s.ball.distanceTo(front) < rest[next].ball.distanceTo(front)) next = i;
+    });
+    while (rest.length) {
+      const [chosen] = rest.splice(next, 1);
+      far.splice(next, 1);
+      slots.push(chosen);
+      next = 0;
+      rest.forEach((s, i) => {
+        far[i] = Math.min(far[i], s.ball.distanceTo(chosen.ball));
+        if (far[i] > far[next]) next = i;
+      });
     }
     return slots;
   }
@@ -1895,9 +1928,9 @@ export class TreeWorld {
   private flicker(t: number): void {
     if (!this.lampsOn) return;
     const fire = (k: number) => 0.86 + 0.09 * Math.sin(t * 7.3 + k * 2.1) + 0.05 * Math.sin(t * 17.1 + k * 5.3);
-    this.lanternGlows.forEach((g, i) => {
-      g.material.opacity = 0.9 * fire(i);
-      g.scale.setScalar(2.4 * (0.94 + 0.08 * fire(i + 0.5)));
+    this.lanterns.all.forEach((l, i) => {
+      l.glow.material.opacity = 0.9 * fire(i);
+      l.glow.scale.setScalar(l.glowSize * (0.94 + 0.08 * fire(i + 0.5)));
     });
     this.cabinLights.forEach((l, i) => (l.material.opacity = 0.7 * fire(i + 10)));
   }
@@ -1905,12 +1938,7 @@ export class TreeWorld {
   private applyLevel(level: number): void {
     const lampsOn = level >= 3;
     this.lampsOn = lampsOn;
-    this.lanterns.forEach((l) => {
-      const m = l.material as THREE.MeshToonMaterial;
-      m.color.set(lampsOn ? 0xffd27a : 0x3a3550);
-      m.emissive.set(lampsOn ? 0xffa040 : 0x000000);
-    });
-    this.lanternGlows.forEach((g) => (g.material.opacity = lampsOn ? 0.9 : 0));
+    this.lanterns.setOn(lampsOn);
     this.windows.forEach((w) => {
       const m = w.material as THREE.MeshBasicMaterial | THREE.MeshToonMaterial;
       if (m instanceof THREE.MeshToonMaterial) {
@@ -1930,32 +1958,16 @@ export class TreeWorld {
    * low enough to be seen behind the forest from the usual camera angle.
    */
   private addAurora(): void {
-    const tex = canvasTexture(512, (ctx, w) => {
-      // Vertical rays of different brightness
-      for (let x = 0; x < w; x++) {
-        const ray = 0.35 + 0.65 * Math.pow(Math.abs(Math.sin(x * 0.11) * Math.sin(x * 0.031 + 1)), 0.7);
-        const g = ctx.createLinearGradient(0, 0, 0, w);
-        g.addColorStop(0, `rgba(170,110,255,0)`);
-        g.addColorStop(0.35, `rgba(120,140,255,${0.35 * ray})`);
-        g.addColorStop(0.7, `rgba(70,255,180,${0.9 * ray})`);
-        g.addColorStop(0.92, `rgba(120,255,200,${0.5 * ray})`);
-        g.addColorStop(1, `rgba(120,255,200,0)`);
-        ctx.fillStyle = g;
-        ctx.fillRect(x, 0, 1, w);
-      }
-    });
-    tex.wrapS = THREE.RepeatWrapping;
-
     // Separate ribbons of different length, height and tilt
     // The sky strip above the forest is narrow (~3-8 deg above the horizon):
     // the lower edge stays just above the treetops, the upper part may leave the frame
     const ribbons = [
-      { start: 0.3, length: 2.2, radius: 52, base: 11.2, height: 10, tilt: 0.015, speed: 1 },
-      { start: 2.9, length: 1.6, radius: 56, base: 12.2, height: 8, tilt: -0.015, speed: -0.8 },
-      { start: 4.4, length: 2.0, radius: 50, base: 11.6, height: 9, tilt: 0.01, speed: 1.2 },
-      { start: 1.6, length: 1.3, radius: 58, base: 13, height: 6, tilt: -0.01, speed: -1.1 },
-      { start: 5.6, length: 1.7, radius: 55, base: 11.8, height: 8, tilt: -0.015, speed: 0.9 },
-      { start: 3.6, length: 1.1, radius: 49, base: 11, height: 7, tilt: 0.015, speed: -1.3 },
+      { start: 0.3, length: 2.2, radius: 52, base: 11.2, height: 23.0, tilt: 0.015, speed: 1 },
+      { start: 2.9, length: 1.6, radius: 56, base: 12.2, height: 18.4, tilt: -0.015, speed: -0.8 },
+      { start: 4.4, length: 2.0, radius: 50, base: 11.6, height: 20.7, tilt: 0.01, speed: 1.2 },
+      { start: 1.6, length: 1.3, radius: 58, base: 13, height: 13.8, tilt: -0.01, speed: -1.1 },
+      { start: 5.6, length: 1.7, radius: 55, base: 11.8, height: 18.4, tilt: -0.015, speed: 0.9 },
+      { start: 3.6, length: 1.1, radius: 49, base: 11, height: 16.1, tilt: 0.015, speed: -1.3 },
     ];
     const SEG = 140;
     const ROWS = 4;
@@ -1965,7 +1977,7 @@ export class TreeWorld {
       const pos = geo.attributes['position'] as THREE.BufferAttribute;
       // u along the ribbon (0..1), v from the bottom (0) to the top (1)
       const uv = new Float32Array(pos.count * 2);
-      const colors = new Float32Array(pos.count * 3);
+      const fade = new Float32Array(pos.count);
       for (let k = 0; k < pos.count; k++) {
         const u = pos.getX(k) + 0.5;
         const v = pos.getY(k) + 0.5;
@@ -1974,27 +1986,67 @@ export class TreeWorld {
         // The ends fade out softly; brightness varies along the ribbon
         const ends = Math.sin(Math.PI * u) ** 0.8;
         const along = 0.55 + 0.45 * Math.sin(u * 9 + i * 2) * Math.sin(u * 3.7 + i);
-        const b = Math.min(1, 1.25 * ends * Math.max(0.2, along));
-        colors.set([b, b, b], k * 3);
+        fade[k] = Math.min(1, 1.25 * ends * Math.max(0.2, along));
       }
       geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geo.setAttribute('fade', new THREE.BufferAttribute(fade, 1));
       const base = Float32Array.from(pos.array as Float32Array);
 
-      const map = tex.clone();
-      map.needsUpdate = true;
-      const mesh = new THREE.Mesh(
-        geo,
-        new THREE.MeshBasicMaterial({
-          map,
-          vertexColors: true,
-          transparent: true,
-          blending: THREE.AdditiveBlending,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-          fog: false,
-        }),
-      );
+      // Rays are drawn in the shader: curtains of very different width (wide
+      // soft bands, narrow bright streaks, dark gaps), each of its own height;
+      // a bright green lower edge fading up into pink and violet
+      const mat = new THREE.ShaderMaterial({
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        uniforms: { time: { value: 0 }, opacity: { value: 1 }, seed: { value: i * 7.31 + 1 } },
+        vertexShader: `
+          attribute float fade;
+          varying vec2 vUv; varying float vFade;
+          void main() {
+            vUv = uv; vFade = fade;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }`,
+        fragmentShader: `
+          uniform float time; uniform float opacity; uniform float seed;
+          varying vec2 vUv; varying float vFade;
+          float hash(float n) { return fract(sin(n) * 43758.5453); }
+          float noise(float x) {
+            float i = floor(x); float f = fract(x);
+            f = f * f * (3.0 - 2.0 * f);
+            return mix(hash(i), hash(i + 1.0), f);
+          }
+          void main() {
+            float x = vUv.x * 5.0 + seed;
+            float v = vUv.y;
+            // Rays lean and drift a little with height, like real curtains
+            x += v * 0.25 * (noise(x * 0.7 + seed) - 0.5);
+            float wide = noise(x * 0.55 + time * 0.02);
+            float mid = noise(x * 1.9 - time * 0.035 + 11.0);
+            float fine = noise(x * 6.5 + time * 0.06 + 23.0);
+            float streak = noise(x * 17.0 - time * 0.05 + 5.0);
+            // Curtains: where the wide and middle waves meet; gaps between them
+            float curtain = smoothstep(0.28, 0.72, wide * 0.6 + mid * 0.4);
+            float ray = curtain * (0.3 + 0.45 * fine + 0.25 * streak * streak);
+            // A few narrow bright pillars standing out
+            ray += smoothstep(0.78, 0.98, fine) * smoothstep(0.3, 0.6, wide) * 0.5;
+            // Each ray has its own height
+            float tall = 0.3 + 0.7 * noise(x * 1.3 + 40.0) * (0.6 + 0.4 * mid);
+            float vv = v / tall;
+            // A crisp bright lower edge, then a long soft tail upwards
+            float glow = smoothstep(0.0, 0.035, v) * (0.9 * exp(-vv * 2.2) + 0.55 * exp(-vv * 0.75));
+            glow *= 1.0 - smoothstep(0.7, 1.0, v);
+            vec3 green = vec3(0.22, 1.0, 0.42);
+            vec3 pink = vec3(0.95, 0.3, 0.75);
+            vec3 violet = vec3(0.45, 0.28, 1.0);
+            vec3 col = mix(green, pink, smoothstep(0.12, 0.55, vv));
+            col = mix(col, violet, smoothstep(0.5, 1.3, vv));
+            float a = ray * glow * vFade * opacity * 2.6;
+            gl_FragColor = vec4(col * a, a);
+          }`,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
       mesh.rotation.z = rb.tilt;
       mesh.frustumCulled = false;
       this.levelGroup.add(mesh);
@@ -2021,8 +2073,8 @@ export class TreeWorld {
       let last = -1;
       this.animated.push({
         update: (t) => {
-          map.offset.x = t * 0.006 * rb.speed;
-          (mesh.material as THREE.MeshBasicMaterial).opacity = (0.85 + 0.15 * Math.sin(t * 0.45 + i * 1.7)) * Math.min(1, this.skyClear * 1.4);
+          mat.uniforms['time'].value = t * rb.speed;
+          mat.uniforms['opacity'].value = (0.85 + 0.15 * Math.sin(t * 0.45 + i * 1.7)) * Math.min(1, this.skyClear * 1.4);
           mesh.visible = this.skyClear > 0.1;
           // Reshape ~15 times a second: smooth enough for slow waves, cheap
           if (t - last > 0.066) {

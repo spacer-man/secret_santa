@@ -15,7 +15,7 @@ import { ModelName, Models } from './models';
 import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape } from './layout';
 import { TIERS, TREE_TOP, buildFirTree, treeRadius } from './tree-model';
 import { Glitter, buildGlitter, sampleSurface, snowMaterial } from './snow';
-import { LANTERN_LIGHT, Lanterns, lanternFactory } from './lantern';
+import { FACING_DECAY, LANTERN_LIGHT, Lanterns, facingLights, lanternFactory } from './lantern';
 import {
   Birds,
   ShootingStar,
@@ -353,6 +353,7 @@ export class TreeWorld {
     private readonly canvas: HTMLCanvasElement,
     private readonly callbacks: SceneCallbacks,
   ) {
+    facingLights();
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
@@ -434,7 +435,7 @@ export class TreeWorld {
   }
 
   private lampLight(): THREE.PointLight {
-    return new THREE.PointLight(0xffb468, 0, 6.5, 1.7);
+    return new THREE.PointLight(0xffb468, 0, 6.5, FACING_DECAY);
   }
 
   private glow(color: number, size: number, opacity = 1): THREE.Sprite {

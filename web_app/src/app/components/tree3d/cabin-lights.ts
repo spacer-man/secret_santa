@@ -4,7 +4,7 @@
  * "skin" bought for mandarins: colours + animation.
  */
 import * as THREE from 'three';
-import { pushForward } from './glow';
+import { HIDDEN_LAYER, emit, pushForward } from './glow';
 import { FACING_DECAY } from './lantern';
 
 import type { LightSkin } from './skins';
@@ -56,6 +56,8 @@ export class CabinLights {
     edges: [THREE.Vector3, THREE.Vector3][],
     private readonly glowTex: THREE.Texture,
     lightPos: THREE.Vector3,
+    /** Brightness of the bulbs for the bloom (1: no bloom, flat halos instead) */
+    private readonly bloom = 1,
   ) {
     let along = 0;
     const wirePts: number[] = [];
@@ -119,6 +121,8 @@ export class CabinLights {
     });
 
     this.light.position.copy(lightPos);
+    // With the bloom the bulbs glow by themselves: no flat halos
+    if (bloom > 1) this.glows.forEach((g) => g.layers.set(HIDDEN_LAYER));
     this.group.add(this.wire, this.mesh, this.light, ...this.glows);
     this.group.visible = false;
   }
@@ -170,7 +174,12 @@ export class CabinLights {
           k = (Math.floor(t * 1.5) + b.along + b.depth) % 2 ? 1 : 0.35;
           break;
       }
-      this.mesh!.setColorAt(i, this.tmp.copy(this.colors[i]).multiplyScalar(k));
+      this.mesh!.setColorAt(
+        i,
+        this.bloom > 1
+          ? this.tmp.copy(emit(this.colors[i], this.bloom)).multiplyScalar(k * k)
+          : this.tmp.copy(this.colors[i]).multiplyScalar(k),
+      );
     });
     this.mesh.instanceColor!.needsUpdate = true;
     const breathe = 0.85 + 0.15 * Math.sin(t * 1.3);

@@ -6,7 +6,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { VolumeGlow, volumeGlow } from './glow';
+import { emit } from './glow';
 import { withOutline } from './outline';
 
 export interface LanternKit {
@@ -15,6 +15,8 @@ export interface LanternKit {
   glow(color: number, size: number, opacity?: number): THREE.Sprite;
   /** A real light for the lantern, or null on weak devices (then only the glow sprite is left) */
   light?(): THREE.PointLight | null;
+  /** Brightness of the lit glass for the bloom (1: no bloom) */
+  bloom?: number;
 }
 
 /**
@@ -120,16 +122,13 @@ export function lanternFactory(kit: LanternKit): Lanterns {
       const light = kit.light?.() ?? null;
       let lantern: Lantern;
       if (light) {
-        // Real light on the things around and lit air around the flame; the roof shades both
+        // Real light on the things around; the glow comes from the bloom of the bright glass
         light.position.y = 0.3;
-        const air: VolumeGlow = volumeGlow(1.05, 0xffb866, { y: 0.135, r: 0.17 });
-        air.mesh.position.y = 0.21;
-        group.add(light, air.mesh);
+        group.add(light);
         lantern = {
           group,
           shine(k) {
             light.intensity = LANTERN_LIGHT * k;
-            air.setPower(k);
           },
         };
       } else {
@@ -153,6 +152,7 @@ export function lanternFactory(kit: LanternKit): Lanterns {
     setOn(on) {
       glassMat.color.set(on ? 0xffd27a : 0x3a3550);
       glassMat.emissive.set(on ? 0xffa040 : 0x000000);
+      if (on && kit.bloom && kit.bloom > 1) glassMat.emissive.copy(emit(0xffa040, kit.bloom));
       all.forEach((l) => l.shine(on ? 1 : 0));
     },
   };

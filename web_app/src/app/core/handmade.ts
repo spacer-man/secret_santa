@@ -78,7 +78,12 @@ const BARE: Kind[] = ['ink-block', 'card', 'light', 'bar-track', 'bar-fill', 'no
 const STATES = ['selected', 'active', 'done', 'mine', 'locked'];
 
 /** What "boils": a few variants of the drawing are shown in turn, as in drawn animation */
-const BOILING = '.seal, .btn-primary, .doodle';
+const BOILING = '.seal, .btn-primary, .doodle, .load-bar, .load-bar > span';
+/**
+ * Boiling that must not stop while the page is busy (the loading screen of the scene):
+ * every variant is its own layer and CSS switches them (the compositor does it, not a timer)
+ */
+const FREE_BOIL = '.doodle, .load-bar, .load-bar > span';
 const BOIL_VARIANTS = 4;
 const BOIL_FPS = 6;
 
@@ -686,8 +691,13 @@ interface Drawing {
   press: boolean;
   /** Grows with every redraw on hover: the same button, drawn anew */
   nonce: number;
-  /** The pencil outline scribbled around a boiling button while the mouse is over it */
+  /** The pencil outline scribbled around the button while it is hovered or pressed */
   outline?: SVGSVGElement;
+  /** Boils by CSS layers (see FREE_BOIL), `layers` hold the variants after the first */
+  free: boolean;
+  layers?: SVGSVGElement[];
+  /** No outline for this button (in the shop): only the redraw answers to the pointer */
+  quiet: boolean;
   /** The button has been released: the outline is gone until the pointer comes again */
   spent: boolean;
   /** Timer that ends the redraw animation */
@@ -743,6 +753,9 @@ const CALM = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 /** Elements that answer to the pointer */
 const BUTTONS =
   '.btn-primary, .btn-secondary, .btn-ghost, .card-btn, .snow-mode, .reaction, .pattern-btn, .theme-toggle, .mandarin-chip, .decor-btn, .snow-btn, .zoom button';
+
+/** Buttons inside these answer with the redraw only, without the pencil outline */
+const QUIET = 'shop-sheet';
 
 /** Room around the element for strokes that overshoot it, px */
 const PAD = 18;
@@ -813,6 +826,7 @@ export class Handmade {
       this.resizes.unobserve(el);
       d.svg.remove();
       d.outline?.remove();
+      d.layers?.forEach((layer) => layer.remove());
       el.classList.remove('hm-host', 'hm-bare', 'hm-btn');
       this.drawings.delete(el);
     });
@@ -846,6 +860,8 @@ export class Handmade {
         hover: false,
         press: false,
         nonce: 0,
+        quiet: !!el.closest(QUIET),
+        free: el.matches(FREE_BOIL),
         spent: false,
       });
       if (el.matches(BUTTONS)) el.classList.add('hm-btn');
@@ -881,12 +897,21 @@ export class Handmade {
     let html = '';
     let pieces = 1;
     const variants = d.boils && !d.press ? BOIL_VARIANTS : 1;
+    const free = d.free && !CALM;
+    const markups: string[] = [];
     for (let v = 0; v < variants; v++) {
       seq = 0;
-      const markup = draw(d.kind, el, w, h, seed + v * 101, d.press);
+      markups.push(draw(d.kind, el, w, h, seed + v * 101, d.press));
       pieces = Math.max(pieces, seq);
-      html += `<g class="hm-v"${v ? ' style="display:none"' : ''}>${markup}</g>`;
     }
+    if (free) {
+      // The first variant stays in the drawing, the others go to their own layers
+      html = `<g class="hm-v">${markups[0]}</g>`;
+      this.freeLayers(d, markups.slice(1), w, h);
+    } else
+      markups.forEach(
+        (markup, v) => (html += `<g class="hm-v"${v ? ' style="display:none"' : ''}>${markup}</g>`),
+      );
     window.clearTimeout(d.settle);
     d.svg.querySelector(':scope > .hm-old')?.remove();
     if (animate && !CALM) {
@@ -904,11 +929,34 @@ export class Handmade {
     }
   }
 
+  /** Variants of a free-boiling drawing as sibling layers, shown in turn by CSS (`hm-free` in styles.scss) */
+  private freeLayers(d: Drawing, rest: string[], w: number, h: number): void {
+    const period = (BOIL_VARIANTS * 1000) / BOIL_FPS;
+    const all = [d.svg, ...(d.layers ??= [])];
+    d.svg.classList.add('hm-free');
+    d.svg.style.animationDelay = '0ms';
+    rest.forEach((markup, i) => {
+      let layer = d.layers![i];
+      if (!layer) {
+        layer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        layer.setAttribute('class', `${d.svg.getAttribute('class')}`);
+        layer.setAttribute('aria-hidden', 'true');
+        all[i].after(layer);
+        d.layers!.push(layer);
+        all.push(layer);
+      }
+      for (const a of ['width', 'height', 'viewBox']) layer.setAttribute(a, d.svg.getAttribute(a)!);
+      // Each layer is seen during its own quarter of the cycle
+      layer.style.animationDelay = `${(-(i + 1) * period) / BOIL_VARIANTS}ms`;
+      layer.innerHTML = markup;
+    });
+  }
+
   /** Scribbles the pencil outline around a hovered or pressed button, wipes it afterwards */
   private outline(el: HTMLElement, d: Drawing): void {
-    // Only where the button is not drawn anew: a boiling button that stops under the mouse.
-    // A redraw (hover over a still button, any press) is the answer by itself, without an outline
-    const wanted = d.boils && d.hover && !d.press && !d.spent;
+    // Not in the shop: there the cards are close together and outline + redraw read as noise,
+    // the redraw is the answer by itself
+    const wanted = !d.quiet && (d.press || (d.hover && !d.spent));
     if (!wanted) {
       // The line leaves the way it came: its beginning vanishes first
       const gone = d.outline;
@@ -948,8 +996,8 @@ export class Handmade {
 
   /**
    * Buttons answer to the pointer. Hover (mouse): a still button is drawn anew
-   * once, a boiling one stops and gets a pencil outline; both get brighter.
-   * Press: the drawing spreads (drawn anew, no outline).
+   * once, a boiling one stops; both get brighter and a pencil outline (not in the shop).
+   * Press: the drawing spreads.
    */
   private listen(): void {
     const find = (e: Event): [HTMLElement, Drawing] | null => {
@@ -998,7 +1046,7 @@ export class Handmade {
     this.boilFrame++;
     this.drawings.forEach((d) => {
       // A boiling drawing stands still under the pointer and while it is being redrawn
-      if (!d.boils || d.hover || d.press || d.svg.classList.contains('hm-anim')) return;
+      if (!d.boils || d.free || d.hover || d.press || d.svg.classList.contains('hm-anim')) return;
       const groups = d.svg.querySelectorAll<SVGElement>(':scope > g.hm-v');
       for (let i = 0; i < groups.length; i++)
         groups[i].style.display = i === this.boilFrame % groups.length ? '' : 'none';

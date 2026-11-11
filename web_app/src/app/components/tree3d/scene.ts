@@ -1686,7 +1686,9 @@ export class TreeWorld {
     const onTree = tree.balls.filter((b) => b.state !== 'box');
     const lit = onTree.filter((b) => b.state === 'lit').length;
 
-    this.treeLight.intensity = Math.min(lit, 6) * 1.5 + (tree.star ? 2.5 : 0);
+    // The tree glows brighter with every festive level: full power at level 10
+    const glow = THREE.MathUtils.clamp(tree.level / 10, 0.1, 1);
+    this.treeLight.intensity = Math.min(lit, 6) * 1.5 + glow * 3;
 
     onTree.slice(0, this.slots.length).forEach((ball, i) => {
       this.addBall(ball, this.slots[i], i, newHung.includes(ball.id), newLit.includes(ball.id));
@@ -1695,8 +1697,8 @@ export class TreeWorld {
     // Next free places pulse softly: tap to write a new greeting
     this.slots.slice(onTree.length, onTree.length + 2).forEach((p, i) => this.addGhost(p.ball, i));
 
-    this.addGarland(tree.garland);
-    this.addStar(tree.star);
+    this.addGarland(tree.garland, glow);
+    this.addStar(glow);
     const version = ++this.version;
     tree.balls
       .filter((b) => b.state === 'box')
@@ -1855,8 +1857,9 @@ export class TreeWorld {
     });
   }
 
-  private addGarland(friends: number): void {
-    // Spiral around the tree; every friend lights up a part of it
+  /** @param glow 0..1 by the festive level: that share of the bulbs is lit (friends light more early on) */
+  private addGarland(friends: number, glow: number): void {
+    // Spiral around the tree; the level (and every friend) lights up a part of it
     const points: THREE.Vector3[] = [];
     const turns = 3.2;
     for (let k = 0; k <= 120; k++) {
@@ -1874,7 +1877,7 @@ export class TreeWorld {
     this.dynamic.add(wire);
 
     const count = 64;
-    const litCount = Math.min(count, friends * 7);
+    const litCount = Math.min(count, Math.max(Math.round(count * glow), friends * 7));
     const colors = [0xffd36b, 0xff4d6d, 0x4dd2ff, 0x7dff9a, 0xff9ef0];
     for (let k = 0; k < count; k++) {
       const p = curve.getPointAt(k / count);
@@ -1897,7 +1900,8 @@ export class TreeWorld {
     }
   }
 
-  private addStar(on: boolean): void {
+  /** @param power 0..1 by the festive level: from a soft warm light to the full blaze at level 10 */
+  private addStar(power: number): void {
     const shape = new THREE.Shape();
     for (let i = 0; i < 10; i++) {
       const r = i % 2 ? 0.18 : 0.42;
@@ -1913,12 +1917,18 @@ export class TreeWorld {
       bevelSegments: 1,
     });
     geo.center();
+    // Pale gold at the start, deep gold at the end; the light grows with the level
+    // Low levels: a pale, barely glowing star; it warms up level by level
+    const heat = power * power;
+    const color = new THREE.Color(0xd9d6cc).lerp(new THREE.Color(0xffd36b), power);
+    const fire = new THREE.Color(0xffb020);
     const star = this.outline(
       new THREE.Mesh(
         geo,
-        this.toon(on ? 0xffd36b : 0xc9d2ec, {
-          emissive: on ? (this.realLights ? emit(0xffb020, this.bloom) : 0xffb020) : 0x5a6ab0,
-          emissiveIntensity: on ? (this.realLights ? 1 : 0.8) : 0.35,
+        this.toon(color.getHex(), {
+          // With the bloom only the high levels are bright enough to shine
+          emissive: this.realLights ? emit(fire, this.bloom) : fire,
+          emissiveIntensity: this.realLights ? 0.06 + 0.94 * heat : 0.06 + 0.74 * heat,
         }),
       ),
       1.06,
@@ -1927,16 +1937,16 @@ export class TreeWorld {
     star.userData = { kind: 'star', react: star, amount: 0.12 };
     this.clickables.push(star);
     this.dynamic.add(star);
-    // Lit: warm big glow. Not lit yet: a faint cold shimmer, so the star is still noticeable
-    const glow = on ? this.halo(0xffe08a, 2.6, 0.9) : this.glow(0x9fb4ff, 1.5, 0.35);
+    // A warm glow, bigger and brighter with every level
+    const size = 1.1 + 1.5 * power;
+    const glow = this.halo(0xffe08a, size, 0.12 + 0.78 * heat);
     glow.position.copy(star.position);
     this.dynamic.add(glow);
     this.animated.push({
       update: (t) => {
         star.quaternion.copy(this.camera.quaternion);
         star.rotateZ(Math.sin(t * 1.2) * 0.08);
-        if (on) glow.scale.setScalar(2.4 + Math.sin(t * 2) * 0.3);
-        else glow.material.opacity = 0.2 + 0.2 * Math.abs(Math.sin(t * 0.9));
+        glow.scale.setScalar(size * (0.92 + Math.sin(t * 2) * 0.12));
       },
     });
   }

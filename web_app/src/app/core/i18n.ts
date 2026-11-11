@@ -56,8 +56,9 @@ const ru = {
     'Лежит в коробке под ёлкой: поздравление на проверке. После одобрения шар повесится на ёлку.',
   ballHung: 'Висит на ёлке. Загорится в новогоднюю ночь, когда поздравление дойдёт до получателя.',
   ballLit: 'Горит! Поздравление дошло до получателя ✨',
-  starOff: 'Звезда загорится, когда ты откроешь свой подарок в новогоднюю ночь.',
-  starOn: 'Звезда горит: ты получил подарок от Тайного Санты!',
+  starOff:
+    'Звезда и гирлянда разгораются с каждым уровнем праздника — на 10-м ёлка засияет в полную силу.',
+  starOn: 'Праздник на максимуме: ёлка сияет в полную силу!',
   emptyTree:
     'Твоя ёлка ждёт первый шар. Каждое поздравление станет шаром, а в Новый год он загорится!',
   newHung: 'Новый шар на ёлке! 🎄',
@@ -290,8 +291,9 @@ const en: Dict = {
   ballHung:
     'On the tree. It lights up on New Year’s night when the greeting reaches its recipient.',
   ballLit: 'It’s glowing! The greeting reached its recipient ✨',
-  starOff: 'The star lights up when you open your gift on New Year’s night.',
-  starOn: 'The star is glowing: you got a gift from Secret Santa!',
+  starOff:
+    'The star and the garland glow brighter with every festive level — at level 10 the tree shines at full power.',
+  starOn: 'The festive level is at its peak: the tree shines at full power!',
   emptyTree:
     'Your tree is waiting for its first ball. Each greeting becomes a ball that lights up at New Year!',
   newHung: 'A new ball on the tree! 🎄',

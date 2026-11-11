@@ -361,10 +361,25 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
   let out = '';
   let d = '';
   const p = (pt: Pt) => `${r1(pt[0])} ${r1(pt[1])}`;
-  strokes.forEach(([from, bend, to], i) => {
-    const [a0, a1] = i % 2 ? [to, from] : [from, to];
-    d += `${d ? 'L' : 'M'}${p(a0)}Q${p(bend)} ${p(a1)}`;
-    if ((i + 1) % HATCH_PIECE && i < strokes.length - 1) return;
+  const ends = (i: number): [Pt, Pt] => {
+    const [from, , to] = strokes[i];
+    return i % 2 ? [to, from] : [from, to];
+  };
+  strokes.forEach(([, bend], i) => {
+    const [a0, a1] = ends(i);
+    if (!d) d = `M${p(a0)}`;
+    d += `Q${p(bend)} ${p(a1)}`;
+    const last = i === strokes.length - 1;
+    let next = a1;
+    if (!last) {
+      // A round turn beyond the edge into the next stroke: no sharp corner, no crease
+      [next] = ends(i + 1);
+      const len = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]) || 1;
+      const reach = Math.min(o.gap * 0.9, 7);
+      const [ux, uy] = [((a1[0] - a0[0]) / len) * reach, ((a1[1] - a0[1]) / len) * reach];
+      d += `C${p([a1[0] + ux, a1[1] + uy])} ${p([next[0] + ux, next[1] + uy])} ${p(next)}`;
+    }
+    if ((i + 1) % HATCH_PIECE && !last) return;
     const piece = Math.floor(i / HATCH_PIECE);
     const press = noise1(piece * 0.9 + o.seed * 1.3);
     const opacity = o.alpha * Math.max(0.3, Math.min(1, 0.72 + 0.45 * press));
@@ -372,8 +387,8 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
     out +=
       `<path class="hm-stroke hm-seq" pathLength="1" style="--i:${seq++}" ` +
       `opacity="${opacity.toFixed(2)}" stroke-width="${r1(width)}" d="${d}"/>`;
-    // The next piece starts where this one ended
-    d = `M${p(a1)}`;
+    // The next piece starts where this one ended: at the beginning of a stroke, heading along it
+    d = `M${p(next)}`;
   });
   return grow ? `<g transform="translate(${-grow} ${-grow})">${out}</g>` : out;
 }

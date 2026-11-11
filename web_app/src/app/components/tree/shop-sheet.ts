@@ -93,7 +93,7 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
                         }
                       }
                     } @else if (it.friends > 0) {
-                      <span class="gift">{{ giftText(it.friends) }}</span>
+                      <span class="friends-gift">{{ giftText(it.friends) }}</span>
                       <div class="friends-bar">
                         <span [style.width.%]="friendsPercent(it)"></span>
                       </div>
@@ -389,7 +389,7 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       font-weight: 700;
       font-size: 0.88rem;
     }
-    .gift {
+    .friends-gift {
       font-weight: 700;
       font-size: 0.85rem;
       color: var(--gold-color);

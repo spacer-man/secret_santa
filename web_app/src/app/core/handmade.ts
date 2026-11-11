@@ -40,7 +40,9 @@ const RULES: [selector: string, kind: Kind][] = [
   // Filled buttons and marks: pencil hatching
   ['.btn-primary, .card-btn.price, .card-btn.primary, .shop-tab-mark, .toast', 'ink-block'],
   // Dashed-looking secondary actions: one light line
-  ['.btn-ghost, .card-btn.quiet', 'light'],
+  ['.btn-ghost', 'light'],
+  // Quiet buttons of the shop (cancel, remove): a pale hatching, softer than the price
+  ['.card-btn.quiet', 'chip'],
   // Framed things: buttons, options to choose from, cards
   [
     '.btn-secondary, .shop-card, .card-btn, .snow-mode, .reaction, .pattern-btn, .shop-set, .theme-toggle',

@@ -1820,13 +1820,14 @@ svg.hm-outline {
 svg.hm-outline path {
   fill: none;
   stroke: var(--ink);
-  /* A thick soft pencil, almost a crayon: the width is set per button by handmade.ts */
-  stroke-linecap: round;
+  /* A thick soft pencil: the width is set per button by handmade.ts. Each piece is half-transparent
+     and has flat ends: where the pencil passes twice, the line is darker */
+  stroke-linecap: butt;
   stroke-linejoin: round;
-  opacity: 0.85;
+  opacity: 0.52;
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: hm-scribble 0.5s cubic-bezier(0.3, 0.1, 0.3, 1) forwards;
+  animation: hm-scribble 0.2s linear forwards;
 }
 /* Over the dark scene the outline is chalk-white */
 .mandarin-chip > svg.hm-outline path,
@@ -1834,7 +1835,7 @@ svg.hm-outline path {
 .snow-btn > svg.hm-outline path,
 .zoom button > svg.hm-outline path {
   stroke: #fff;
-  opacity: 0.95;
+  opacity: 0.62;
 }
 @keyframes hm-scribble {
   to {

@@ -110,7 +110,8 @@ case "$TUNNEL" in
     PATTERN='https://[a-z0-9]+(-[a-z0-9]+)+\.trycloudflare\.com' ;;  # не api.trycloudflare.com из лога
   ngrok)
     ngrok http "$WEB_PORT" --log stdout --log-format logfmt >"$TUNNEL_LOG" 2>&1 &
-    PATTERN='https://[a-z0-9.-]+\.ngrok(-free)?\.app' ;;
+    # бесплатные адреса: *.ngrok-free.app, с 2025 — *.ngrok-free.dev; свой домен берём из API ngrok ниже
+    PATTERN='https://[a-z0-9.-]+\.ngrok(-free)?\.(app|dev|io)' ;;
   ssh)
     ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes \
       -R "80:localhost:$WEB_PORT" nokey@localhost.run >"$TUNNEL_LOG" 2>&1 &
@@ -124,6 +125,14 @@ TUNNEL_PID=$!
 PUBLIC_URL=""
 for _ in $(seq 60); do
   PUBLIC_URL="$(grep -oE "$PATTERN" "$TUNNEL_LOG" | head -1 || true)"
+  # ngrok: адрес надёжнее спросить у его локального API (порт 4040, если занят — 4041…)
+  if [ -z "$PUBLIC_URL" ] && [ "$TUNNEL" = ngrok ]; then
+    for api in 4040 4041 4042; do
+      PUBLIC_URL="$(curl -fsS "http://127.0.0.1:$api/api/tunnels" 2>/dev/null \
+        | grep -oE '"public_url":"https://[^"]+' | head -1 | cut -d'"' -f4 || true)"
+      [ -n "$PUBLIC_URL" ] && break
+    done
+  fi
   [ -n "$PUBLIC_URL" ] && break
   kill -0 "$TUNNEL_PID" 2>/dev/null || { cat "$TUNNEL_LOG" >&2; die "Туннель не запустился"; }
   sleep 1

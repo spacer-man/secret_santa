@@ -1804,7 +1804,47 @@ svg.hm-tag-round {
 
 /* Buttons under the pointer: brighter on hover, a touch darker while pressed (the drawing also spreads) */
 svg.hm.hm-hover {
-  filter: brightness(1.12) saturate(1.08);
+  filter: brightness(1.06);
+}
+/* A careless pencil outline is scribbled around the button under the pointer and stays while it is pressed */
+svg.hm-outline {
+  position: absolute;
+  z-index: -1;
+  overflow: visible;
+  pointer-events: none;
+  -webkit-mask-image: var(--hm-grain);
+  mask-image: var(--hm-grain);
+  -webkit-mask-size: 160px 160px;
+  mask-size: 160px 160px;
+}
+svg.hm-outline path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: hm-scribble 0.5s cubic-bezier(0.3, 0.1, 0.3, 1) forwards;
+}
+/* Over the dark scene the outline is chalk-white */
+.mandarin-chip > svg.hm-outline path,
+.decor-btn > svg.hm-outline path,
+.snow-btn > svg.hm-outline path,
+.zoom button > svg.hm-outline path {
+  stroke: #fff;
+  opacity: 0.95;
+}
+@keyframes hm-scribble {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  svg.hm-outline path {
+    stroke-dashoffset: 0;
+  }
 }
 svg.hm.hm-press {
   filter: brightness(0.93);

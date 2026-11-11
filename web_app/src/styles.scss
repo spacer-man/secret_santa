@@ -1117,7 +1117,10 @@ blockquote {
   display: flex;
   gap: 0.5rem;
   overflow-x: auto;
-  padding-bottom: 0.2rem;
+  /* A scrolling strip clips everything outside it: room for the pencil outline and the red ring
+     around the buttons (the same room taken back by the margin, so the layout does not move) */
+  padding: 16px;
+  margin: -16px;
   scrollbar-width: none;
 }
 .skin-strip .snow-mode {

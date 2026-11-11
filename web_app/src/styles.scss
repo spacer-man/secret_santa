@@ -2162,7 +2162,6 @@ svg.hm-field {
   --m-nose: #e7837a;
   --m-coat: #c8392d;
   display: block;
-  animation: mascot-bob 3.6s ease-in-out infinite;
 }
 .mascot-art.moroz {
   --m-coat: #2f62a6;
@@ -2172,8 +2171,11 @@ svg.hm-field {
   width: 100%;
   height: auto;
   overflow: visible;
+  /* The coat does not end with a cut: it fades out into the paper */
+  -webkit-mask-image: linear-gradient(#000 0 74%, transparent 97%);
+  mask-image: linear-gradient(#000 0 74%, transparent 97%);
 }
-.mascot-art :is(.m-coat, .m-fur, .m-skin, .m-nose) {
+.mascot-art :is(.m-coat, .m-fur, .m-skin, .m-nose, .m-mitt) {
   stroke: var(--m-line);
   stroke-width: 1.8;
   stroke-linejoin: round;
@@ -2181,8 +2183,20 @@ svg.hm-field {
 .m-coat {
   fill: var(--m-coat);
 }
-.m-fur {
+.m-fur,
+.m-mitt {
   fill: var(--m-fur);
+}
+.m-band {
+  stroke: none !important;
+  opacity: 0.9;
+}
+.m-hatch {
+  fill: none;
+  stroke: color-mix(in srgb, var(--m-coat) 60%, #000);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  opacity: 0.45;
 }
 .m-skin {
   fill: var(--m-skin);
@@ -2204,9 +2218,6 @@ svg.hm-field {
   fill: #7a2620;
   transform-box: fill-box;
   transform-origin: center top;
-}
-.mascot-art.talking .m-mouth {
-  animation: mascot-talk 0.16s ease-in-out infinite alternate;
 }
 .m-brow {
   fill: none;
@@ -2247,9 +2258,325 @@ svg.hm-field {
   stroke-width: 1.4;
   stroke-linecap: round;
 }
-@keyframes mascot-bob {
+
+/* --- Parts that move: pivots are in the coordinates of the drawing --- */
+.mascot-art
+  :is(
+    .m-all,
+    .m-breath,
+    .m-head,
+    .m-head-act,
+    .m-arm,
+    .m-tip,
+    .m-look,
+    .m-brows,
+    .m-flake,
+    .m-shine
+  ) {
+  transform-box: view-box;
+}
+.m-all,
+.m-breath {
+  transform-origin: 60px 150px;
+}
+.m-head,
+.m-head-act {
+  transform-origin: 60px 96px;
+}
+.m-arm {
+  transform-origin: 94px 128px;
+  transform: translate(6px, 40px) rotate(20deg);
+  opacity: 0;
+}
+.m-tip {
+  transform-origin: 70px 30px;
+}
+.m-flake {
+  transform-origin: 60px 26px;
+}
+
+/* Always: breathing, the head sways, the eyes look around, the hat tip swings, the flake twinkles */
+.m-breath {
+  animation: mascot-breath 3.8s ease-in-out infinite;
+}
+.m-head {
+  animation: mascot-sway 7s ease-in-out infinite;
+}
+.m-look {
+  animation: mascot-look 11s ease-in-out infinite;
+}
+.m-tip {
+  animation: mascot-tip 4.4s ease-in-out infinite;
+}
+.moroz .m-flake {
+  animation: mascot-twinkle 3.2s ease-in-out infinite;
+}
+.jolly .m-head {
+  animation-duration: 3.6s;
+}
+.jolly .m-breath {
+  animation: mascot-bounce 1.8s ease-in-out infinite;
+}
+.grumpy .m-head {
+  animation-duration: 10s;
+}
+
+/* While talking: nods, the brows go up, the eyes look at the bubble, the mouth moves */
+.mascot-art.talking .m-head {
+  animation: mascot-talk-nod 1.1s ease-in-out infinite;
+}
+.mascot-art.talking .m-brows {
+  transform: translateY(-1.5px);
+}
+.grumpy.talking .m-brows {
+  transform: translateY(0.8px);
+}
+.mascot-art.talking .m-look {
+  animation: none;
+  transform: translate(1.6px, -0.3px);
+}
+.mascot-art.talking .m-mouth {
+  animation: mascot-talk 0.16s ease-in-out infinite alternate;
+}
+.m-brows,
+.m-look {
+  transition: transform 0.3s ease;
+}
+
+/* Actions now and then (see ACTS in mascot-art.ts; durations = ACT_MS) */
+.act-wave .m-arm {
+  animation: mascot-wave 2.6s ease-in-out;
+}
+.act-wave .m-head-act {
+  animation: mascot-tilt 2.6s ease-in-out;
+}
+.act-hop .m-all {
+  animation: mascot-hop 0.75s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+.act-nod .m-head-act {
+  animation: mascot-nod 0.9s ease-in-out;
+}
+.act-look .m-look {
+  animation: mascot-glance 2.4s ease-in-out;
+}
+.act-look .m-head-act {
+  animation: mascot-turn 2.4s ease-in-out;
+}
+.act-glint .m-shine {
+  animation: mascot-glint 1.1s ease-in-out;
+}
+.act-glint .m-head-act {
+  animation: mascot-nod 0.9s ease-in-out;
+}
+.act-sway .m-head-act {
+  animation: mascot-big-sway 2.6s ease-in-out;
+}
+.act-sigh .m-all {
+  animation: mascot-sigh 2.3s ease-in-out;
+}
+.act-sigh .m-eye {
+  animation: mascot-shut 2.3s ease-in-out;
+}
+.act-shake .m-head-act {
+  animation: mascot-shake 0.9s ease-in-out;
+}
+
+@keyframes mascot-breath {
   50% {
-    transform: translateY(-2px) rotate(-1.2deg);
+    transform: scale(1.012, 1.022);
+  }
+}
+@keyframes mascot-bounce {
+  50% {
+    transform: translateY(-1.5px) scale(1.01, 1.02);
+  }
+}
+@keyframes mascot-sway {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  30% {
+    transform: rotate(-2.5deg) translateY(-0.5px);
+  }
+  70% {
+    transform: rotate(2deg);
+  }
+}
+@keyframes mascot-look {
+  0%,
+  30%,
+  92%,
+  100% {
+    transform: translate(0, 0);
+  }
+  36%,
+  54% {
+    transform: translate(-1.6px, 0);
+  }
+  60%,
+  80% {
+    transform: translate(1.4px, -0.6px);
+  }
+}
+@keyframes mascot-tip {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  50% {
+    transform: rotate(5deg);
+  }
+}
+@keyframes mascot-twinkle {
+  0%,
+  70%,
+  100% {
+    transform: scale(1) rotate(0);
+    opacity: 1;
+  }
+  80% {
+    transform: scale(1.25) rotate(30deg);
+    opacity: 0.7;
+  }
+}
+@keyframes mascot-talk-nod {
+  0%,
+  100% {
+    transform: rotate(0) translateY(0);
+  }
+  25% {
+    transform: rotate(-2deg) translateY(0.8px);
+  }
+  60% {
+    transform: rotate(1.5deg) translateY(-0.4px);
+  }
+}
+@keyframes mascot-wave {
+  0% {
+    transform: translate(6px, 40px) rotate(20deg);
+    opacity: 0;
+  }
+  14% {
+    transform: translate(0, 0) rotate(0);
+    opacity: 1;
+  }
+  26%,
+  50% {
+    transform: rotate(-12deg);
+    opacity: 1;
+  }
+  38%,
+  62% {
+    transform: rotate(10deg);
+    opacity: 1;
+  }
+  74% {
+    transform: rotate(-4deg);
+    opacity: 1;
+  }
+  86% {
+    transform: translate(0, 0) rotate(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(6px, 40px) rotate(20deg);
+    opacity: 0;
+  }
+}
+@keyframes mascot-tilt {
+  15%,
+  80% {
+    transform: rotate(-4deg);
+  }
+}
+@keyframes mascot-hop {
+  0% {
+    transform: scale(1.04, 0.95);
+  }
+  35% {
+    transform: translateY(-9px) scale(0.97, 1.04);
+  }
+  70% {
+    transform: scale(1.04, 0.96);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes mascot-nod {
+  35% {
+    transform: rotate(3deg) translateY(2px);
+  }
+  70% {
+    transform: rotate(-1deg) translateY(-0.5px);
+  }
+}
+@keyframes mascot-glance {
+  0%,
+  100% {
+    transform: none;
+  }
+  15%,
+  42% {
+    transform: translate(-2px, -0.4px);
+  }
+  55%,
+  85% {
+    transform: translate(2px, -0.4px);
+  }
+}
+@keyframes mascot-turn {
+  15%,
+  42% {
+    transform: rotate(-4deg);
+  }
+  55%,
+  85% {
+    transform: rotate(4deg);
+  }
+}
+@keyframes mascot-glint {
+  0%,
+  100% {
+    transform: translateX(0);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translateX(5px);
+    opacity: 1;
+  }
+}
+@keyframes mascot-big-sway {
+  25% {
+    transform: rotate(-6deg);
+  }
+  75% {
+    transform: rotate(6deg);
+  }
+}
+@keyframes mascot-sigh {
+  35% {
+    transform: translateY(-3px) scale(1.02, 1.03);
+  }
+  70% {
+    transform: translateY(1.5px) scale(1.01, 0.97);
+  }
+}
+@keyframes mascot-shut {
+  20%,
+  70% {
+    transform: scaleY(0.12);
+  }
+}
+@keyframes mascot-shake {
+  20%,
+  60% {
+    transform: rotate(-4deg);
+  }
+  40%,
+  80% {
+    transform: rotate(4deg);
   }
 }
 @keyframes mascot-blink {
@@ -2271,10 +2598,9 @@ svg.hm-field {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .mascot-art,
-  .m-eye,
-  .mascot-art.talking .m-mouth {
-    animation: none;
+  .mascot-art *,
+  .mascot-art.talking * {
+    animation: none !important;
   }
 }
 

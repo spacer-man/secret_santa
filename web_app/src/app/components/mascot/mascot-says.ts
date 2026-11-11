@@ -22,7 +22,12 @@ const TYPE_MS = 22;
       (click)="sheet.set(true)"
       [attr.aria-label]="i18n.dict.mascot.settings"
     >
-      <mascot-art [hero]="mascot.hero()" [mood]="mascot.mood()" [talking]="typing()" />
+      <mascot-art
+        [hero]="mascot.hero()"
+        [mood]="mascot.mood()"
+        [talking]="typing()"
+        [hello]="!compact()"
+      />
     </button>
     <div class="mascot-bubble">
       <button class="mascot-line" (click)="nextLine()" [disabled]="!more()">

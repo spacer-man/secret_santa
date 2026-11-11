@@ -142,6 +142,16 @@ const ru = {
   padRemove: 'Убрать',
   padBack: 'Назад',
   toShop: 'В лавку',
+  // Install (PWA / Telegram shortcut)
+  installTitle: 'Санта на главном экране',
+  installText:
+    'Поставь Тайного Санту как приложение: откроется в одно касание, без браузера, и подарок в полночь не потеряется',
+  installTextTg: 'Добавь ярлык на главный экран — и Санта будет открываться в одно касание',
+  installBtn: 'Поставить',
+  notNow: 'Не сейчас',
+  installDone: 'Понятно',
+  iosStep1: 'Нажми «Поделиться» внизу Safari',
+  iosStep2: 'Выбери «На экран „Домой“» — готово!',
   // Navigation
   navHome: 'Главная',
   navWrite: 'Написать',
@@ -375,6 +385,17 @@ const en: Dict = {
   padRemove: 'Remove',
   padBack: 'Back',
   toShop: 'To the shop',
+  // Install (PWA / Telegram shortcut)
+  installTitle: 'Santa on your home screen',
+  installText:
+    'Install Secret Santa as an app: one tap to open, no browser, and you won’t miss your midnight gift',
+  installTextTg: 'Add a shortcut to your home screen and open Santa in one tap',
+  installBtn: 'Install',
+  notNow: 'Not now',
+  installDone: 'Got it',
+  iosStep1: 'Tap “Share” at the bottom of Safari',
+  iosStep2: 'Choose “Add to Home Screen” — done!',
+  // Navigation
   navHome: 'Home',
   navWrite: 'Write',
   navMine: 'Mine',

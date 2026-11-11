@@ -8,12 +8,13 @@ import { newYearMoment } from '../core/time';
 import { Countdown } from '../components/countdown';
 import { GiftBox } from '../components/gift-box';
 import { Wave } from '../components/wave';
+import { InstallCard } from '../components/install-card';
 import { TreePanel } from '../components/tree/tree-panel';
 import { confetti } from '../components/fx/confetti';
 
 @Component({
   selector: 'home-page',
-  imports: [Countdown, GiftBox, Wave, RouterLink, TreePanel],
+  imports: [Countdown, GiftBox, Wave, RouterLink, TreePanel, InstallCard],
   template: `
     @let gift = store.gift();
     @if (gift?.status === 'ready') {
@@ -36,6 +37,8 @@ import { confetti } from '../components/fx/confetti';
       }
       <a class="btn btn-primary wide" routerLink="/new">✍️ {{ i18n.t('writeWish') }}</a>
     </section>
+
+    <install-card />
 
     @if (store.stats(); as stats) {
       <section class="stats">

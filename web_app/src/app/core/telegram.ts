@@ -14,6 +14,10 @@ interface TgWebApp {
   openTelegramLink(url: string): void;
   openLink(url: string): void;
   disableVerticalSwipes?(): void;
+  isVersionAtLeast?(version: string): boolean;
+  /** Bot API 8.0: a shortcut to the Mini App on the home screen */
+  addToHomeScreen?(): void;
+  checkHomeScreenStatus?(cb: (status: HomeScreenStatus) => void): void;
   HapticFeedback?: {
     impactOccurred(style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft'): void;
     notificationOccurred(type: 'error' | 'success' | 'warning'): void;
@@ -25,6 +29,8 @@ interface TgWebApp {
     offClick(cb: () => void): void;
   };
 }
+
+export type HomeScreenStatus = 'unsupported' | 'unknown' | 'added' | 'missed';
 
 declare global {
   interface Window {
@@ -62,6 +68,24 @@ export class Telegram {
   /** Telegram's own theme (undefined outside of the Mini App) */
   get colorScheme(): 'light' | 'dark' | undefined {
     return this.isMiniApp ? this.app?.colorScheme : undefined;
+  }
+
+  /** Whether the Mini App can be put on the home screen (undefined outside Telegram or if unsupported) */
+  homeScreenStatus(): Promise<HomeScreenStatus> {
+    const app = this.app;
+    if (!this.isMiniApp || !app?.checkHomeScreenStatus || !app.isVersionAtLeast?.('8.0')) {
+      return Promise.resolve('unsupported');
+    }
+    return new Promise((resolve) => {
+      app.checkHomeScreenStatus!(resolve);
+      setTimeout(() => resolve('unknown'), 1500);
+    });
+  }
+
+  addToHomeScreen(onAdded: () => void): void {
+    if (!this.app?.addToHomeScreen) return;
+    this.app.onEvent?.('homeScreenAdded', onAdded);
+    this.app.addToHomeScreen();
   }
 
   onThemeChanged(cb: () => void): void {

@@ -2032,3 +2032,22 @@ svg.hm-field {
 .card-btn.price:disabled {
   opacity: 0.7 !important;
 }
+
+/* ===== Install offer ===== */
+.install-steps {
+  margin: 0;
+  padding-left: 1.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.share-icon {
+  width: 1.1em;
+  height: 1.1em;
+  vertical-align: -0.15em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

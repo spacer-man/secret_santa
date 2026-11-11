@@ -381,8 +381,10 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
     }
     if ((i + 1) % HATCH_PIECE && !last) return;
     const piece = Math.floor(i / HATCH_PIECE);
-    const press = noise1(piece * 0.9 + o.seed * 1.3);
-    const opacity = o.alpha * Math.max(0.3, Math.min(1, 0.72 + 0.45 * press));
+    // The pressure changes from piece to piece only slightly and never for long:
+    // a big difference reads as a pass of the pencil that stopped halfway
+    const press = noise1(piece * 2.3 + o.seed * 1.3);
+    const opacity = o.alpha * Math.max(0.78, Math.min(1, 0.9 + 0.14 * press));
     const width = o.lw * (0.8 + 0.4 * hash(o.seed * 4.1 + piece * 5.9));
     out +=
       `<path class="hm-stroke hm-seq" pathLength="1" style="--i:${seq++}" ` +

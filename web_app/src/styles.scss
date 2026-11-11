@@ -1821,7 +1821,7 @@ svg.hm-tag-round {
 svg.hm.hm-hover {
   filter: brightness(1.06);
 }
-/* A careless pencil outline is scribbled around a boiling button under the mouse (the others are drawn anew instead) */
+/* A careless pencil outline is scribbled around the button under the pointer and stays while it is pressed (not in the shop) */
 svg.hm-outline {
   position: absolute;
   z-index: -1;
@@ -2052,4 +2052,25 @@ svg.hm-field {
   --hm: var(--chalk, #dfe9ff);
   -webkit-mask-image: none;
   mask-image: none;
+}
+
+/* Free boiling (handmade.ts, FREE_BOIL): the variants are layers shown in turn by the compositor,
+   so the drawings keep boiling while the page is busy building the scene */
+svg.hm.hm-free {
+  animation: hm-boil 0.667s steps(1, end) infinite;
+  will-change: opacity;
+}
+@keyframes hm-boil {
+  0% {
+    opacity: 1;
+  }
+  25%,
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  svg.hm.hm-free {
+    animation: none;
+  }
 }

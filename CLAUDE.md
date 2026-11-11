@@ -45,6 +45,8 @@
   `ng serve :4200` (прокси `/api`→8000, `/telegram/webhook`→8080), бот на вебхуке, SQLite в `.dev/`; по Ctrl+C снимает вебхук и кнопку.
 - Деплой: `docker-compose.yaml` (db, state_storage, bot, api, web=Caddy с авто-HTTPS), `.env.example`,
   инструкция `docs/DEPLOY.md`. PWA: `public/manifest.webmanifest`, `public/sw.js`, иконки.
+  Сервис-воркер: из кэша сразу — только файлы с хешем в имени, остальное сначала из сети. В режиме разработки
+  (`ng serve`, туннель) он не ставится и снимает старый — иначе неизменное имя `main.js` навсегда показывало старую версию.
 
 ## Принятые решения
 

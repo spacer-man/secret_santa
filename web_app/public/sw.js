@@ -1,5 +1,9 @@
-const CACHE = 'secret-santa-v1';
-const STATIC_RE = /\.(?:js|css|png|svg|ico|webmanifest|woff2?)$/i;
+// v2: v1 served every .js from the cache, so an unhashed main.js (ng serve) never updated
+const CACHE = 'secret-santa-v2';
+const STATIC_RE = /\.(?:js|css|png|svg|ico|webmanifest|woff2?|webp|glb)$/i;
+// Built files with a content hash in the name (main-AB12CD34.js) never change: cache first.
+// Everything else: network first, the cache only when offline.
+const HASHED_RE = /-[A-Z0-9]{8}\.(?:js|css)$/;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -31,6 +35,21 @@ self.addEventListener('fetch', (event) => {
           return res;
         })
         .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
+  if (STATIC_RE.test(url.pathname) && !HASHED_RE.test(url.pathname)) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((hit) => hit || Response.error())),
     );
     return;
   }

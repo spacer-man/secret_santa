@@ -907,7 +907,7 @@ export class Handmade {
     if (free) {
       // The first variant stays in the drawing, the others go to their own layers
       html = `<g class="hm-v">${markups[0]}</g>`;
-      this.freeLayers(d, markups.slice(1), w, h);
+      this.freeLayers(d, markups.slice(1));
     } else
       markups.forEach(
         (markup, v) => (html += `<g class="hm-v"${v ? ' style="display:none"' : ''}>${markup}</g>`),
@@ -930,7 +930,7 @@ export class Handmade {
   }
 
   /** Variants of a free-boiling drawing as sibling layers, shown in turn by CSS (`hm-free` in styles.scss) */
-  private freeLayers(d: Drawing, rest: string[], w: number, h: number): void {
+  private freeLayers(d: Drawing, rest: string[]): void {
     const period = (BOIL_VARIANTS * 1000) / BOIL_FPS;
     const all = [d.svg, ...(d.layers ??= [])];
     d.svg.classList.add('hm-free');

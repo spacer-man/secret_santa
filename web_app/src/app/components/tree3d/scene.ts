@@ -2689,7 +2689,10 @@ export class TreeWorld {
             vec3 violet = vec3(0.45, 0.28, 1.0);
             vec3 col = mix(green, pink, smoothstep(0.12, 0.55, vv));
             col = mix(col, violet, smoothstep(0.5, 1.3, vv));
-            float a = ray * glow * vFade * opacity * 2.6;
+            float a = ray * glow * vFade * 2.6;
+            // Soft limit: ribbons add up where they cross, and their sum must stay under the bloom
+            // threshold, or the whole frame flares
+            a = 0.7 * (1.0 - exp(-a)) * opacity;
             gl_FragColor = vec4(col * a, a);
           // The colours above are display (sRGB) values
  gl_FragColor = sRGBTransferEOTF( gl_FragColor );

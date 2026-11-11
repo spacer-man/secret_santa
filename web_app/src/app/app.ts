@@ -4,6 +4,7 @@ import { filter } from 'rxjs';
 import { I18n } from './core/i18n';
 import { Store } from './core/store';
 import { Telegram } from './core/telegram';
+import { Handmade } from './core/handmade';
 import { Theme } from './core/theme';
 import { Snow } from './components/fx/snow';
 
@@ -69,6 +70,7 @@ export class App {
   constructor() {
     this.tg.init();
     this.theme.init();
+    inject(Handmade).start();
     document.documentElement.lang = this.i18n.lang();
     document.title = this.i18n.t('appName');
 

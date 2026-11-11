@@ -500,36 +500,50 @@ interface Drawing {
 }
 
 /**
- * A careless pencil outline around a button: one line that goes round more
- * than once, never along the same way twice. `round` — around a round button.
+ * A careless pencil outline around a button, drawn in one go without lifting
+ * the pencil: the line follows the shape of the button (a rounded box, or a
+ * ring around a round one) and goes round more than once, never along the same
+ * way twice. Returned in pieces: each is drawn half-transparent, so where the
+ * pencil passes a second time the line gets darker, as on paper.
  */
-function scribble(w: number, h: number, round: boolean, seed: number): string {
+function scribble(w: number, h: number, round: boolean, seed: number): string[] {
   const turns = 1.55 + hash(seed * 3.9) * 0.2;
-  const margin = 3.5;
-  // Always an ellipse, the way a hand circles a word: it hugs the long sides and rounds the corners off
-  const [kx, ky] = round ? [1, 1] : [1.1, 1.32];
-  const steps = Math.max(18, Math.round(((w + h) * 2 * turns) / 13));
+  const margin = 4;
+  // A rounded box as a superellipse: the longer the button, the squarer its corners
+  const power = round ? 2 : 3 + (Math.max(w, h) / Math.min(w, h)) * 0.9;
+  const steps = Math.max(24, Math.round(((w + h) * 2 * turns) / 11));
   const start = -2.4 + hash(seed * 1.3) * 1.2;
-  const turn = (hash(seed * 6.1) - 0.5) * (round ? 0 : 0.035);
+  const turn = (hash(seed * 6.1) - 0.5) * (round ? 0 : 0.03);
   const tilt = [Math.cos(turn), Math.sin(turn)];
-  const pts: Pt[] = [];
+  const raw: Pt[] = [];
   for (let i = 0; i <= steps; i++) {
     const a = start + (i / steps) * turns * Math.PI * 2;
     const [c, sn] = [Math.cos(a), Math.sin(a)];
     const lap = (i / steps) * turns;
     // Every lap drifts: a bit wider, a bit shifted
-    const out = margin + lap * 2.4 + noise1(i * 0.21 + seed) * 3.4;
-    const rx = (w / 2) * kx + out;
-    const ry = (h / 2) * ky + out;
-    const [x, y] = [c * rx, sn * ry];
-    // The whole loop is slightly askew and every lap is shifted against the previous one
-    const [sx, sy] = [noise1(lap * 3.1 + seed * 2) * 3, noise1(lap * 2.3 + seed * 5) * 2.4];
-    pts.push([w / 2 + x * tilt[0] - y * tilt[1] + sx, h / 2 + x * tilt[1] + y * tilt[0] + sy]);
+    const out = margin + lap * 3.8 + noise1(i * 0.21 + seed) * 2.8;
+    const x = Math.sign(c) * Math.abs(c) ** (2 / power) * (w / 2 + out);
+    const y = Math.sign(sn) * Math.abs(sn) ** (2 / power) * (h / 2 + out);
+    const [sx, sy] = [noise1(lap * 3.1 + seed * 2) * 3.6, noise1(lap * 2.3 + seed * 5) * 3];
+    raw.push([w / 2 + x * tilt[0] - y * tilt[1] + sx, h / 2 + x * tilt[1] + y * tilt[0] + sy]);
   }
-  return `M${smooth(pts, 3)
-    .map(([x, y]) => `${r1(x)} ${r1(y)}`)
-    .join('L')}`;
+  const pts = smooth(raw, 3);
+  // About three pieces per lap; neighbours share their end point, so the line has no seams
+  const pieces = Math.ceil(turns * 3);
+  const per = Math.ceil((pts.length - 1) / pieces);
+  const out: string[] = [];
+  for (let i0 = 0; i0 < pts.length - 1; i0 += per)
+    out.push(
+      `M${pts
+        .slice(i0, i0 + per + 1)
+        .map(([x, y]) => `${r1(x)} ${r1(y)}`)
+        .join('L')}`,
+    );
+  return out;
 }
+
+/** How long the outline of a button is being drawn */
+const SCRIBBLE_MS = 520;
 
 /** Elements that answer to the pointer */
 const BUTTONS =
@@ -680,7 +694,16 @@ export class Handmade {
     // pathLength = 1: the line is "drawn" by moving one dash along it (see styles.scss)
     // A very thick soft pencil; on small buttons a thinner one, or the ring becomes a blot
     const width = Math.min(8, Math.max(4.5, h * 0.13));
-    svg.innerHTML = `<path pathLength="1" stroke-width="${r1(width)}" d="${scribble(w, h, round, d.seed + d.nonce * 3.3)}"/>`;
+    const pieces = scribble(w, h, round, d.seed + d.nonce * 3.3);
+    // The pieces are drawn one after another (pathLength = 1: one dash moves along each, see styles.scss)
+    const each = SCRIBBLE_MS / pieces.length;
+    svg.innerHTML = pieces
+      .map(
+        (piece, i) =>
+          `<path pathLength="1" stroke-width="${r1(width)}" d="${piece}" ` +
+          `style="animation-duration:${each.toFixed(0)}ms;animation-delay:${(i * each).toFixed(0)}ms"/>`,
+      )
+      .join('');
     d.svg.after(svg);
     d.outline = svg;
   }

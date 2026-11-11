@@ -39,6 +39,7 @@ export DB_URL="${DB_URL:-sqlite+aiosqlite:///$DEV/santa.db}"
 export STATE_STORAGE_REDIS_URL="${STATE_STORAGE_REDIS_URL:-}"   # пусто = состояния в памяти
 export WEBHOOK_SECRET="${WEBHOOK_SECRET:-$(head -c 18 /dev/urandom | od -An -tx1 | tr -d ' \n')}"
 export AUTHOR_SUPPORT_LINK="${AUTHOR_SUPPORT_LINK:-https://t.me/}"
+export DEBUG_TOOLS="${DEBUG_TOOLS:-1}"                    # отладочная панель (уровень, мандаринки); 0 — выключить
 export ROOT_DIR="$ROOT/bot/labels"                         # картинки бота (в Docker это /labels)
 export LOGS_CONFIGURATION_PATH="$ROOT/bot/logging.yaml"
 

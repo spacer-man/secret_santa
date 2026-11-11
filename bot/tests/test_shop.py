@@ -206,3 +206,24 @@ def test_tree_decor_and_level_points():
     tree = client.get("/api/tree", headers=h(2501)).json()
     assert tree["decor"] == [{"item": "snowman", "pad": 2}]
     assert tree["points"] == base + 2 + 4
+
+
+def test_debug_tools(monkeypatch):
+    from services import debug
+
+    register(9101)
+    # Off by default: no such endpoint
+    assert client.put("/api/debug", headers=h(9101), json={"level": 7}).status_code == 404
+    assert client.get("/api/config").json()["debug"] is False
+
+    monkeypatch.setattr(debug, "ENABLED", True)
+    tree = client.put("/api/debug", headers=h(9101), json={"level": 7, "mandarins": 555}).json()
+    assert tree["level"] == 7
+    assert tree["mandarins"] == 555
+    assert client.get("/api/shop", headers=h(9101)).json()["balance"] == 555
+    # Only the balance: the level stays forced
+    tree = client.put("/api/debug", headers=h(9101), json={"mandarins": 10}).json()
+    assert (tree["level"], tree["mandarins"]) == (7, 10)
+    # null: the real level again
+    assert client.put("/api/debug", headers=h(9101), json={"level": None}).json()["level"] == 1
+    assert client.put("/api/debug", headers=h(9101), json={"level": 0}).status_code == 422

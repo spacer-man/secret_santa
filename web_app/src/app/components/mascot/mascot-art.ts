@@ -75,12 +75,32 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
             The right arm has an elbow: to wave, the upper arm goes out to the side and the
             forearm bends up and swings. Hanging, its cuff and mitten are hidden below.
           -->
+          <!--
+            Upper arm and forearm meet without a seam at the elbow: first both shapes with their
+            outlines, then both fills again without outlines over them, so only the outer contour stays.
+          -->
           <g class="m-arm">
             <g class="m-fore">
               <path
                 class="m-coat"
                 d="M88.8 129.1A6.5 6.5 0 0 1 101.2 124.9L105.7 143.4L96.3 146.6Z"
               />
+            </g>
+            <path
+              class="m-coat"
+              d="M76.9 109.9A9 9 0 0 1 93.1 102.1L100.9 124.2A6.5 6.5 0 0 1 89.1 129.8Z"
+            />
+            <g class="m-fore">
+              <path
+                class="m-coat m-fill-only"
+                d="M88.8 129.1A6.5 6.5 0 0 1 101.2 124.9L105.7 143.4L96.3 146.6Z"
+              />
+            </g>
+            <path
+              class="m-coat m-fill-only"
+              d="M76.9 109.9A9 9 0 0 1 93.1 102.1L100.9 124.2A6.5 6.5 0 0 1 89.1 129.8Z"
+            />
+            <g class="m-fore">
               <g class="m-hand">
                 <ellipse
                   class="m-fur"
@@ -98,11 +118,6 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
                 />
               </g>
             </g>
-            <!-- Upper arm with a round shoulder; its round end covers the elbow joint -->
-            <path
-              class="m-coat"
-              d="M76.9 109.9A9 9 0 0 1 93.1 102.1L100.9 124.2A6.5 6.5 0 0 1 89.1 129.8Z"
-            />
           </g>
 
           <path

@@ -2183,6 +2183,10 @@ svg.hm-field {
 .m-coat {
   fill: var(--m-coat);
 }
+/* A second copy of a shape, without its outline: hides the inner lines where parts overlap */
+.mascot-art .m-fill-only {
+  stroke: none;
+}
 .m-fur,
 .m-mitt {
   fill: var(--m-fur);

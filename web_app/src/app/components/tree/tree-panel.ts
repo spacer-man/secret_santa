@@ -172,8 +172,8 @@ function readSeen(): Record<string, string> | null {
             }
           }
           @case ('star') {
-            <div class="sheet-emoji">{{ tree()?.star ? '🌟' : '⭐' }}</div>
-            <p>{{ tree()?.star ? i18n.t('starOn') : i18n.t('starOff') }}</p>
+            <div class="sheet-emoji">{{ tree()?.level === 10 ? '🌟' : '⭐' }}</div>
+            <p>{{ tree()?.level === 10 ? i18n.t('starOn') : i18n.t('starOff') }}</p>
           }
           @case ('pad') {
             @if (s.kind === 'pad') {
@@ -357,8 +357,8 @@ export class TreePanel {
   protected readonly newHung = signal<string[]>([]);
   protected readonly newLit = signal<string[]>([]);
   protected readonly sheet = signal<Sheet>(null);
-  /** Development only: the server allows the debug panel */
-  protected readonly debugTools = computed(() => !!this.store.config()?.debug);
+  /** Development only: the server allows the debug panel (admins with DEBUG_TOOLS=1) */
+  protected readonly debugTools = computed(() => !!this.store.me()?.debug);
   protected readonly decorMode = signal(false);
   protected readonly cornerFocused = signal(false);
 
@@ -433,7 +433,12 @@ export class TreePanel {
     const t = this.tree();
     if (!t) return 0;
     if (!t.level_to) return 100;
-    return ((t.points - t.level_from) / (t.level_to - t.level_from)) * 100;
+    // The whole way from level 1 to 10: every new level fills a part of the bar
+    const inside = Math.min(
+      1,
+      Math.max(0, (t.points - t.level_from) / (t.level_to - t.level_from)),
+    );
+    return ((t.level - 1 + inside) / 9) * 100;
   });
 
   protected readonly rewards = computed(() =>

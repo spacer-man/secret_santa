@@ -141,8 +141,6 @@ async def config() -> dict:
         "ball_colors": BALL_COLORS,
         "ball_patterns": BALL_PATTERNS,
         "rewards": mandarins.REWARDS,
-        # The front shows its debug panel (DEBUG_TOOLS=1, never in production)
-        "debug": debug.ENABLED,
     }
 
 
@@ -176,6 +174,8 @@ async def me(tg_user: CurrentUser) -> dict:
         else None,
         "invite_link": f"https://t.me/{username}?start={ref_code(user.id)}" if username else None,
         "invited": await delivery_service.invited_count(tg_user.id),
+        # The debug panel on the tree: DEBUG_TOOLS=1 and an admin only
+        "debug": debug.allowed(tg_user.id),
     }
 
 
@@ -386,7 +386,7 @@ class DebugIn(BaseModel):
 @app.put("/api/debug")
 async def debug_state(body: DebugIn, user=Depends(registered_user)) -> dict:
     """Development only: set the level and the balance without touching anything else"""
-    if not debug.ENABLED:
+    if not debug.allowed(user.telegram_id):
         raise HTTPException(status_code=404)
     if body.level != -1:
         if body.level == 0:

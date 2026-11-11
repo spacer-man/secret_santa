@@ -17,6 +17,8 @@ export interface Me {
   new_year_at?: string;
   invite_link?: string;
   invited?: number;
+  /** The debug panel on the tree: DEBUG_TOOLS=1 on the server and an admin */
+  debug?: boolean;
 }
 
 export interface Config {
@@ -26,8 +28,6 @@ export interface Config {
   ball_colors: string[];
   ball_patterns: string[];
   rewards: Record<string, number>;
-  /** Development only (DEBUG_TOOLS=1 on the server): the debug panel on the tree */
-  debug?: boolean;
 }
 
 export type BallState = 'box' | 'hung' | 'lit';

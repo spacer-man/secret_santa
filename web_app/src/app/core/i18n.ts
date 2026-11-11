@@ -152,6 +152,49 @@ const ru = {
   installDone: 'Понятно',
   iosStep1: 'Нажми «Поделиться» внизу Safari',
   iosStep2: 'Выбери «На экран „Домой“» — готово!',
+  // How to play
+  howToPlay: 'Как играть',
+  howToTeaser: 'Впервые здесь? Объясню правила за минуту',
+  howToOpen: 'Как играть?',
+  howTo: {
+    mainTitle: 'Главное за минуту',
+    step1: 'Напиши поздравление',
+    step1Text:
+      'Тёплые слова незнакомцу: текст, фото, видео или голос. Модераторы проверят, чтобы всё было по-доброму.',
+    step2: 'Получи подарок в 00:00',
+    step2Text:
+      'Ровно в полночь по твоему времени придёт анонимное поздравление от случайного участника с другого конца света.',
+    step3: 'Ответь',
+    step3Text: 'Реакцией или анонимным сообщением. Автор увидит ответ, но не узнает, кто ты.',
+    treeTitle: 'Твоя ёлка',
+    treeText: 'Каждое твоё поздравление — шар на твоей ёлке. У шара три состояния:',
+    ballBox: 'в коробке',
+    ballBoxHint: 'на проверке',
+    ballHung: 'на ёлке',
+    ballHungHint: 'одобрено',
+    ballLit: 'горит',
+    ballLitHint: 'дошло в НГ',
+    star: 'Звезда загорится, когда ты откроешь свой подарок.',
+    garland: 'Огоньки гирлянды — за каждого приглашённого друга.',
+    level:
+      'Шары, огоньки и украшения поднимают уровень праздника (1–10): во дворе зажигаются фонари, появляются гирлянды, паровозик и северное сияние.',
+    mandarinsTitle: 'Мандаринки 🍊',
+    mandarinsText:
+      'Местная валюта. Купить её нельзя — только заработать добрыми делами. За что дают:',
+    mandarinsSpend:
+      'Тратятся в лавке украшений: фигуры во двор, гирлянды на дом, снегопад и метель.',
+    friendsTitle: 'Друзья',
+    friendsText:
+      'Позови друзей по своей ссылке с главной. Каждый друг — огонёк на гирлянде и мандаринки, а за 1, 3, 5 и 10 друзей — фигура в подарок, которую не купить:',
+    friendsFor: 'за %s',
+    fairTitle: 'Честно и анонимно',
+    fair1: 'Поздравление достаётся случайному человеку — не тебе и не другу по заказу.',
+    fair2: 'Каждый получает один подарок за Новый год.',
+    fair3: 'Получатель не узнает, кто автор, а автор — кто получатель.',
+    fair4:
+      'Можно написать несколько поздравлений: каждое станет новым шаром и порадует ещё кого-то.',
+    go: 'Написать поздравление',
+  },
   // Navigation
   navHome: 'Главная',
   navWrite: 'Написать',
@@ -395,6 +438,49 @@ const en: Dict = {
   installDone: 'Got it',
   iosStep1: 'Tap “Share” at the bottom of Safari',
   iosStep2: 'Choose “Add to Home Screen” — done!',
+  // How to play
+  howToPlay: 'How to play',
+  howToTeaser: 'New here? The rules in one minute',
+  howToOpen: 'How to play?',
+  howTo: {
+    mainTitle: 'The gist in a minute',
+    step1: 'Write a greeting',
+    step1Text:
+      'Warm words to a stranger: text, photo, video or voice. Moderators check that everything is kind.',
+    step2: 'Get a gift at 00:00',
+    step2Text:
+      'Exactly at midnight in your time zone you get an anonymous greeting from a random player on the other side of the world.',
+    step3: 'Reply',
+    step3Text:
+      'With a reaction or an anonymous message. The author sees it but never learns who you are.',
+    treeTitle: 'Your tree',
+    treeText: 'Every greeting you write is a bauble on your tree. A bauble has three states:',
+    ballBox: 'in a box',
+    ballBoxHint: 'under review',
+    ballHung: 'on the tree',
+    ballHungHint: 'approved',
+    ballLit: 'glowing',
+    ballLitHint: 'delivered',
+    star: 'The star lights up when you open your own gift.',
+    garland: 'Garland lights: one for every friend you invite.',
+    level:
+      'Baubles, lights and decorations raise the festive level (1–10): lanterns light up in the yard, garlands, a little train and the northern lights appear.',
+    mandarinsTitle: 'Mandarins 🍊',
+    mandarinsText: 'The local currency. It can’t be bought, only earned by good deeds:',
+    mandarinsSpend:
+      'Spend them in the decoration shop: yard figures, house lights, snowfall and blizzard.',
+    friendsTitle: 'Friends',
+    friendsText:
+      'Invite friends with your link from the home page. Every friend is a light on the garland and mandarins, and for 1, 3, 5 and 10 friends you get a figure that can’t be bought:',
+    friendsFor: 'for %s',
+    fairTitle: 'Fair and anonymous',
+    fair1: 'A greeting goes to a random person — not to you and not to a chosen friend.',
+    fair2: 'Everyone gets one gift per New Year.',
+    fair3: 'The recipient never learns who the author is, and the author never learns who got it.',
+    fair4:
+      'You can write several greetings: each one is a new bauble and makes someone else happy.',
+    go: 'Write a greeting',
+  },
   // Navigation
   navHome: 'Home',
   navWrite: 'Write',

@@ -11,6 +11,7 @@ import { Wave } from '../components/wave';
 import { InstallCard } from '../components/install-card';
 import { TreePanel } from '../components/tree/tree-panel';
 import { confetti } from '../components/fx/confetti';
+import { rulesSeen } from '../core/onboarding';
 
 @Component({
   selector: 'home-page',
@@ -25,6 +26,13 @@ import { confetti } from '../components/fx/confetti';
       </section>
     }
 
+    @if (!rulesKnown) {
+      <a class="card row between rules-teaser" routerLink="/rules">
+        <span>👋 {{ i18n.t('howToTeaser') }}</span
+        ><b>→</b>
+      </a>
+    }
+
     <tree-panel />
 
     <section class="card center festive">
@@ -36,6 +44,7 @@ import { confetti } from '../components/fx/confetti';
         <p class="muted small">{{ i18n.t('giftWaiting') }}</p>
       }
       <a class="btn btn-primary wide" routerLink="/new">✍️ {{ i18n.t('writeWish') }}</a>
+      <a class="link small" routerLink="/rules">{{ i18n.t('howToOpen') }}</a>
     </section>
 
     <install-card />
@@ -97,6 +106,7 @@ export class HomePage {
     () => Object.keys(this.store.stats()?.timezones ?? {}).length,
   );
 
+  protected readonly rulesKnown = rulesSeen();
   private celebrated = false;
 
   constructor() {

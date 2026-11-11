@@ -64,11 +64,27 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
           <path class="m-hatch" [attr.d]="hatch" />
           <path class="m-fur m-band" d="M55 104h10v52H55Z" />
 
-          <!-- Arms hang at the sides: round shoulders, sleeves fading out with the coat -->
+          <!-- Fur collar: under the shoulders, its ends tuck in under the arms -->
+          <path
+            class="m-fur"
+            d="M34 103C42 97 50 95 60 95S78 97 86 103L83 109C76 104.5 68 103 60 103S44 104.5 37 109Z"
+          />
+
+          <!-- Arms hang at the sides from round shoulders and fade out with the coat -->
+          <!-- The left arm: the same as the right one, mirrored (it only hangs) -->
           <g class="m-arm-l">
+            <path class="m-coat" d="M31.2 129.1A6.5 6.5 0 0 0 18.8 124.9L14.3 143.4L23.7 146.6Z" />
             <path
               class="m-coat"
-              d="M44 100C34 97 24 101 20 112C16 123 13 134 12 144L28 146C29 136 32 126 36 118C38 112 42 106 44 100Z"
+              d="M43.1 109.9A9 9 0 0 0 26.9 102.1L19.1 124.2A6.5 6.5 0 0 0 30.9 129.8Z"
+            />
+            <path
+              class="m-coat m-fill-only"
+              d="M31.2 129.1A6.5 6.5 0 0 0 18.8 124.9L14.3 143.4L23.7 146.6Z"
+            />
+            <path
+              class="m-coat m-fill-only"
+              d="M43.1 109.9A9 9 0 0 0 26.9 102.1L19.1 124.2A6.5 6.5 0 0 0 30.9 129.8Z"
             />
           </g>
           <!--
@@ -119,11 +135,6 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
               </g>
             </g>
           </g>
-
-          <path
-            class="m-fur"
-            d="M34 103C42 97 50 95 60 95S78 97 86 103L83 109C76 104.5 68 103 60 103S44 104.5 37 109Z"
-          />
         </g>
 
         <g class="m-head-act">

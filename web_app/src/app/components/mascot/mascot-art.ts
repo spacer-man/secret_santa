@@ -90,11 +90,16 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
 
           <path class="m-coat m-fill-only" d="M22 156C23 116 38 95 60 94S97 116 98 156Z" />
           <path class="m-hatch" [attr.d]="hatch" />
-          <path class="m-fur m-band" d="M55 104h10v52H55Z" />
-          <!-- Fur collar: under the arms, its ends tuck in under the shoulders -->
+          <path class="m-fur m-band" d="M55 124h10v32H55Z" />
+          <!--
+            Fur collar: two triangular lapels from the shoulders meet in a "V" on the chest and
+            go on as the fur band down the coat. Under the arms, mostly behind the beard.
+          -->
+          <path class="m-fur" d="M35 101C42 97 51 95.5 61 95.5L60.5 135C55 123 45 110 35 101Z" />
+          <path class="m-fur" d="M85 101C78 97 69 95.5 59 95.5L59.5 135C65 123 75 110 85 101Z" />
           <path
-            class="m-fur"
-            d="M34 103C42 97 50 95 60 95S78 97 86 103L83 109C76 104.5 68 103 60 103S44 104.5 37 109Z"
+            class="m-curl"
+            d="M44 105q2 3 1 6M51 115q2 3 1 6M76 105q-2 3 -1 6M69 115q-2 3 -1 6M60 104v24"
           />
 
           <g class="m-arm-l">

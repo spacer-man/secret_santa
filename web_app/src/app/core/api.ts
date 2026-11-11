@@ -26,6 +26,8 @@ export interface Config {
   ball_colors: string[];
   ball_patterns: string[];
   rewards: Record<string, number>;
+  /** Development only (DEBUG_TOOLS=1 on the server): the debug panel on the tree */
+  debug?: boolean;
 }
 
 export type BallState = 'box' | 'hung' | 'lit';
@@ -218,6 +220,10 @@ export class Api {
   buy = (item: string) => this.request<ShopData & { bonus: number }>('POST', '/shop/buy', { item });
   place = (item: string, pad: number | null) =>
     this.request<ShopData>('PUT', '/shop/place', { item, pad });
+
+  /** Development only: force the festive level (null = real) and set the balance */
+  debug = (body: { level?: number | null; mandarins?: number }) =>
+    this.request<TreeData>('PUT', '/debug', body);
 
   gift = () => this.request<Gift>('GET', '/gift');
   openGift = () => this.request<Gift>('POST', '/gift/open');

@@ -299,7 +299,8 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
   const [nx, ny] = [-dy, dx];
   const [cx, cy] = [w / 2, h / 2];
   const reach = Math.abs(nx) * cx + Math.abs(ny) * cy;
-  let out = '';
+  // Strokes as [from, bend, to]
+  const strokes: [Pt, Pt, Pt][] = [];
   let k = 0;
   for (let t = -reach; t <= reach; k++) {
     const step = o.gap * (0.7 + 0.6 * hash(o.seed * 5.1 + k * 3.7));
@@ -348,15 +349,40 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
     const [x0, y0] = [qx - tx * half, qy - ty * half];
     const [x1, y1] = [qx + tx * half, qy + ty * half];
     const [mx, my] = [qx + nx * bend, qy + ny * bend];
-    const press = noise1(k * 0.37 + o.seed * 1.3);
-    const opacity = o.alpha * Math.max(0.25, Math.min(1, 0.7 + 0.5 * press));
-    const width = o.lw * (0.75 + 0.5 * hash(o.seed * 4.1 + k * 5.9));
-    out +=
-      `<path class="hm-stroke" opacity="${opacity.toFixed(2)}" stroke-width="${r1(width)}" ` +
-      `d="M${r1(x0)} ${r1(y0)}Q${r1(mx)} ${r1(my)} ${r1(x1)} ${r1(y1)}"/>`;
+    strokes.push([
+      [x0, y0],
+      [mx, my],
+      [x1, y1],
+    ]);
   }
+  // The pencil is not lifted: it goes there and back, stroke after stroke, as one zigzag line.
+  // The line is cut into pieces of a few strokes, each with its own pressure (tone and width);
+  // they are also what the drawing animation shows one after another.
+  let out = '';
+  let d = '';
+  const p = (pt: Pt) => `${r1(pt[0])} ${r1(pt[1])}`;
+  strokes.forEach(([from, bend, to], i) => {
+    const [a0, a1] = i % 2 ? [to, from] : [from, to];
+    d += `${d ? 'L' : 'M'}${p(a0)}Q${p(bend)} ${p(a1)}`;
+    if ((i + 1) % HATCH_PIECE && i < strokes.length - 1) return;
+    const piece = Math.floor(i / HATCH_PIECE);
+    const press = noise1(piece * 0.9 + o.seed * 1.3);
+    const opacity = o.alpha * Math.max(0.3, Math.min(1, 0.72 + 0.45 * press));
+    const width = o.lw * (0.8 + 0.4 * hash(o.seed * 4.1 + piece * 5.9));
+    out +=
+      `<path class="hm-stroke hm-seq" pathLength="1" style="--i:${seq++}" ` +
+      `opacity="${opacity.toFixed(2)}" stroke-width="${r1(width)}" d="${d}"/>`;
+    // The next piece starts where this one ended
+    d = `M${p(a1)}`;
+  });
   return grow ? `<g transform="translate(${-grow} ${-grow})">${out}</g>` : out;
 }
+
+/** Strokes of the hatching in one piece of even pressure */
+const HATCH_PIECE = 3;
+
+/** Counter of the pieces of a drawing, in the order the pencil makes them (for the drawing animation) */
+let seq = 0;
 
 const faint = (markup: string, opacity: number): string => `<g opacity="${opacity}">${markup}</g>`;
 
@@ -497,6 +523,10 @@ interface Drawing {
   nonce: number;
   /** The pencil outline scribbled around the button while it is hovered or pressed */
   outline?: SVGSVGElement;
+  /** The button has been released: the outline is gone until the pointer comes again */
+  spent: boolean;
+  /** Timer that ends the redraw animation */
+  settle?: number;
 }
 
 /**
@@ -541,6 +571,9 @@ function scribble(w: number, h: number, round: boolean, seed: number): string[] 
     );
   return out;
 }
+
+/** The user asked the system for less motion: no drawing animations, no boiling */
+const CALM = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /** How long the outline of a button is being drawn */
 const SCRIBBLE_MS = 520;
@@ -596,8 +629,7 @@ export class Handmade {
     document.fonts?.ready.then(() => this.drawings.forEach((_, el) => this.redraw(el, true)));
     this.schedule();
 
-    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (!calm) setInterval(() => this.boil(), 1000 / BOIL_FPS);
+    if (!CALM) setInterval(() => this.boil(), 1000 / BOIL_FPS);
   }
 
   private schedule(): void {
@@ -642,6 +674,7 @@ export class Handmade {
         hover: false,
         press: false,
         nonce: 0,
+        spent: false,
       });
       if (el.matches(BUTTONS)) el.classList.add('hm-btn');
       this.resizes.observe(el);
@@ -649,7 +682,11 @@ export class Handmade {
     });
   }
 
-  private redraw(el: HTMLElement, force = false): void {
+  /**
+   * @param animate ms: the new drawing is made stroke by stroke over this time,
+   * the old one fades away under it (0: just replace)
+   */
+  private redraw(el: HTMLElement, force = false, animate = 0): void {
     const d = this.drawings.get(el);
     if (!d) return;
     const w = el.offsetWidth;
@@ -663,20 +700,41 @@ export class Handmade {
     d.svg.setAttribute('height', String(h + PAD * 2));
     d.svg.setAttribute('viewBox', `${-PAD} ${-PAD} ${w + PAD * 2} ${h + PAD * 2}`);
     const seed = d.seed + d.nonce * 7.7;
-    if (d.boils && !d.press) {
-      let html = '';
-      for (let v = 0; v < BOIL_VARIANTS; v++)
-        html += `<g class="hm-v"${v ? ' style="display:none"' : ''}>${draw(d.kind, el, w, h, seed + v * 101)}</g>`;
+    let html = '';
+    let pieces = 1;
+    const variants = d.boils && !d.press ? BOIL_VARIANTS : 1;
+    for (let v = 0; v < variants; v++) {
+      seq = 0;
+      const markup = draw(d.kind, el, w, h, seed + v * 101, d.press);
+      pieces = Math.max(pieces, seq);
+      html += `<g class="hm-v"${v ? ' style="display:none"' : ''}>${markup}</g>`;
+    }
+    window.clearTimeout(d.settle);
+    d.svg.querySelector(':scope > .hm-old')?.remove();
+    if (animate && !CALM) {
+      d.svg.style.setProperty('--dur', `${animate}ms`);
+      d.svg.style.setProperty('--each', `${(animate / pieces).toFixed(1)}ms`);
+      d.svg.innerHTML = `<g class="hm-old">${d.svg.innerHTML}</g>${html}`;
+      d.svg.classList.add('hm-anim');
+      d.settle = window.setTimeout(() => {
+        d.svg.querySelector(':scope > .hm-old')?.remove();
+        d.svg.classList.remove('hm-anim');
+      }, animate + 80);
+    } else {
+      d.svg.classList.remove('hm-anim');
       d.svg.innerHTML = html;
-    } else d.svg.innerHTML = draw(d.kind, el, w, h, seed, d.press);
+    }
   }
 
   /** Scribbles the pencil outline around a hovered or pressed button, wipes it afterwards */
   private outline(el: HTMLElement, d: Drawing): void {
-    const wanted = d.hover || d.press;
+    const wanted = d.press || (d.hover && !d.spent);
     if (!wanted) {
-      d.outline?.remove();
+      // The line leaves the way it came: its beginning vanishes first
+      const gone = d.outline;
       d.outline = undefined;
+      gone?.classList.add('hm-leaving');
+      if (gone) window.setTimeout(() => gone.remove(), CALM ? 0 : SCRIBBLE_MS + 80);
       return;
     }
     if (d.outline) return;
@@ -722,9 +780,13 @@ export class Handmade {
       if (d[state] === on) return;
       d[state] = on;
       d.svg.classList.toggle(`hm-${state}`, on);
-      // Hovering a still button draws it anew; pressing and releasing always redraws
+      if (state === 'hover') d.spent = false;
+      else if (!on) d.spent = true;
+      // Hovering a still button draws it anew; pressing and releasing always redraws.
+      // The hatching is drawn anew before the eyes: slowly on hover, quickly under the finger
       if (state === 'hover' && on && !d.boils) d.nonce++;
-      if (state === 'press' || (state === 'hover' && on && !d.boils)) this.redraw(el, true);
+      if (state === 'press') this.redraw(el, true, 200);
+      else if (on && !d.boils) this.redraw(el, true, 420);
       this.outline(el, d);
     };
     document.addEventListener('pointerover', (e) => {
@@ -754,12 +816,11 @@ export class Handmade {
     if (document.hidden) return;
     this.boilFrame++;
     this.drawings.forEach((d) => {
-      // A boiling drawing stands still under the pointer
-      if (!d.boils || d.hover || d.press) return;
-      const groups = d.svg.children;
+      // A boiling drawing stands still under the pointer and while it is being redrawn
+      if (!d.boils || d.hover || d.press || d.svg.classList.contains('hm-anim')) return;
+      const groups = d.svg.querySelectorAll<SVGElement>(':scope > g.hm-v');
       for (let i = 0; i < groups.length; i++)
-        (groups[i] as SVGElement).style.display =
-          i === this.boilFrame % groups.length ? '' : 'none';
+        groups[i].style.display = i === this.boilFrame % groups.length ? '' : 'none';
     });
   }
 }

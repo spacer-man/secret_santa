@@ -1829,6 +1829,41 @@ svg.hm-outline path {
   stroke-dashoffset: 1;
   animation: hm-scribble 0.2s linear forwards;
 }
+/* Released: the line leaves the way it came — its beginning vanishes first */
+svg.hm-outline.hm-leaving path {
+  animation-name: hm-unscribble;
+  animation-fill-mode: both;
+}
+@keyframes hm-unscribble {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -1;
+  }
+}
+
+/* Hatching is one zigzag line in pieces; on a redraw (hover, press) it is drawn piece after piece
+   (--i: number of the piece, --each: time per piece), the old drawing fades away under it */
+.hm-seq {
+  stroke-linecap: butt;
+  stroke-linejoin: round;
+}
+svg.hm-anim .hm-v .hm-seq {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: hm-scribble var(--each, 40ms) linear forwards;
+  animation-delay: calc(var(--i) * var(--each, 40ms));
+}
+.hm-old {
+  animation: hm-fade var(--dur, 300ms) ease-in forwards;
+}
+@keyframes hm-fade {
+  to {
+    opacity: 0;
+  }
+}
+
 /* Over the dark scene the outline is chalk-white */
 .mandarin-chip > svg.hm-outline path,
 .decor-btn > svg.hm-outline path,

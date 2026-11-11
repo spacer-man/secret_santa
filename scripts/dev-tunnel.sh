@@ -60,6 +60,7 @@ fi
 
 # --- Процессы и уборка -------------------------------------------------------
 PIDS=()
+NAMES=()   # имя процесса для каждого PID — чтобы сказать, кто упал
 TG="https://api.telegram.org/bot$BOT_TOKEN"
 
 cleanup() {
@@ -87,6 +88,7 @@ run() {
   local name="$1"; shift
   ( "$@" 2>&1 | tee "$DEV/logs/$name.log" | sed -u "s/^/[$name] /" ) &
   PIDS+=($!)
+  NAMES+=("$name")
 }
 
 # --- Туннель -----------------------------------------------------------------
@@ -105,7 +107,7 @@ say "Поднимаю туннель ($TUNNEL) → localhost:$WEB_PORT"
 case "$TUNNEL" in
   cloudflared)
     cloudflared tunnel --no-autoupdate --url "http://localhost:$WEB_PORT" >"$TUNNEL_LOG" 2>&1 &
-    PATTERN='https://[a-z0-9-]+\.trycloudflare\.com' ;;
+    PATTERN='https://[a-z0-9]+(-[a-z0-9]+)+\.trycloudflare\.com' ;;  # не api.trycloudflare.com из лога
   ngrok)
     ngrok http "$WEB_PORT" --log stdout --log-format logfmt >"$TUNNEL_LOG" 2>&1 &
     PATTERN='https://[a-z0-9.-]+\.ngrok(-free)?\.app' ;;
@@ -116,6 +118,7 @@ case "$TUNNEL" in
   *) die "Неизвестный TUNNEL=$TUNNEL (cloudflared | ngrok | ssh)" ;;
 esac
 PIDS+=($!)
+NAMES+=(tunnel)
 TUNNEL_PID=$!
 
 PUBLIC_URL=""
@@ -150,8 +153,12 @@ cat <<EOF
 EOF
 
 # Ждём, пока все живы (без wait -n — его нет в bash 3 на macOS)
-while :; do
-  for pid in "${PIDS[@]}"; do kill -0 "$pid" 2>/dev/null || break 2; done
-  sleep 2
+DEAD=""
+while [ -z "$DEAD" ]; do
+  for i in "${!PIDS[@]}"; do
+    kill -0 "${PIDS[$i]}" 2>/dev/null || { DEAD="${NAMES[$i]}"; break; }
+  done
+  [ -n "$DEAD" ] || sleep 2
 done
-warn "Один из процессов завершился — останавливаю остальные"
+warn "Завершился процесс «$DEAD» — останавливаю остальные. Конец его лога (.dev/logs/$DEAD.log):"
+tail -n 15 "$DEV/logs/$DEAD.log" >&2 || true

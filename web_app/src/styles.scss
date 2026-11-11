@@ -79,10 +79,14 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  overflow-x: clip;
 }
 
 body {
   margin: 0;
+  /* Hand-drawn strokes overshoot their elements: they must never widen the page on a phone
+     (on html and body both: with only one of them a phone browser may still zoom the page out) */
+  overflow-x: clip;
   min-height: 100vh;
   min-height: 100dvh;
   font-family:
@@ -874,7 +878,12 @@ blockquote {
   transform: translateX(-50%);
   width: min(36rem, 100%);
   max-height: 85vh;
+  max-height: 85dvh;
   overflow-y: auto;
+  /* The hand-drawn top rule overshoots the edges: no sideways scrolling of the sheet */
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
   background: var(--paper);
   border: 1px solid var(--border-color);
   border-bottom: none;
@@ -977,7 +986,9 @@ blockquote {
   background: var(--paper-2);
   cursor: pointer;
 }
-.pattern-btn svg {
+/* Not the hand-drawn frame (svg.hm): its size is set by handmade.ts */
+.pattern-btn > svg:not(.hm) {
+  display: block;
   width: 100%;
   height: 100%;
 }
@@ -1451,6 +1462,7 @@ blockquote {
 /* Bottom bar: a strip of the same paper under a printed rule */
 .tabs {
   width: min(36rem, calc(100% - 0.9rem));
+  overflow-x: clip;
   border-top: 2px solid var(--rule);
   box-shadow: 0 -3px 14px rgba(0, 0, 0, 0.25);
   backdrop-filter: none;
@@ -1809,7 +1821,7 @@ svg.hm-tag-round {
 svg.hm.hm-hover {
   filter: brightness(1.06);
 }
-/* A careless pencil outline is scribbled around the button under the pointer and stays while it is pressed */
+/* A careless pencil outline is scribbled around a boiling button under the mouse (the others are drawn anew instead) */
 svg.hm-outline {
   position: absolute;
   z-index: -1;
@@ -1937,7 +1949,7 @@ svg.hm.hm-press {
 }
 
 /* Dark blocks: the active tab of the shop, the toast */
-.shop-tab.active > svg.hm,
+.shop-tab-mark > svg.hm,
 .toast > svg.hm {
   --hm: var(--ink);
   --hm-dark: var(--ink);
@@ -2031,4 +2043,13 @@ svg.hm-field {
 }
 .card-btn.price:disabled {
   opacity: 0.7 !important;
+}
+
+/* Loading screen of the scene (tree3d/tree-3d.ts): chalk doodles on the night */
+.doodle > svg.hm,
+.load-bar > svg.hm,
+.load-bar > span > svg.hm {
+  --hm: var(--chalk, #dfe9ff);
+  -webkit-mask-image: none;
+  mask-image: none;
 }

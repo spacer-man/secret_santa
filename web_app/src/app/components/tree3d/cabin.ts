@@ -287,9 +287,9 @@ export function buildCabin(kit: Kit): Cabin {
     g.add(pivot);
   }
   // One soft blanket of snow over both slopes and the ridge
-  const roofSnow = new THREE.Mesh(
-    roofSnowGeometry(top + RIDGE, slope, slabLen * Math.cos(slope), D + OVER),
-    snow,
+  // Outlined like the rest of the cabin: the blanket is one smooth closed surface, no inner lines
+  const roofSnow = kit.hull(
+    new THREE.Mesh(roofSnowGeometry(top + RIDGE, slope, slabLen * Math.cos(slope), D + OVER), snow),
   );
   g.add(roofSnow);
 
@@ -309,7 +309,7 @@ export function buildCabin(kit: Kit): Cabin {
   flue.position.set(chimney.position.x, topY + 0.005, chimney.position.z);
   g.add(chimney, flue);
   // A plump ring of snow on the rim, hanging a little over the bricks
-  const rim = new THREE.Mesh(chimneySnowGeometry(), snow);
+  const rim = kit.hull(new THREE.Mesh(chimneySnowGeometry(), snow));
   rim.position.set(chimney.position.x, topY, chimney.position.z);
   g.add(rim);
   // Icicles hanging from the snowy rim, of different length, irregularly spaced
@@ -328,7 +328,7 @@ export function buildCabin(kit: Kit): Cabin {
   });
 
   // Snow piled up around the chimney where it comes out of the roof
-  const pile = new THREE.Mesh(new THREE.SphereGeometry(0.46, 16, 10), snow);
+  const pile = kit.hull(new THREE.Mesh(new THREE.SphereGeometry(0.46, 16, 10), snow));
   pile.scale.set(1, 0.42, 1.05);
   pile.position.set(
     chimney.position.x - 0.05,
@@ -379,7 +379,7 @@ export function buildCabin(kit: Kit): Cabin {
     glass.position.z = 0.035;
     const sill = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.07, 0.2), trim), 1.04);
     sill.position.set(0, -0.43, 0.08);
-    const sillSnow = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.82, 4, 8), snow);
+    const sillSnow = kit.hull(new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.82, 4, 8), snow));
     sillSnow.rotation.z = Math.PI / 2;
     sillSnow.position.set(0, -0.36, 0.1);
     win.add(frame, hole, glass, barV, barH, sill, sillSnow);
@@ -430,7 +430,7 @@ export function buildCabin(kit: Kit): Cabin {
   const plank = kit.toon(0x9a6b4c);
   const deck = kit.outline(new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.16, 1.0), plank), 1.02);
   deck.position.set(0.95, 0.3, D + 0.75);
-  const deckSnow = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.04, 0.3), snow);
+  const deckSnow = kit.hull(new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.04, 0.3), snow));
   deckSnow.position.set(0.95, 0.4, D + 1.12);
   g.add(deck, deckSnow);
   for (let s = 0; s < 2; s++) {
@@ -461,7 +461,7 @@ export function buildCabin(kit: Kit): Cabin {
       g.add(log);
     }
   }
-  const woodSnow = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.06, 0.6), snow);
+  const woodSnow = kit.hull(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.06, 0.6), snow));
   woodSnow.position.set(W + 0.45, 0.68, -0.55);
   g.add(woodSnow);
 
@@ -469,7 +469,7 @@ export function buildCabin(kit: Kit): Cabin {
   const driftGeo = new THREE.SphereGeometry(0.5, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2);
   for (let k = 0; k < 10; k++) {
     // Smooth rounded mounds resting on the ground (not flat pancakes)
-    const drift = new THREE.Mesh(driftGeo, snow);
+    const drift = kit.hull(new THREE.Mesh(driftGeo, snow));
     const side = k % 4;
     const t = rand(k) * 2 - 1;
     drift.position.set(

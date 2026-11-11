@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { TUNING } from './tuning';
 
 /**
  * Hand-made look of the "paper sheet" interface: frames, rules, stamps and
@@ -30,13 +31,14 @@ type Kind =
   | 'note'
   | 'chip'
   | 'rule'
-  | 'field';
+  | 'field'
+  | 'doodle';
 
 /** What is drawn where. Colours come from CSS (`--hm`, see styles.scss) */
 const RULES: [selector: string, kind: Kind][] = [
   ['.festive, .gift-card', 'stamp'],
   // Filled buttons and marks: pencil hatching
-  ['.btn-primary, .card-btn.price, .card-btn.primary, .shop-tab.active, .toast', 'ink-block'],
+  ['.btn-primary, .card-btn.price, .card-btn.primary, .shop-tab-mark, .toast', 'ink-block'],
   // Dashed-looking secondary actions: one light line
   ['.btn-ghost, .card-btn.quiet', 'light'],
   // Framed things: buttons, options to choose from, cards
@@ -53,8 +55,10 @@ const RULES: [selector: string, kind: Kind][] = [
   ['.seal', 'seal'],
   ['.sheet-emoji, .card-icon, .hero-emoji', 'wash'],
   // Progress: a pencil line and a hatched part of it
-  ['.level-bar, .wave .bar, .friends-bar', 'bar-track'],
-  ['.level-bar > span, .wave .bar > span, .friends-bar > span', 'bar-fill'],
+  ['.level-bar, .wave .bar, .friends-bar, .load-bar', 'bar-track'],
+  ['.level-bar > span, .wave .bar > span, .friends-bar > span, .load-bar > span', 'bar-fill'],
+  // Little pictures drawn in pencil (the loading screen): data-doodle = snowflake | star | fir
+  ['.doodle', 'doodle'],
   // Bigger tinted areas: a watercolour wash (quotes, hints, the row of the user)
   ['.quote, blockquote, .idea, .designer, .wave li.mine, .shop-tabs', 'note'],
   ['.badge, .chip', 'chip'],
@@ -74,7 +78,7 @@ const BARE: Kind[] = ['ink-block', 'card', 'light', 'bar-track', 'bar-fill', 'no
 const STATES = ['selected', 'active', 'done', 'mine', 'locked'];
 
 /** What "boils": a few variants of the drawing are shown in turn, as in drawn animation */
-const BOILING = '.seal, .btn-primary';
+const BOILING = '.seal, .btn-primary, .doodle';
 const BOIL_VARIANTS = 4;
 const BOIL_FPS = 6;
 
@@ -509,6 +513,8 @@ function draw(
       return line(0, h - 0.5, w, h - 0.5, { w: 1.4, seed, taper: 0.6, jit: 0.7 });
     case 'field':
       return frame(w, h, 0, 4, { w: 1.7, seed, taper: 0.5 });
+    case 'doodle':
+      return doodle(el.dataset['doodle'] ?? 'star', w, h, seed);
     case 'sheet-frame':
       return frame(w, h, 5, 3, { w: 1.2, seed, taper: 0.5, jit: 0.8 });
     case 'title': {
@@ -581,6 +587,87 @@ function draw(
   }
 }
 
+/** A broken line through the corners, with points every few px: corners stay corners after smoothing */
+function poly(corners: Pt[], pen: Pen): string {
+  const pts: Pt[] = [];
+  for (let i = 0; i < corners.length - 1; i++) {
+    const [a, b] = [corners[i], corners[i + 1]];
+    const n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 7));
+    for (let k = 0; k < n; k++)
+      pts.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]);
+  }
+  pts.push(corners[corners.length - 1]);
+  return ribbon(pts, pen);
+}
+
+/** Pencil pictures: a snowflake, a star, a little fir tree (each fits the element's box) */
+function doodle(kind: string, w: number, h: number, seed: number): string {
+  const [cx, cy] = [w / 2, h / 2];
+  const r = Math.min(w, h) / 2 - 2;
+  const pen: Pen = { w: Math.max(1.6, r * 0.11), seed, taper: 0.55, jit: 0.9 };
+  if (kind === 'snowflake') {
+    // Six arms, each with a pair of twigs, every stroke on its own
+    let out = '';
+    const tilt = hash(seed * 1.3) * 0.4;
+    for (let k = 0; k < 6; k++) {
+      const a = tilt + (k * Math.PI) / 3;
+      const at = (d: number, da = 0): Pt => [cx + Math.cos(a + da) * d, cy + Math.sin(a + da) * d];
+      const s = { ...pen, seed: seed + k * 7 };
+      out += poly([at(r * 0.08), at(r)], s);
+      const [bx, by] = at(r * 0.58);
+      for (const side of [-1, 1]) {
+        const b = a + side * 0.8;
+        out += poly(
+          [
+            [bx, by],
+            [bx + Math.cos(b) * r * 0.32, by + Math.sin(b) * r * 0.32],
+          ],
+          { ...s, w: pen.w * 0.8, seed: s.seed + side * 3 },
+        );
+      }
+    }
+    return out;
+  }
+  if (kind === 'fir') {
+    // Three tiers drawn as one outline, a trunk and a star on the top
+    const P = (x: number, y: number): Pt => [x * w, y * h];
+    return (
+      poly(
+        [
+          P(0.5, 0.08),
+          P(0.7, 0.34),
+          P(0.6, 0.34),
+          P(0.8, 0.6),
+          P(0.67, 0.6),
+          P(0.9, 0.86),
+          P(0.1, 0.86),
+          P(0.33, 0.6),
+          P(0.2, 0.6),
+          P(0.4, 0.34),
+          P(0.3, 0.34),
+          P(0.5, 0.08),
+        ],
+        pen,
+      ) +
+      poly([P(0.5, 0.87), P(0.5, 0.99)], { ...pen, w: pen.w * 1.8, seed: seed + 5 }) +
+      // A little shading inside
+      `<g transform="translate(${r1(w * 0.25)} ${r1(h * 0.33)})">` +
+      hatch(w * 0.5, h * 0.5, true, { angle: -40, gap: 5, lw: 3, alpha: 0.25, seed }) +
+      '</g>'
+    );
+  }
+  // A five-pointed star, closed with a little overshoot
+  const pts: Pt[] = [];
+  const turn = -Math.PI / 2 + (hash(seed * 2.1) - 0.5) * 0.3;
+  for (let i = 0; i <= 10; i++) {
+    const a = turn + (i * Math.PI) / 5;
+    const d = i % 2 ? r * 0.45 : r;
+    pts.push([cx + Math.cos(a) * d, cy + Math.sin(a) * d]);
+  }
+  pts.push([cx + Math.cos(turn + 0.2) * r * 0.8, cy + Math.sin(turn + 0.2) * r * 0.8]);
+  return poly(pts, pen);
+}
+
 /** Moves a path made of absolute "x y" pairs */
 function shift(d: string, dx: number, dy: number): string {
   return d.replace(/(-?\d+\.?\d*) (-?\d+\.?\d*)/g, (_, x: string, y: string) => {
@@ -599,7 +686,7 @@ interface Drawing {
   press: boolean;
   /** Grows with every redraw on hover: the same button, drawn anew */
   nonce: number;
-  /** The pencil outline scribbled around the button while it is hovered or pressed */
+  /** The pencil outline scribbled around a boiling button while the mouse is over it */
   outline?: SVGSVGElement;
   /** The button has been released: the outline is gone until the pointer comes again */
   spent: boolean;
@@ -652,9 +739,6 @@ function scribble(w: number, h: number, round: boolean, seed: number): string[] 
 
 /** The user asked the system for less motion: no drawing animations, no boiling */
 const CALM = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
-/** How long the outline of a button is being drawn */
-const SCRIBBLE_MS = 520;
 
 /** Elements that answer to the pointer */
 const BUTTONS =
@@ -822,13 +906,15 @@ export class Handmade {
 
   /** Scribbles the pencil outline around a hovered or pressed button, wipes it afterwards */
   private outline(el: HTMLElement, d: Drawing): void {
-    const wanted = d.press || (d.hover && !d.spent);
+    // Only where the button is not drawn anew: a boiling button that stops under the mouse.
+    // A redraw (hover over a still button, any press) is the answer by itself, without an outline
+    const wanted = d.boils && d.hover && !d.press && !d.spent;
     if (!wanted) {
       // The line leaves the way it came: its beginning vanishes first
       const gone = d.outline;
       d.outline = undefined;
       gone?.classList.add('hm-leaving');
-      if (gone) window.setTimeout(() => gone.remove(), CALM ? 0 : SCRIBBLE_MS + 80);
+      if (gone) window.setTimeout(() => gone.remove(), CALM ? 0 : TUNING.scribbleMs + 80);
       return;
     }
     if (d.outline) return;
@@ -848,7 +934,7 @@ export class Handmade {
     const width = Math.min(8, Math.max(4.5, h * 0.13));
     const pieces = scribble(w, h, round, d.seed + d.nonce * 3.3);
     // The pieces are drawn one after another (pathLength = 1: one dash moves along each, see styles.scss)
-    const each = SCRIBBLE_MS / pieces.length;
+    const each = TUNING.scribbleMs / pieces.length;
     svg.innerHTML = pieces
       .map(
         (piece, i) =>
@@ -862,7 +948,8 @@ export class Handmade {
 
   /**
    * Buttons answer to the pointer. Hover (mouse): a still button is drawn anew
-   * once, a boiling one stops; both get brighter. Press: the drawing spreads.
+   * once, a boiling one stops and gets a pencil outline; both get brighter.
+   * Press: the drawing spreads (drawn anew, no outline).
    */
   private listen(): void {
     const find = (e: Event): [HTMLElement, Drawing] | null => {
@@ -879,8 +966,8 @@ export class Handmade {
       // Hovering a still button draws it anew; pressing and releasing always redraws.
       // The hatching is drawn anew before the eyes: slowly on hover, quickly under the finger
       if (state === 'hover' && on && !d.boils) d.nonce++;
-      if (state === 'press') this.redraw(el, true, 200);
-      else if (on && !d.boils) this.redraw(el, true, 420);
+      if (state === 'press') this.redraw(el, true, TUNING.pressRedrawMs);
+      else if (on && !d.boils) this.redraw(el, true, TUNING.hoverRedrawMs);
       this.outline(el, d);
     };
     document.addEventListener('pointerover', (e) => {

@@ -4,6 +4,7 @@ import { Telegram } from './telegram';
 const ru = {
   appName: 'Тайный Санта',
   loading: 'Загрузка…',
+  sceneLoading: 'Наряжаем двор…',
   error: 'Что-то пошло не так. Попробуй ещё раз',
   untilNewYear: 'До Нового года',
   days: 'дней',
@@ -235,6 +236,7 @@ type Dict = typeof ru;
 const en: Dict = {
   appName: 'Secret Santa',
   loading: 'Loading…',
+  sceneLoading: 'Decorating the yard…',
   error: 'Something went wrong. Please try again',
   untilNewYear: 'Until the New Year',
   days: 'days',

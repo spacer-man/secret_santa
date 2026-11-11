@@ -56,38 +56,44 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
     '[class.talking]': 'talking()',
   },
   template: `
-    <svg viewBox="-6 -14 132 164" aria-hidden="true">
+    <svg viewBox="-10 -14 140 164" aria-hidden="true">
       <g class="m-all">
         <g class="m-breath">
-          <!-- The arm with a mitten, behind the coat: it comes out of the shoulder to wave -->
-          <g transform="translate(-4 1)">
-            <g class="m-arm">
-              <!-- A soft sleeve: wide at the shoulder, narrow at the wrist, slightly bent -->
-              <path
-                class="m-coat"
-                d="M85 129C87 116 93 104 100 95Q106 90 112 95C114 106 110 120 103 133Q94 136 85 129Z"
-              />
-              <ellipse
-                class="m-fur"
-                cx="106"
-                cy="92.5"
-                rx="7.6"
-                ry="3.6"
-                transform="rotate(24 106 92.5)"
-              />
-              <!-- The mitten and its thumb are one outline: no line crosses the thumb -->
-              <path
-                class="m-mitt"
-                d="M101 89C100 86 99.5 84 99 82.5C95.5 81.5 93.5 78 95.5 75.5C97.5 73.5 100.5 75 101.8 78C101.5 72 105.5 67.5 110.5 68C116.5 68.5 119.5 74.5 118.3 80.5C117.6 85 115.3 88.6 112.6 90.8C109 91.5 104 91 101 89Z"
-              />
-              <path class="m-crease" d="M101.8 78.2q0.6 2.2 -0.3 4" />
-            </g>
-          </g>
-
           <!-- Coat: it goes on below the picture and dissolves in hatching -->
           <path class="m-coat" d="M22 156C23 116 38 95 60 94S97 116 98 156Z" />
           <path class="m-hatch" [attr.d]="hatch" />
           <path class="m-fur m-band" d="M55 104h10v52H55Z" />
+
+          <!-- Arms hang at the sides: round shoulders, sleeves fading out with the coat -->
+          <g class="m-arm-l">
+            <path
+              class="m-coat"
+              d="M44 100C34 97 24 101 20 112C16 123 13 134 12 144L28 146C29 136 32 126 36 118C38 112 42 106 44 100Z"
+            />
+          </g>
+          <!-- The right one rises from the shoulder to wave; its mitten is below the picture until then -->
+          <g class="m-arm">
+            <path
+              class="m-coat"
+              d="M76 100C86 97 96 101 100 112C104 123 107 134 108 144L92 146C91 136 88 126 84 118C82 112 78 106 76 100Z"
+            />
+            <g class="m-hand">
+              <ellipse
+                class="m-fur"
+                cx="100"
+                cy="145"
+                rx="9"
+                ry="3.8"
+                transform="rotate(-6 100 145)"
+              />
+              <!-- The mitten and its thumb are one outline: no line crosses the thumb -->
+              <path
+                class="m-mitt"
+                d="M93 147.5C93 149 93.2 150.2 93.4 151.2C90 152 88.4 155.4 90.2 157.4C92 159 94 157.4 94.2 155.2C94.6 159.6 96.4 163.2 100.6 163.6C105.2 164 108.4 159.4 108 153.4L107.4 147.5Z"
+              />
+            </g>
+          </g>
+
           <path
             class="m-fur"
             d="M34 103C42 97 50 95 60 95S78 97 86 103L83 109C76 104.5 68 103 60 103S44 104.5 37 109Z"

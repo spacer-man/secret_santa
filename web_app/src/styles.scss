@@ -2274,6 +2274,7 @@ svg.hm-field {
     .m-head,
     .m-head-act,
     .m-arm,
+    .m-arm-l,
     .m-tip,
     .m-look,
     .m-brows,
@@ -2291,9 +2292,12 @@ svg.hm-field {
   transform-origin: 60px 96px;
 }
 .m-arm {
-  transform-origin: 94px 128px;
-  transform: translate(6px, 40px) rotate(20deg);
-  opacity: 0;
+  transform-origin: 85px 106px;
+  animation: mascot-arm-r 3.8s ease-in-out infinite;
+}
+.m-arm-l {
+  transform-origin: 35px 106px;
+  animation: mascot-arm-l 3.8s ease-in-out infinite;
 }
 .m-tip {
   transform-origin: 70px 30px;
@@ -2353,6 +2357,13 @@ svg.hm-field {
 /* Actions now and then (see ACTS in mascot-art.ts; durations = ACT_MS) */
 .act-wave .m-arm {
   animation: mascot-wave 2.6s ease-in-out;
+}
+/* The cuff and the mitten show only on a raised arm (hanging, they would peep out of the fade) */
+.m-hand {
+  opacity: 0;
+}
+.act-wave .m-hand {
+  animation: mascot-hand 2.6s ease-in-out;
 }
 .act-wave .m-head-act {
   animation: mascot-tilt 2.6s ease-in-out;
@@ -2459,36 +2470,51 @@ svg.hm-field {
     transform: rotate(1.5deg) translateY(-0.4px);
   }
 }
+/* The hanging right arm goes up from the shoulder, waves and comes back down */
 @keyframes mascot-wave {
-  0% {
-    transform: translate(6px, 40px) rotate(20deg);
-    opacity: 0;
-  }
-  14% {
-    transform: translate(0, 0) rotate(0);
-    opacity: 1;
-  }
-  26%,
-  50% {
-    transform: rotate(-12deg);
-    opacity: 1;
-  }
-  38%,
-  62% {
-    transform: rotate(10deg);
-    opacity: 1;
-  }
-  74% {
-    transform: rotate(-4deg);
-    opacity: 1;
-  }
-  86% {
-    transform: translate(0, 0) rotate(0);
-    opacity: 1;
-  }
+  0%,
   100% {
-    transform: translate(6px, 40px) rotate(20deg);
+    transform: rotate(0);
+  }
+  /* Halfway up the arm comes forward (looks shorter), so it does not stick out of the picture */
+  9%,
+  90% {
+    transform: rotate(-75deg) scale(0.72);
+  }
+  18%,
+  80% {
+    transform: rotate(-142deg);
+  }
+  30%,
+  54% {
+    transform: rotate(-126deg);
+  }
+  42%,
+  66% {
+    transform: rotate(-152deg);
+  }
+}
+@keyframes mascot-hand {
+  0%,
+  6%,
+  94%,
+  100% {
     opacity: 0;
+  }
+  14%,
+  86% {
+    opacity: 1;
+  }
+}
+/* Arms swing a little with the breath */
+@keyframes mascot-arm-l {
+  50% {
+    transform: rotate(2deg);
+  }
+}
+@keyframes mascot-arm-r {
+  50% {
+    transform: rotate(-2deg);
   }
 }
 @keyframes mascot-tilt {

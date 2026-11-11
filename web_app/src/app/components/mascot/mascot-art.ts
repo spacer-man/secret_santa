@@ -71,27 +71,38 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
               d="M44 100C34 97 24 101 20 112C16 123 13 134 12 144L28 146C29 136 32 126 36 118C38 112 42 106 44 100Z"
             />
           </g>
-          <!-- The right one rises from the shoulder to wave; its mitten is below the picture until then -->
+          <!--
+            The right arm has an elbow: to wave, the upper arm goes out to the side and the
+            forearm bends up and swings. Hanging, its cuff and mitten are hidden below.
+          -->
           <g class="m-arm">
+            <g class="m-fore">
+              <path
+                class="m-coat"
+                d="M88.8 129.1A6.5 6.5 0 0 1 101.2 124.9L105.7 143.4L96.3 146.6Z"
+              />
+              <g class="m-hand">
+                <ellipse
+                  class="m-fur"
+                  cx="101"
+                  cy="145"
+                  rx="7"
+                  ry="3.2"
+                  transform="rotate(-18.4 101 145)"
+                />
+                <!-- One outline with the thumb; raised, the thumb is up and towards the head -->
+                <path
+                  class="m-mitt"
+                  transform="rotate(-18.4 101 145) translate(1 0)"
+                  d="M107 147.5C107 149 106.8 150.2 106.6 151.2C110 152 111.6 155.4 109.8 157.4C108 159 106 157.4 105.8 155.2C105.4 159.6 103.6 163.2 99.4 163.6C94.8 164 91.6 159.4 92 153.4L92.6 147.5Z"
+                />
+              </g>
+            </g>
+            <!-- Upper arm with a round shoulder; its round end covers the elbow joint -->
             <path
               class="m-coat"
-              d="M76 100C86 97 96 101 100 112C104 123 107 134 108 144L92 146C91 136 88 126 84 118C82 112 78 106 76 100Z"
+              d="M76.9 109.9A9 9 0 0 1 93.1 102.1L100.9 124.2A6.5 6.5 0 0 1 89.1 129.8Z"
             />
-            <g class="m-hand">
-              <ellipse
-                class="m-fur"
-                cx="100"
-                cy="145"
-                rx="9"
-                ry="3.8"
-                transform="rotate(-6 100 145)"
-              />
-              <!-- The mitten and its thumb are one outline: no line crosses the thumb -->
-              <path
-                class="m-mitt"
-                d="M93 147.5C93 149 93.2 150.2 93.4 151.2C90 152 88.4 155.4 90.2 157.4C92 159 94 157.4 94.2 155.2C94.6 159.6 96.4 163.2 100.6 163.6C105.2 164 108.4 159.4 108 153.4L107.4 147.5Z"
-              />
-            </g>
           </g>
 
           <path

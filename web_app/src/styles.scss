@@ -2274,6 +2274,7 @@ svg.hm-field {
     .m-head,
     .m-head-act,
     .m-arm,
+    .m-fore,
     .m-arm-l,
     .m-tip,
     .m-look,
@@ -2294,6 +2295,9 @@ svg.hm-field {
 .m-arm {
   transform-origin: 85px 106px;
   animation: mascot-arm-r 3.8s ease-in-out infinite;
+}
+.m-fore {
+  transform-origin: 95px 127px;
 }
 .m-arm-l {
   transform-origin: 35px 106px;
@@ -2357,6 +2361,9 @@ svg.hm-field {
 /* Actions now and then (see ACTS in mascot-art.ts; durations = ACT_MS) */
 .act-wave .m-arm {
   animation: mascot-wave 2.6s ease-in-out;
+}
+.act-wave .m-fore {
+  animation: mascot-wave-fore 2.6s ease-in-out;
 }
 /* The cuff and the mitten show only on a raised arm (hanging, they would peep out of the fade) */
 .m-hand {
@@ -2470,28 +2477,41 @@ svg.hm-field {
     transform: rotate(1.5deg) translateY(-0.4px);
   }
 }
-/* The hanging right arm goes up from the shoulder, waves and comes back down */
+/* Waving: the upper arm goes out to the side and stays there… */
 @keyframes mascot-wave {
   0%,
   100% {
     transform: rotate(0);
   }
-  /* Halfway up the arm comes forward (looks shorter), so it does not stick out of the picture */
-  9%,
-  90% {
-    transform: rotate(-75deg) scale(0.72);
+  15%,
+  85% {
+    transform: rotate(-84deg);
   }
-  18%,
-  80% {
-    transform: rotate(-142deg);
+}
+/* …the forearm bends up at the elbow (bending first, so the arm does not stick out) and swings */
+@keyframes mascot-wave-fore {
+  0%,
+  100% {
+    transform: rotate(0);
   }
-  30%,
-  54% {
-    transform: rotate(-126deg);
+  7%,
+  93% {
+    transform: rotate(-60deg);
   }
-  42%,
-  66% {
-    transform: rotate(-152deg);
+  15%,
+  85% {
+    transform: rotate(-68deg);
+  }
+  27%,
+  51% {
+    transform: rotate(-54deg);
+  }
+  39%,
+  63% {
+    transform: rotate(-84deg);
+  }
+  75% {
+    transform: rotate(-60deg);
   }
 }
 @keyframes mascot-hand {

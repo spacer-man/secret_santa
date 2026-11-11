@@ -6,6 +6,7 @@ import { I18n } from '../core/i18n';
 import { Store } from '../core/store';
 import { Telegram } from '../core/telegram';
 import { BALL_COLORS, BallArt, BallDefs } from '../components/tree/ball-art';
+import { MascotSays } from '../components/mascot/mascot-says';
 
 const MAX_FILES = 5;
 const MAX_SIZE = 10 * 1024 * 1024;
@@ -20,8 +21,9 @@ interface Picked {
 
 @Component({
   selector: 'new-wish-page',
-  imports: [FormsModule, BallArt, BallDefs],
+  imports: [FormsModule, BallArt, BallDefs, MascotSays],
   template: `
+    <mascot-says topic="write" more="write" />
     <section class="card">
       <h1>✍️ {{ i18n.t('newWishTitle') }}</h1>
       <p class="muted">{{ i18n.t('newWishText') }}</p>

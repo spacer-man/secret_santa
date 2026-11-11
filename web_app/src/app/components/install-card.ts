@@ -1,17 +1,17 @@
 import { Component, inject, signal } from '@angular/core';
 import { I18n } from '../core/i18n';
 import { Install } from '../core/install';
+import { MascotSays } from './mascot/mascot-says';
 
 /** "Put Santa on your home screen": an offer to install the app as a PWA (or a Telegram shortcut) */
 @Component({
   selector: 'install-card',
+  imports: [MascotSays],
   template: `
-    @if (install.way(); as way) {
+    @if (install.way()) {
       <section class="card install-card">
         <h2>📲 {{ i18n.t('installTitle') }}</h2>
-        <p>
-          {{ i18n.t(way === 'telegram' ? 'installTextTg' : 'installText') }}
-        </p>
+        <mascot-says topic="install" [more]="null" [compact]="true" />
         @if (steps()) {
           <ol class="install-steps">
             <li>

@@ -4,6 +4,7 @@ import { I18n } from '../core/i18n';
 import { Store } from '../core/store';
 import { PICTURES } from '../core/shop';
 import { markRulesSeen } from '../core/onboarding';
+import { MascotSays } from '../components/mascot/mascot-says';
 
 /** Gifts for invited friends (see services/shop.py, `friends_required`) */
 const FRIEND_GIFTS: [friends: number, item: string][] = [
@@ -16,10 +17,11 @@ const FRIEND_GIFTS: [friends: number, item: string][] = [
 /** "How to play": the rules of the game on one printed sheet */
 @Component({
   selector: 'how-to-page',
-  imports: [RouterLink],
+  imports: [RouterLink, MascotSays],
   template: `
     @let h = i18n.dict.howTo;
     <h1 class="page-title">{{ i18n.t('howToPlay') }}</h1>
+    <mascot-says topic="rules" />
 
     <section class="card">
       <h2>{{ h.mainTitle }}</h2>

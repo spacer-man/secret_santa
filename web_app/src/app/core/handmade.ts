@@ -41,7 +41,7 @@ const RULES: [selector: string, kind: Kind][] = [
   ['.btn-ghost, .card-btn.quiet', 'light'],
   // Framed things: buttons, options to choose from, cards
   [
-    '.btn-secondary, .shop-card, .card-btn, .snow-mode, .reaction, .pattern-btn, .shop-set, .theme-toggle',
+    '.btn-secondary, .shop-card, .card-btn, .snow-mode, .reaction, .pattern-btn, .shop-set, .theme-toggle, .mascot-opt',
     'card',
   ],
   ['.page', 'sheet-frame'],
@@ -56,7 +56,7 @@ const RULES: [selector: string, kind: Kind][] = [
   ['.level-bar, .wave .bar, .friends-bar', 'bar-track'],
   ['.level-bar > span, .wave .bar > span, .friends-bar > span', 'bar-fill'],
   // Bigger tinted areas: a watercolour wash (quotes, hints, the row of the user)
-  ['.quote, blockquote, .idea, .designer, .wave li.mine, .shop-tabs', 'note'],
+  ['.quote, blockquote, .idea, .designer, .wave li.mine, .shop-tabs, .mascot-bubble', 'note'],
   ['.badge, .chip', 'chip'],
   // Form fields cannot hold a drawing inside: it is laid over them
   ['.select, .textarea', 'field'],

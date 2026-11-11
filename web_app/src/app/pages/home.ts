@@ -9,28 +9,28 @@ import { Countdown } from '../components/countdown';
 import { GiftBox } from '../components/gift-box';
 import { Wave } from '../components/wave';
 import { InstallCard } from '../components/install-card';
+import { MascotSays } from '../components/mascot/mascot-says';
 import { TreePanel } from '../components/tree/tree-panel';
 import { confetti } from '../components/fx/confetti';
 import { rulesSeen } from '../core/onboarding';
 
 @Component({
   selector: 'home-page',
-  imports: [Countdown, GiftBox, Wave, RouterLink, TreePanel, InstallCard],
+  imports: [Countdown, GiftBox, Wave, RouterLink, TreePanel, InstallCard, MascotSays],
   template: `
     @let gift = store.gift();
+    <mascot-says [topic]="mascotTopic()">
+      @if (!rulesKnown) {
+        <a class="btn btn-secondary" routerLink="/rules">📜 {{ i18n.t('howToPlay') }}</a>
+      }
+    </mascot-says>
+
     @if (gift?.status === 'ready') {
       <section class="card center festive">
         <h2>🎁 {{ i18n.t('giftReady') }}</h2>
         <gift-box (opened)="open()" />
         <p class="muted">{{ i18n.t('giftTap') }}</p>
       </section>
-    }
-
-    @if (!rulesKnown) {
-      <a class="card row between rules-teaser" routerLink="/rules">
-        <span>👋 {{ i18n.t('howToTeaser') }}</span
-        ><b>→</b>
-      </a>
     }
 
     <tree-panel />
@@ -107,6 +107,10 @@ export class HomePage {
   );
 
   protected readonly rulesKnown = rulesSeen();
+  /** What the mascot starts with: the rules for newcomers, the gift at midnight, otherwise hello */
+  protected readonly mascotTopic = computed(() =>
+    this.store.gift()?.status === 'ready' ? 'gift' : this.rulesKnown ? 'greet' : 'teaser',
+  );
   private celebrated = false;
 
   constructor() {

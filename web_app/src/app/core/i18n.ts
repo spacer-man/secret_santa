@@ -143,10 +143,7 @@ const ru = {
   padBack: 'Назад',
   toShop: 'В лавку',
   // Install (PWA / Telegram shortcut)
-  installTitle: 'Санта на главном экране',
-  installText:
-    'Поставь Тайного Санту как приложение: откроется в одно касание, без браузера, и подарок в полночь не потеряется',
-  installTextTg: 'Добавь ярлык на главный экран — и Санта будет открываться в одно касание',
+  installTitle: 'На главный экран',
   installBtn: 'Поставить',
   notNow: 'Не сейчас',
   installDone: 'Понятно',
@@ -154,7 +151,6 @@ const ru = {
   iosStep2: 'Выбери «На экран „Домой“» — готово!',
   // How to play
   howToPlay: 'Как играть',
-  howToTeaser: 'Впервые здесь? Объясню правила за минуту',
   howToOpen: 'Как играть?',
   howTo: {
     mainTitle: 'Главное за минуту',
@@ -194,6 +190,30 @@ const ru = {
     fair4:
       'Можно написать несколько поздравлений: каждое станет новым шаром и порадует ещё кого-то.',
     go: 'Написать поздравление',
+  },
+  // Mascot
+  mascot: {
+    heroes: { moroz: 'Дед Мороз', santa: 'Санта' } as Record<string, string>,
+    laugh: { moroz: 'Ох-хо-хо', santa: 'Хо-хо-хо' } as Record<string, string>,
+    friend: 'друг',
+    settings: 'Твой новогодний гид',
+    who: 'Кто',
+    character: 'Характер',
+    moods: {
+      classic: 'Классический',
+      jolly: 'Весельчак',
+      fairy: 'Сказочник',
+      grumpy: 'Ворчун',
+    } as Record<string, string>,
+    moodHints: {
+      classic: 'добрый и тёплый',
+      jolly: 'с приколами и сленгом',
+      fairy: 'говорит как в сказке',
+      grumpy: 'ворчит, но любя',
+    } as Record<string, string>,
+    done: 'Готово',
+    tapHint: 'тап по облачку — ещё совет, по мне — другой характер',
+    chooseHint: 'нажми на меня — выбери, каким мне быть',
   },
   // Navigation
   navHome: 'Главная',
@@ -429,10 +449,7 @@ const en: Dict = {
   padBack: 'Back',
   toShop: 'To the shop',
   // Install (PWA / Telegram shortcut)
-  installTitle: 'Santa on your home screen',
-  installText:
-    'Install Secret Santa as an app: one tap to open, no browser, and you won’t miss your midnight gift',
-  installTextTg: 'Add a shortcut to your home screen and open Santa in one tap',
+  installTitle: 'On your home screen',
   installBtn: 'Install',
   notNow: 'Not now',
   installDone: 'Got it',
@@ -440,7 +457,6 @@ const en: Dict = {
   iosStep2: 'Choose “Add to Home Screen” — done!',
   // How to play
   howToPlay: 'How to play',
-  howToTeaser: 'New here? The rules in one minute',
   howToOpen: 'How to play?',
   howTo: {
     mainTitle: 'The gist in a minute',
@@ -480,6 +496,30 @@ const en: Dict = {
     fair4:
       'You can write several greetings: each one is a new bauble and makes someone else happy.',
     go: 'Write a greeting',
+  },
+  // Mascot
+  mascot: {
+    heroes: { moroz: 'Ded Moroz', santa: 'Santa' } as Record<string, string>,
+    laugh: { moroz: 'Oh-ho-ho', santa: 'Ho-ho-ho' } as Record<string, string>,
+    friend: 'friend',
+    settings: 'Your holiday guide',
+    who: 'Who',
+    character: 'Character',
+    moods: {
+      classic: 'Classic',
+      jolly: 'Jolly',
+      fairy: 'Storyteller',
+      grumpy: 'Grump',
+    } as Record<string, string>,
+    moodHints: {
+      classic: 'kind and warm',
+      jolly: 'jokes and slang',
+      fairy: 'talks like a fairy tale',
+      grumpy: 'grumbles, but lovingly',
+    } as Record<string, string>,
+    done: 'Done',
+    tapHint: 'tap the bubble for another tip, tap me for another character',
+    chooseHint: 'tap me to choose who I should be',
   },
   // Navigation
   navHome: 'Home',

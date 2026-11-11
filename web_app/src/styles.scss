@@ -2059,11 +2059,6 @@ svg.hm-field {
 }
 
 /* ===== How to play ===== */
-.rules-teaser {
-  color: inherit;
-  text-decoration: none;
-  font-family: var(--slab);
-}
 .steps,
 .facts {
   list-style: none;
@@ -2156,4 +2151,243 @@ svg.hm-field {
   font-family: var(--slab);
   font-size: 0.85rem;
   color: var(--stamp);
+}
+
+/* ===== Mascot: Ded Moroz / Santa ===== */
+.mascot-art {
+  --m-line: #2b2522;
+  --m-fur: #fbf8f1;
+  --m-skin: #f3c9a6;
+  --m-cheek: #ef8f86;
+  --m-nose: #e7837a;
+  --m-coat: #c8392d;
+  display: block;
+  animation: mascot-bob 3.6s ease-in-out infinite;
+}
+.mascot-art.moroz {
+  --m-coat: #2f62a6;
+}
+.mascot-art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.mascot-art :is(.m-coat, .m-fur, .m-skin, .m-nose) {
+  stroke: var(--m-line);
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+.m-coat {
+  fill: var(--m-coat);
+}
+.m-fur {
+  fill: var(--m-fur);
+}
+.m-skin {
+  fill: var(--m-skin);
+}
+.m-nose {
+  fill: var(--m-nose);
+}
+.m-cheek {
+  fill: var(--m-cheek);
+  opacity: 0.55;
+}
+.m-eye {
+  fill: var(--m-line);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: mascot-blink 5.2s infinite;
+}
+.m-mouth {
+  fill: #7a2620;
+  transform-box: fill-box;
+  transform-origin: center top;
+}
+.mascot-art.talking .m-mouth {
+  animation: mascot-talk 0.16s ease-in-out infinite alternate;
+}
+.m-brow {
+  fill: none;
+  stroke: var(--m-fur);
+  stroke-width: 4.2;
+  stroke-linecap: round;
+  paint-order: stroke;
+  filter: drop-shadow(0 0 0.6px var(--m-line)) drop-shadow(0 0 0.6px var(--m-line));
+}
+.m-curl,
+.m-line,
+.m-specs {
+  fill: none;
+  stroke: var(--m-line);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+.m-curl {
+  opacity: 0.45;
+}
+.m-specs {
+  stroke: #a87618;
+  stroke-width: 1.6;
+}
+.m-flake {
+  fill: none;
+  stroke: var(--m-fur);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.m-shades {
+  fill: #1d1d24;
+  stroke: var(--m-line);
+  stroke-width: 1.2;
+}
+.m-shine {
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+@keyframes mascot-bob {
+  50% {
+    transform: translateY(-2px) rotate(-1.2deg);
+  }
+}
+@keyframes mascot-blink {
+  0%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+  96% {
+    transform: scaleY(0.1);
+  }
+}
+@keyframes mascot-talk {
+  from {
+    transform: scaleY(0.5);
+  }
+  to {
+    transform: scaleY(1.5);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mascot-art,
+  .m-eye,
+  .mascot-art.talking .m-mouth {
+    animation: none;
+  }
+}
+
+.mascot {
+  display: flex;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.mascot-figure {
+  flex: none;
+  width: 6.4rem;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.mascot.compact .mascot-figure {
+  width: 4.2rem;
+}
+.mascot-bubble {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  margin-top: 0.4rem;
+}
+/* The tail of the bubble points at the mascot */
+.mascot-bubble::before {
+  content: '';
+  position: absolute;
+  left: -0.55rem;
+  top: 1.3rem;
+  border: 0.4rem solid transparent;
+  border-right: 0.6rem solid color-mix(in srgb, var(--wash-ink) 22%, transparent);
+  border-left: none;
+}
+.mascot-line {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mascot-line:disabled {
+  cursor: default;
+  color: inherit;
+}
+.mascot-name {
+  font-family: var(--slab);
+  font-size: 0.8rem;
+  color: var(--stamp);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.mascot-text {
+  font-size: 0.98rem;
+}
+.mascot-rest {
+  visibility: hidden;
+}
+.mascot-hint {
+  font-size: 0.75rem;
+  color: var(--ink-2);
+}
+
+.mascot-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.mascot-preview mascot-art {
+  flex: none;
+  width: 5.5rem;
+}
+.mascot-preview .quote {
+  flex: 1;
+  margin: 0;
+}
+.mascot-opts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.mascot-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.6rem 0.4rem;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.mascot-opt mascot-art {
+  width: 3.6rem;
+}
+.mascot-opt b {
+  font-family: var(--slab);
+}
+.mascot-opt small {
+  color: var(--ink-2);
+  font-size: 0.78rem;
 }

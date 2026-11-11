@@ -71,15 +71,25 @@ const HATCH = Array.from({ length: 16 }, (_, i) => {
           <!-- The arm with a mitten: hidden below, raised to wave -->
           <g transform="translate(-5 2)">
             <g class="m-arm">
+              <!-- A soft sleeve: wide at the shoulder, narrow at the wrist, slightly bent -->
               <path
                 class="m-coat"
-                d="M90 124C96 112 101 100 105 91L114 95C111 106 106 118 101 130Z"
+                d="M85 129C87 116 93 104 100 95Q106 90 112 95C114 106 110 120 103 133Q94 136 85 129Z"
               />
-              <path class="m-fur" d="M103 90l12 5-2 4.5-12-5Z" />
+              <ellipse
+                class="m-fur"
+                cx="106"
+                cy="92.5"
+                rx="7.6"
+                ry="3.6"
+                transform="rotate(24 106 92.5)"
+              />
+              <!-- The mitten and its thumb are one outline: no line crosses the thumb -->
               <path
                 class="m-mitt"
-                d="M104 88C99 80 103 70 110 70S121 76 118 85C117 88 115 90 113 91Z M104 82C99 81 97 77 99 74C102 74 105 76 106 79"
+                d="M101 89C100 86 99.5 84 99 82.5C95.5 81.5 93.5 78 95.5 75.5C97.5 73.5 100.5 75 101.8 78C101.5 72 105.5 67.5 110.5 68C116.5 68.5 119.5 74.5 118.3 80.5C117.6 85 115.3 88.6 112.6 90.8C109 91.5 104 91 101 89Z"
               />
+              <path class="m-crease" d="M101.8 78.2q0.6 2.2 -0.3 4" />
             </g>
           </g>
         </g>

@@ -178,10 +178,7 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       align-items: center;
       gap: 0.25rem;
       padding: 0.8rem 0.5rem 0.6rem;
-      background: var(--paper-2);
-      border: 2px solid var(--border-color);
-      border-top: 3px solid var(--accent);
-      border-radius: 2px;
+      /* The frame (in the colour of the rarity) is drawn by hand: core/handmade.ts */
       min-width: 0;
     }
     .shop-card[data-rarity='rare'] {
@@ -192,10 +189,6 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     }
     .shop-card[data-rarity='legendary'] {
       --accent: var(--rarity-legendary);
-      box-shadow: 0 0 18px rgba(255, 209, 102, 0.3);
-    }
-    .shop-card.owned {
-      background: var(--paper-3);
     }
     .card-icon {
       font-size: 2.3rem;
@@ -204,27 +197,13 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     .card-icon {
       position: relative;
     }
-    /* Glow of the rarity colour behind the figure */
-    .card-icon:has(img)::before {
-      content: '';
-      position: absolute;
-      inset: -0.2rem 8%;
-      border-radius: 50%;
-      background: radial-gradient(
-        closest-side,
-        color-mix(in srgb, var(--accent) 55%, transparent),
-        color-mix(in srgb, var(--accent) 16%, transparent) 60%,
-        transparent
-      );
-    }
     .card-icon img {
       position: relative;
       display: block;
       width: 5.2rem;
       height: 5.2rem;
       margin: -0.3rem auto -0.2rem;
-      filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 85%, transparent))
-        drop-shadow(0 3px 5px rgba(0, 0, 0, 0.4));
+      filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.3));
     }
     .set-icons img {
       display: block;
@@ -267,10 +246,9 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     }
     .card-btn.price,
     .card-btn.primary {
+      /* The block of ink is drawn by hand */
       color: var(--on-stamp);
-      background: var(--orange);
       border-color: transparent;
-      box-shadow: 0 2px 0 color-mix(in srgb, var(--orange) 60%, #000);
     }
     .card-btn.quiet {
       color: var(--second-text-color);

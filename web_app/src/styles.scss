@@ -25,6 +25,7 @@
   --green: #2d7a57;
   --orange: #bd5f10;
   --wash: rgba(104, 138, 164, 0.3);
+  --wash-ink: #5f86a6;
   --rarity-common: #7d7d8c;
   --rarity-rare: #1f86ad;
   --rarity-epic: #8748bd;
@@ -65,6 +66,7 @@
   --green: #4fc79a;
   --orange: #ffa040;
   --wash: rgba(120, 160, 200, 0.22);
+  --wash-ink: #7fa8cf;
   --rarity-common: #8b8ba0;
   --rarity-rare: #4cc9f0;
   --rarity-epic: #c77dff;
@@ -1567,149 +1569,107 @@ blockquote {
 }
 
 /* ============================================================
-   Hand-made unevenness (SVG filters live in index.html).
-   Only frames, rules and ink blocks are roughened, on pseudo-elements:
-   the text stays sharp and nothing is recomputed while the scene animates.
+   Hand-made strokes: `core/handmade.ts` draws an SVG layer (`svg.hm`) into
+   the elements below; here are only the places, colours (`--hm`) and what
+   the drawing replaces (CSS borders and backgrounds are switched off).
    ============================================================ */
-.handmade-defs {
+.hm-host {
+  position: relative;
+  isolation: isolate;
+}
+.tabs.hm-host,
+.sheet.hm-host {
+  position: fixed;
+}
+svg.hm {
   position: absolute;
+  left: 0;
+  top: 0;
+  z-index: -1;
+  display: block !important;
+  overflow: visible;
+  pointer-events: none;
+  --hm: var(--rule);
+}
+.hm-fill {
+  fill: var(--hm);
+}
+.hm-edge {
+  fill: none;
+  stroke: var(--hm);
+  stroke-width: 1.2;
+}
+.hm-shade {
+  fill: color-mix(in srgb, var(--hm) 55%, #000);
+}
+.hm-paper {
+  fill: var(--paper);
 }
 
-/* Rules of the titles are drawn by hand */
+/* Titles: the rules are drawn, the pseudo-elements only keep the text centred */
+.card > h2,
+.label,
+.page-title {
+  justify-content: center;
+}
 .card > h2::before,
 .card > h2::after,
 .label::before,
 .label::after,
 .page-title::before,
 .page-title::after {
-  height: 1.5px;
-  filter: url(#rough-line);
+  display: none;
 }
-.card > h2::after,
-.label::after,
-.page-title::after {
-  transform: scaleX(-1) rotate(0.4deg);
-}
-.card > h2::before,
-.label::before,
-.page-title::before {
-  transform: rotate(-0.3deg);
-}
-
-/* Frame of the sheet */
 .page::before {
-  filter: url(#rough-b);
+  display: none;
+}
+/* The sheet must not become a stacking context: bottom sheets inside it cover the tab bar */
+.page.hm-host {
+  isolation: auto;
+}
+.page > svg.hm {
+  z-index: 0;
+  --hm: var(--rule-soft);
 }
 
-/* Stamp frame: two uneven lines, pressed a little askew */
+/* Stamp frame */
 .festive,
 .gift-card {
-  position: relative;
-  isolation: isolate;
   background: none;
   border: none;
   box-shadow: none;
 }
-.festive::before,
-.gift-card::before,
-.festive::after,
-.gift-card::after {
-  content: '';
-  position: absolute;
-  z-index: -1;
-  pointer-events: none;
-}
-.festive::before,
-.gift-card::before {
-  inset: 0;
-  border: 2px solid var(--stamp);
-  background: var(--stamp-soft);
-  transform: rotate(-0.35deg);
-  filter: url(#ink);
-}
-.festive::after,
-.gift-card::after {
-  inset: 5px;
-  border: 1px solid var(--stamp);
-  opacity: 0.6;
-  transform: rotate(0.3deg);
-  filter: url(#rough-b);
+.festive > svg.hm,
+.gift-card > svg.hm,
+.festive .label > svg.hm,
+.festive > h2 > svg.hm,
+.unit:first-child .number > svg.hm,
+.seal > svg.hm {
+  --hm: var(--stamp);
 }
 
-/* Buttons are stamped / framed by hand */
-.btn {
-  position: relative;
-  isolation: isolate;
-}
-.btn-primary {
+/* Buttons */
+.btn-primary,
+.btn-primary:hover:not(:disabled),
+.btn-primary:active:not(:disabled) {
   background: none;
   box-shadow: none;
 }
 .btn-primary::before {
-  display: block;
-  inset: 0;
-  z-index: -1;
-  background: var(--stamp);
-  background-image: none;
-  border-radius: 3px;
-  filter: url(#ink);
-  animation: none;
+  display: none;
 }
-.btn-primary::after {
-  content: '';
-  position: absolute;
-  inset: 3px -1px -3px 1px;
-  z-index: -2;
-  background: color-mix(in srgb, var(--stamp) 55%, #000);
-  border-radius: 3px;
-  filter: url(#rough);
-}
-.btn-primary:hover:not(:disabled),
-.btn-primary:active:not(:disabled) {
-  background: none;
+.btn-primary > svg.hm {
+  --hm: var(--stamp);
 }
 .btn-secondary {
   border: none;
   box-shadow: none;
 }
-.btn-secondary::before,
-.btn-secondary::after {
-  content: '';
-  position: absolute;
-  z-index: -1;
-  pointer-events: none;
-}
-.btn-secondary::before {
-  inset: 0;
-  border: 1.5px solid var(--rule);
-  filter: url(#rough);
-}
-.btn-secondary::after {
-  inset: 3px;
-  border: 1px solid var(--rule-soft);
-  filter: url(#rough-b);
-}
 
-/* Numerals: letterpress, each leaf hangs slightly differently */
+/* Numerals: each leaf hangs slightly differently */
 .number,
 .stats b {
-  position: relative;
   border-bottom: none;
-  filter: url(#press);
-}
-.number::after,
-.stats b::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--rule);
-  filter: url(#rough-line);
-}
-.unit:first-child .number::after {
-  background: var(--stamp);
 }
 .unit:nth-child(odd),
 .stats > div:nth-child(even) {
@@ -1723,68 +1683,31 @@ blockquote {
   transform: rotate(-0.3deg) translateY(1px);
 }
 
-/* The illustration: its printed frame is uneven too (an overlay, the canvas is untouched) */
+/* The illustration: a painted uneven edge and a frame over the canvas */
 .tree-card {
   border: none;
   box-shadow: none;
   overflow: visible;
 }
-.tree-card > * {
-  position: relative;
-}
-.tree-card::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
+.tree-card > svg.hm {
   z-index: 3;
-  border: 4px solid var(--paper);
-  outline: 1.5px solid var(--rule);
-  outline-offset: -2.5px;
-  pointer-events: none;
-  filter: url(#rough);
 }
 
-/* Bottom bar and sheets: a hand-ruled top edge */
 .tabs,
 .sheet {
   border-top: none;
-}
-.tabs::before,
-.sheet::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 2px;
-  background: var(--rule);
-  filter: url(#rough-line);
-}
-.sheet::after {
-  position: sticky;
-  order: -1;
-  flex: none;
-  margin: -1.2rem -1.2rem 0;
 }
 .tabs a.active {
   border-bottom-color: transparent;
   background: linear-gradient(var(--stamp), var(--stamp)) 50% 100% / 60% 2px no-repeat;
 }
 
-/* Watercolour blots */
+/* Watercolour blots under pictures */
 .sheet-emoji {
-  position: relative;
-  isolation: isolate;
   background: none;
 }
-.sheet-emoji::before {
-  content: '';
-  position: absolute;
-  inset: 8% 4%;
-  z-index: -1;
-  border-radius: 50%;
-  background: var(--wash);
-  filter: url(#blot);
+.sheet-emoji > svg.hm {
+  --hm: var(--wash-ink);
 }
 
 /* Round seal in the corner of the sheet */
@@ -1792,17 +1715,11 @@ blockquote {
   flex: none;
   display: grid;
   place-items: center;
-  width: 2.6rem;
-  height: 2.6rem;
-  border: 1.5px solid var(--stamp);
-  border-radius: 50%;
+  width: 2.7rem;
+  height: 2.7rem;
   color: var(--stamp);
-  box-shadow:
-    inset 0 0 0 3px var(--paper),
-    inset 0 0 0 4px var(--stamp);
   transform: rotate(-12deg);
-  opacity: 0.8;
-  filter: url(#ink);
+  opacity: 0.85;
 }
 .seal i {
   font-style: normal;
@@ -1810,4 +1727,30 @@ blockquote {
 }
 .imprint-text {
   flex: 1;
+}
+
+/* Shop cards (their own styles are scoped to the component, the drawings are not) */
+.shop-card > svg.hm,
+.card-icon > svg.hm {
+  --hm: var(--accent);
+}
+.card-btn.price > svg.hm,
+.card-btn.primary > svg.hm {
+  --hm: var(--orange);
+}
+
+/* Grain of the pencil (not on the frame over the animated scene) */
+.hm-defs {
+  position: absolute;
+}
+svg.hm {
+  filter: url(#hm-grain);
+}
+/* Fills are only slightly mottled: the text on them must stay easy to read */
+svg.hm-ink-block,
+svg.hm-wash {
+  filter: url(#hm-ink);
+}
+svg.hm-picture {
+  filter: none;
 }

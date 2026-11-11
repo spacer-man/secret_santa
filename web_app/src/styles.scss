@@ -1580,8 +1580,9 @@ blockquote {
 }
 svg.hm {
   position: absolute;
-  left: 0;
-  top: 0;
+  /* The drawing is bigger than its element by PAD (handmade.ts): strokes overshoot the corners */
+  left: -14px;
+  top: -14px;
   z-index: -1;
   display: block !important;
   overflow: visible;
@@ -1780,30 +1781,31 @@ svg.hm {
 .decor-btn.active > svg.hm {
   --hm: var(--stamp);
 }
-.mandarin-chip > svg.hm,
-.decor-btn > svg.hm,
-.snow-btn > svg.hm,
-.zoom button > svg.hm {
-  filter: none;
-}
 
-/* Grain of the pencil (not on the frame over the animated scene) */
-.hm-defs {
-  position: absolute;
-}
+/* Grain of the pencil: tiled masks made by core/handmade.ts (strong on lines, weak on hatching) */
 svg.hm {
-  filter: url(#hm-grain);
+  -webkit-mask-image: var(--hm-grain);
+  mask-image: var(--hm-grain);
+  -webkit-mask-size: 160px 160px;
+  mask-size: 160px 160px;
 }
-/* Fills are only slightly mottled: the text on them must stay easy to read */
 svg.hm-ink-block,
 svg.hm-wash {
-  filter: url(#hm-ink);
+  -webkit-mask-image: var(--hm-grain-soft);
+  mask-image: var(--hm-grain-soft);
 }
-/* Pencil hatching is a texture by itself: no filter (many filtered layers make panels open slowly) */
-:root[data-fill='hatch'] svg.hm-ink-block,
-:root[data-fill='hatch'] svg.hm-wash {
-  filter: none;
+/* No grain on the frame over the animated scene and on the paper tags */
+svg.hm-picture,
+svg.hm-tag,
+svg.hm-tag-round {
+  -webkit-mask-image: none;
+  mask-image: none;
 }
-svg.hm-picture {
-  filter: none;
+
+/* Buttons under the pointer: brighter on hover, a touch darker while pressed (the drawing also spreads) */
+svg.hm.hm-hover {
+  filter: brightness(1.12) saturate(1.08);
+}
+svg.hm.hm-press {
+  filter: brightness(0.93);
 }

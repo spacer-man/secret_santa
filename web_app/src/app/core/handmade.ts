@@ -270,13 +270,6 @@ function paint(shape: (seed: number, k: number) => string, seed: number, alpha: 
   return out + path(shape(seed, 0), 'hm-edge', ` opacity="${Math.min(1, alpha * 0.9)}"`);
 }
 
-/**
- * How coloured areas are filled: 'hatch' — pencil hatching, 'wash' — layers of watercolour.
- * `?fill=wash` in the URL switches to the watercolour for comparison.
- */
-const FILL: 'hatch' | 'wash' =
-  new URLSearchParams(location.search).get('fill') === 'wash' ? 'wash' : 'hatch';
-
 interface Hatch {
   /** Direction of the strokes, degrees */
   angle: number;
@@ -286,6 +279,10 @@ interface Hatch {
   lw: number;
   alpha: number;
   seed: number;
+  /** How much every stroke may turn away from the common direction, degrees (default 2.5) */
+  wobble?: number;
+  /** The hatched area is this much bigger than the element on every side, px */
+  grow?: number;
 }
 
 /**
@@ -293,7 +290,10 @@ interface Hatch {
  * strokes of uneven pressure; each one starts and ends a little off the edge,
  * bends slightly, and now and then the hand skips a stroke
  */
-function hatch(w: number, h: number, round: boolean, o: Hatch): string {
+function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
+  const grow = o.grow ?? 0;
+  const [w, h] = [w0 + grow * 2, h0 + grow * 2];
+  const wobble = ((o.wobble ?? 2.5) * Math.PI) / 180;
   const a = (o.angle * Math.PI) / 180;
   const [dx, dy] = [Math.cos(a), Math.sin(a)];
   const [nx, ny] = [-dy, dx];
@@ -340,9 +340,14 @@ function hatch(w: number, h: number, round: boolean, o: Hatch): string {
     s1 += (hash(o.seed * 6.7 + k * 4.3) - 0.4) * 5;
     if (s1 - s0 < 3) continue;
     const bend = (hash(o.seed * 8.9 + k * 2.3) - 0.5) * Math.min(4, (s1 - s0) * 0.04);
-    const [x0, y0] = [px + dx * s0, py + dy * s0];
-    const [x1, y1] = [px + dx * s1, py + dy * s1];
-    const [mx, my] = [(x0 + x1) / 2 + nx * bend, (y0 + y1) / 2 + ny * bend];
+    // The hand keeps one direction, but never exactly: the stroke turns a little about its middle
+    const turn = (hash(o.seed * 7.7 + k * 3.1) - 0.5) * 2 * wobble;
+    const [tx, ty] = [Math.cos(a + turn), Math.sin(a + turn)];
+    const [sm, half] = [(s0 + s1) / 2, (s1 - s0) / 2];
+    const [qx, qy] = [px + dx * sm, py + dy * sm];
+    const [x0, y0] = [qx - tx * half, qy - ty * half];
+    const [x1, y1] = [qx + tx * half, qy + ty * half];
+    const [mx, my] = [qx + nx * bend, qy + ny * bend];
     const press = noise1(k * 0.37 + o.seed * 1.3);
     const opacity = o.alpha * Math.max(0.25, Math.min(1, 0.7 + 0.5 * press));
     const width = o.lw * (0.75 + 0.5 * hash(o.seed * 4.1 + k * 5.9));
@@ -350,40 +355,55 @@ function hatch(w: number, h: number, round: boolean, o: Hatch): string {
       `<path class="hm-stroke" opacity="${opacity.toFixed(2)}" stroke-width="${r1(width)}" ` +
       `d="M${r1(x0)} ${r1(y0)}Q${r1(mx)} ${r1(my)} ${r1(x1)} ${r1(y1)}"/>`;
   }
-  return out;
+  return grow ? `<g transform="translate(${-grow} ${-grow})">${out}</g>` : out;
 }
 
 const faint = (markup: string, opacity: number): string => `<g opacity="${opacity}">${markup}</g>`;
 
-function draw(kind: Kind, el: HTMLElement, w: number, h: number, seed: number): string {
+/**
+ * @param press the element is being pressed: the drawing "spreads" — it is a bit
+ * bigger and bolder, as if the paint ran under the finger
+ */
+function draw(
+  kind: Kind,
+  el: HTMLElement,
+  w: number,
+  h: number,
+  seed: number,
+  press = false,
+): string {
+  const bold = press ? 1.4 : 1;
   switch (kind) {
     case 'stamp':
-      // A faint wash, a thick outer frame and a thin inner one
+      // A big area: a faint watercolour wash, a thick outer frame and a thin inner one
       return (
-        (FILL === 'hatch'
-          ? hatch(w, h, false, { angle: -38, gap: 14, lw: 3.4, alpha: 0.12, seed })
-          : paint((s) => inkRect(w, h, 1.6, s), seed, 0.035)) +
+        paint((s) => inkRect(w, h, 1.6, s), seed, 0.035) +
         frame(w, h, 0, 6, { w: 2.8, seed, taper: 0.45 }) +
         faint(frame(w, h, 6, 4, { w: 1.3, seed: seed + 40, taper: 0.6 }), 0.7)
       );
-    case 'ink-block':
-      if (FILL === 'hatch')
-        // Coloured pencil: a pale base, dense hatching, a lighter second pass across it, an outline
-        return (
-          path(inkRect(w, h, 1.2, seed), 'hm-fill', ' opacity="0.42"') +
-          hatch(w, h, false, { angle: -42, gap: 5.2, lw: 6, alpha: 0.85, seed }) +
-          hatch(w, h, false, { angle: -20, gap: 12, lw: 4.5, alpha: 0.38, seed: seed + 50 }) +
-          `<g class="hm-dark">${frame(w, h, 0, 4, { w: 1.6, seed: seed + 9, taper: 0.5 })}</g>`
-        );
-      // The darker "shadow" print below and the block itself in three layers of ink
+    case 'ink-block': {
+      // Coloured pencil: a pale base, wide hatching in one direction (twice), an outline
+      const grow = press ? 3 : 0;
+      const angle = -42 + (hash(seed * 1.7) - 0.5) * 6;
       return (
-        path(inkRect(w, h, 1.4, seed + 70), 'hm-shade', ' transform="translate(1 3)"') +
-        paint((s) => inkRect(w, h, 1.5, s), seed, 0.55)
+        path(inkRect(w, h, 1.2, seed, grow), 'hm-fill', ` opacity="${press ? 0.6 : 0.42}"`) +
+        hatch(w, h, false, { angle, gap: 5.2, lw: 6 * bold, alpha: 0.85, seed, grow }) +
+        hatch(w, h, false, {
+          angle: angle + 1.5,
+          gap: 12,
+          lw: 4.5 * bold,
+          alpha: 0.38,
+          seed: seed + 50,
+          grow,
+        }) +
+        `<g class="hm-dark">${frame(w, h, -grow, 4, { w: 1.6 * bold, seed: seed + 9, taper: 0.5 })}</g>`
       );
+    }
     case 'card':
       return (
-        frame(w, h, 0, 5, { w: 1.9, seed, taper: 0.55 }) +
-        faint(frame(w, h, 4, 3, { w: 1.1, seed: seed + 40, taper: 0.7 }), 0.45)
+        (press ? hatch(w, h, false, { angle: -42, gap: 9, lw: 5, alpha: 0.14, seed }) : '') +
+        frame(w, h, 0, 5, { w: 1.9 * bold, seed, taper: 0.55 }) +
+        faint(frame(w, h, 4, 3, { w: 1.1 * bold, seed: seed + 40, taper: 0.7 }), 0.45)
       );
     case 'sheet-frame':
       return frame(w, h, 5, 3, { w: 1.2, seed, taper: 0.5, jit: 0.8 });
@@ -424,28 +444,34 @@ function draw(kind: Kind, el: HTMLElement, w: number, h: number, seed: number): 
         ring(c, c, c - 5.5, { w: 1.2, seed: seed + 20, taper: 0.6 })
       );
     }
-    case 'wash':
-      if (FILL === 'hatch')
-        return (
-          hatch(w, h, true, { angle: -40, gap: 6.5, lw: 4.4, alpha: 0.42, seed }) +
-          hatch(w, h, true, { angle: 24, gap: 13, lw: 3.4, alpha: 0.2, seed: seed + 50 })
-        );
-      return paint(
-        (s, k) => blot(w / 2, h / 2, w * 0.42 * (1 - k * 0.06), h * 0.4 * (1 - k * 0.05), s),
-        seed,
-        0.14,
-      );
-    case 'tag':
-      // A slip of paper stuck onto the picture
+    case 'wash': {
+      // Behind the figures of the shop the hatching goes round (two directions), elsewhere one
+      const cross = el.matches('.card-icon');
       return (
-        path(inkRect(w, h, 1.1, seed), 'hm-paper') +
-        frame(w, h, 1, 3, { w: 1.5, seed: seed + 3, taper: 0.5, jit: 0.8 })
+        hatch(w, h, true, { angle: -40, gap: 6.5, lw: 4.4, alpha: 0.42, seed }) +
+        hatch(w, h, true, {
+          angle: cross ? 24 : -38.5,
+          gap: 13,
+          lw: 3.4,
+          alpha: 0.2,
+          seed: seed + 50,
+        })
       );
+    }
+    case 'tag': {
+      // A slip of paper stuck onto the picture
+      const grow = press ? 2 : 0;
+      return (
+        path(inkRect(w, h, 1.1, seed, grow), 'hm-paper') +
+        frame(w, h, 1 - grow, 3, { w: 1.5 * bold, seed: seed + 3, taper: 0.5, jit: 0.8 })
+      );
+    }
     case 'tag-round': {
       const c = w / 2;
+      const grow = press ? 2 : 0;
       return (
-        path(blot(c, h / 2, c, h / 2, seed), 'hm-paper') +
-        ring(c, h / 2, c - 1.5, { w: 1.5, seed: seed + 3, taper: 0.5 })
+        path(blot(c, h / 2, c + grow, h / 2 + grow, seed), 'hm-paper') +
+        ring(c, h / 2, c - 1.5 + grow, { w: 1.5 * bold, seed: seed + 3, taper: 0.5 })
       );
     }
   }
@@ -464,6 +490,37 @@ interface Drawing {
   svg: SVGSVGElement;
   size: string;
   boils: boolean;
+  /** The pointer is over the element / the element is pressed (buttons only) */
+  hover: boolean;
+  press: boolean;
+  /** Grows with every redraw on hover: the same button, drawn anew */
+  nonce: number;
+}
+
+/** Elements that answer to the pointer */
+const BUTTONS =
+  '.btn-primary, .btn-secondary, .card-btn.price, .card-btn.primary, .mandarin-chip, .decor-btn, .snow-btn, .zoom button';
+
+/** Room around the element for strokes that overshoot it, px */
+const PAD = 14;
+
+/**
+ * A tile of pencil grain as a CSS mask: `holes` of the pixels are faint (`hole` of the
+ * colour is left), the rest keep `min`..1
+ */
+function grainTile(holes: number, min: number, hole = 0): string {
+  const size = 160;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return 'none';
+  const image = ctx.createImageData(size, size);
+  for (let i = 0; i < size * size; i++) {
+    const v = hash(i * 0.731 + holes * 97);
+    image.data[i * 4 + 3] = Math.round(255 * (v < holes ? hole : min + (1 - min) * hash(i * 1.37)));
+  }
+  ctx.putImageData(image, 0, 0);
+  return `url(${canvas.toDataURL()})`;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -478,20 +535,11 @@ export class Handmade {
   private boilFrame = 0;
 
   start(): void {
-    document.documentElement.dataset['fill'] = FILL;
-    // Grain of the pencil lead and of the ink: tiny bald spots all over the drawing
-    document.body.insertAdjacentHTML(
-      'beforeend',
-      `<svg class="hm-defs" width="0" height="0" aria-hidden="true"><filter id="hm-grain" x="-5%" y="-60%" width="110%" height="220%">
-        <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="5" result="n"/>
-        <feColorMatrix in="n" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.6 1.95" result="spots"/>
-        <feComposite in="SourceGraphic" in2="spots" operator="in"/>
-      </filter><filter id="hm-ink" x="-5%" y="-20%" width="110%" height="140%">
-        <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2" seed="8" result="n"/>
-        <feColorMatrix in="n" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.3 1.62" result="spots"/>
-        <feComposite in="SourceGraphic" in2="spots" operator="in"/>
-      </filter></svg>`,
-    );
+    // Grain of the pencil lead: masks made once and tiled (much cheaper than an SVG filter per drawing)
+    const root = document.documentElement.style;
+    root.setProperty('--hm-grain', grainTile(0.3, 0.55));
+    root.setProperty('--hm-grain-soft', grainTile(0.05, 0.86, 0.62));
+    this.listen();
     new MutationObserver(() => this.schedule()).observe(document.body, {
       childList: true,
       subtree: true,
@@ -543,7 +591,11 @@ export class Handmade {
         svg,
         size: '',
         boils: el.matches(BOILING),
+        hover: false,
+        press: false,
+        nonce: 0,
       });
+      if (el.matches(BUTTONS)) el.classList.add('hm-btn');
       this.resizes.observe(el);
       this.redraw(el);
     });
@@ -559,15 +611,56 @@ export class Handmade {
     const size = `${w}x${h}|${textKey}`;
     if (size === d.size && !force) return;
     d.size = size;
-    d.svg.setAttribute('width', String(w));
-    d.svg.setAttribute('height', String(h));
-    d.svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    if (d.boils) {
+    d.svg.setAttribute('width', String(w + PAD * 2));
+    d.svg.setAttribute('height', String(h + PAD * 2));
+    d.svg.setAttribute('viewBox', `${-PAD} ${-PAD} ${w + PAD * 2} ${h + PAD * 2}`);
+    const seed = d.seed + d.nonce * 7.7;
+    if (d.boils && !d.press) {
       let html = '';
       for (let v = 0; v < BOIL_VARIANTS; v++)
-        html += `<g class="hm-v"${v ? ' style="display:none"' : ''}>${draw(d.kind, el, w, h, d.seed + v * 101)}</g>`;
+        html += `<g class="hm-v"${v ? ' style="display:none"' : ''}>${draw(d.kind, el, w, h, seed + v * 101)}</g>`;
       d.svg.innerHTML = html;
-    } else d.svg.innerHTML = draw(d.kind, el, w, h, d.seed);
+    } else d.svg.innerHTML = draw(d.kind, el, w, h, seed, d.press);
+  }
+
+  /**
+   * Buttons answer to the pointer. Hover (mouse): a still button is drawn anew
+   * once, a boiling one stops; both get brighter. Press: the drawing spreads.
+   */
+  private listen(): void {
+    const find = (e: Event): [HTMLElement, Drawing] | null => {
+      const el = (e.target as Element | null)?.closest?.<HTMLElement>('.hm-btn');
+      const d = el && this.drawings.get(el);
+      return el && d ? [el, d] : null;
+    };
+    const set = (el: HTMLElement, d: Drawing, state: 'hover' | 'press', on: boolean) => {
+      if (d[state] === on) return;
+      d[state] = on;
+      d.svg.classList.toggle(`hm-${state}`, on);
+      // Hovering a still button draws it anew; pressing and releasing always redraws
+      if (state === 'hover' && on && !d.boils) d.nonce++;
+      if (state === 'press' || (state === 'hover' && on && !d.boils)) this.redraw(el, true);
+    };
+    document.addEventListener('pointerover', (e) => {
+      const hit = find(e);
+      if (hit && e.pointerType === 'mouse') set(...hit, 'hover', true);
+    });
+    document.addEventListener('pointerout', (e) => {
+      const hit = find(e);
+      if (!hit || hit[0].contains(e.relatedTarget as Node | null)) return;
+      set(...hit, 'hover', false);
+      set(...hit, 'press', false);
+    });
+    document.addEventListener('pointerdown', (e) => {
+      const hit = find(e);
+      if (hit && !(hit[0] as HTMLButtonElement).disabled) set(...hit, 'press', true);
+    });
+    const release = () =>
+      this.drawings.forEach((d, el) => {
+        if (d.press) set(el, d, 'press', false);
+      });
+    document.addEventListener('pointerup', release);
+    document.addEventListener('pointercancel', release);
   }
 
   /** Line boil: the drawings that "live" switch to their next variant */
@@ -575,7 +668,8 @@ export class Handmade {
     if (document.hidden) return;
     this.boilFrame++;
     this.drawings.forEach((d) => {
-      if (!d.boils) return;
+      // A boiling drawing stands still under the pointer
+      if (!d.boils || d.hover || d.press) return;
       const groups = d.svg.children;
       for (let i = 0; i < groups.length; i++)
         (groups[i] as SVGElement).style.display =

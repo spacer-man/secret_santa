@@ -1,3 +1,5 @@
+import os
+
 from pydantic import Field, SecretStr
 
 from .common import EnvConfig
@@ -17,5 +19,5 @@ class WebhookConfig(EnvConfig):
 
 # Not settings fields: env vars like PATH / HOST would override them
 WEBHOOK_HOST = "0.0.0.0"
-WEBHOOK_PORT = 8080
+WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT") or 8080)  # локально можно сменить в .env.dev
 WEBHOOK_PATH = "/telegram/webhook"

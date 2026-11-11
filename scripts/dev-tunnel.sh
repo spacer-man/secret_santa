@@ -28,7 +28,13 @@ set +a
 [ -n "${BOT_TOKEN:-}" ] || die "В $ENV_FILE не задан BOT_TOKEN"
 [ -n "${WISH_VALIDATE_TG_IDS:-}" ] || die "В $ENV_FILE не задан WISH_VALIDATE_TG_IDS (ваш Telegram ID)"
 
-WEB_PORT="${WEB_PORT:-4200}"
+export WEB_PORT="${WEB_PORT:-4200}" API_PORT="${API_PORT:-8000}" WEBHOOK_PORT="${WEBHOOK_PORT:-8080}"
+# Порт занят (например, бот от прошлого запуска) — сразу говорим, а не падаем после туннеля
+for port in "$WEB_PORT" "$API_PORT" "$WEBHOOK_PORT"; do
+  if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+    die "Порт $port занят. Освободите его или задайте другой в $ENV_FILE (WEB_PORT / API_PORT / WEBHOOK_PORT)"
+  fi
+done
 export DB_URL="${DB_URL:-sqlite+aiosqlite:///$DEV/santa.db}"
 export STATE_STORAGE_REDIS_URL="${STATE_STORAGE_REDIS_URL:-}"   # пусто = состояния в памяти
 export WEBHOOK_SECRET="${WEBHOOK_SECRET:-$(head -c 18 /dev/urandom | od -An -tx1 | tr -d ' \n')}"

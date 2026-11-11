@@ -59,42 +59,22 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
     <svg viewBox="-10 -14 140 164" aria-hidden="true">
       <g class="m-all">
         <g class="m-breath">
-          <!-- Coat: it goes on below the picture and dissolves in hatching -->
+          <!--
+            Coat and arms are one figure without inner seams (at the shoulders and the elbows):
+            first every part with its outline, then all the fills again without outlines over them,
+            so only the outer contour stays. Arms (upper arm + forearm, the left one mirrors the
+            right) hang at the sides; the right one has an elbow to wave: the upper arm goes out to
+            the side, the forearm bends up and swings. The copies of a moving part share its
+            class, so they move together. The coat goes on below the picture and fades out.
+          -->
           <path class="m-coat" d="M22 156C23 116 38 95 60 94S97 116 98 156Z" />
-          <path class="m-hatch" [attr.d]="hatch" />
-          <path class="m-fur m-band" d="M55 104h10v52H55Z" />
-
-          <!-- Fur collar: under the shoulders, its ends tuck in under the arms -->
-          <path
-            class="m-fur"
-            d="M34 103C42 97 50 95 60 95S78 97 86 103L83 109C76 104.5 68 103 60 103S44 104.5 37 109Z"
-          />
-
-          <!-- Arms hang at the sides from round shoulders and fade out with the coat -->
-          <!-- The left arm: the same as the right one, mirrored (it only hangs) -->
           <g class="m-arm-l">
             <path class="m-coat" d="M31.2 129.1A6.5 6.5 0 0 0 18.8 124.9L14.3 143.4L23.7 146.6Z" />
             <path
               class="m-coat"
               d="M43.1 109.9A9 9 0 0 0 26.9 102.1L19.1 124.2A6.5 6.5 0 0 0 30.9 129.8Z"
             />
-            <path
-              class="m-coat m-fill-only"
-              d="M31.2 129.1A6.5 6.5 0 0 0 18.8 124.9L14.3 143.4L23.7 146.6Z"
-            />
-            <path
-              class="m-coat m-fill-only"
-              d="M43.1 109.9A9 9 0 0 0 26.9 102.1L19.1 124.2A6.5 6.5 0 0 0 30.9 129.8Z"
-            />
           </g>
-          <!--
-            The right arm has an elbow: to wave, the upper arm goes out to the side and the
-            forearm bends up and swings. Hanging, its cuff and mitten are hidden below.
-          -->
-          <!--
-            Upper arm and forearm meet without a seam at the elbow: first both shapes with their
-            outlines, then both fills again without outlines over them, so only the outer contour stays.
-          -->
           <g class="m-arm">
             <g class="m-fore">
               <path
@@ -106,6 +86,28 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
               class="m-coat"
               d="M76.9 109.9A9 9 0 0 1 93.1 102.1L100.9 124.2A6.5 6.5 0 0 1 89.1 129.8Z"
             />
+          </g>
+
+          <path class="m-coat m-fill-only" d="M22 156C23 116 38 95 60 94S97 116 98 156Z" />
+          <path class="m-hatch" [attr.d]="hatch" />
+          <path class="m-fur m-band" d="M55 104h10v52H55Z" />
+          <!-- Fur collar: under the arms, its ends tuck in under the shoulders -->
+          <path
+            class="m-fur"
+            d="M34 103C42 97 50 95 60 95S78 97 86 103L83 109C76 104.5 68 103 60 103S44 104.5 37 109Z"
+          />
+
+          <g class="m-arm-l">
+            <path
+              class="m-coat m-fill-only"
+              d="M31.2 129.1A6.5 6.5 0 0 0 18.8 124.9L14.3 143.4L23.7 146.6Z"
+            />
+            <path
+              class="m-coat m-fill-only"
+              d="M43.1 109.9A9 9 0 0 0 26.9 102.1L19.1 124.2A6.5 6.5 0 0 0 30.9 129.8Z"
+            />
+          </g>
+          <g class="m-arm">
             <g class="m-fore">
               <path
                 class="m-coat m-fill-only"
@@ -116,6 +118,7 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
               class="m-coat m-fill-only"
               d="M76.9 109.9A9 9 0 0 1 93.1 102.1L100.9 124.2A6.5 6.5 0 0 1 89.1 129.8Z"
             />
+            <!-- Cuff and mitten: hidden below while the arm hangs -->
             <g class="m-fore">
               <g class="m-hand">
                 <ellipse

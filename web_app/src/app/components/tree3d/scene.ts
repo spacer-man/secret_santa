@@ -2383,6 +2383,10 @@ export class TreeWorld {
     const depth = new THREE.Mesh(this.arrowGeo, this.depthOnly);
     depth.renderOrder = 10;
     arrow.add(depth);
+    // Outlined like the rest of the scene. Drawn after the depth pre-pass: inside the silhouette
+    // the arrow's own depth hides the dark shell, so it does not show through the translucent arrow
+    withOutline(arrow);
+    arrow.children[arrow.children.length - 1].renderOrder = 12;
     const glow = this.glow(0x5a9bff, 1.2 * size, 0.8);
     glow.material.blending = THREE.NormalBlending;
     glow.position.y = 0.05;

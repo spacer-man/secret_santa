@@ -31,9 +31,9 @@ const ACT_MS: Record<Act, number> = {
 };
 
 /** Hatching of the bottom of the coat: slanted pencil strokes that fade out with it */
-const HATCH = Array.from({ length: 16 }, (_, i) => {
-  const x = 14 + i * 6;
-  const len = 16 + ((i * 7) % 5) * 4;
+const HATCH = Array.from({ length: 14 }, (_, i) => {
+  const x = 26 + i * 4.2;
+  const len = 12 + ((i * 7) % 5) * 3;
   return `M${x} ${150 - (i % 3) * 2}l${(len * 0.64).toFixed(1)} ${(-len * 0.77).toFixed(1)}`;
 }).join('');
 
@@ -59,17 +59,8 @@ const HATCH = Array.from({ length: 16 }, (_, i) => {
     <svg viewBox="-6 -14 132 164" aria-hidden="true">
       <g class="m-all">
         <g class="m-breath">
-          <!-- Coat: it goes on below the picture and dissolves in hatching -->
-          <path class="m-coat" d="M4 156C6 112 28 93 60 93S114 112 116 156Z" />
-          <path class="m-hatch" [attr.d]="hatch" />
-          <path class="m-fur m-band" d="M54 104h12v52H54Z" />
-          <path
-            class="m-fur"
-            d="M26 103C36 96 48 94 60 94S84 96 94 103L90 110C80 104 70 102 60 102S40 104 30 110Z"
-          />
-
-          <!-- The arm with a mitten: hidden below, raised to wave -->
-          <g transform="translate(-5 2)">
+          <!-- The arm with a mitten, behind the coat: it comes out of the shoulder to wave -->
+          <g transform="translate(-4 1)">
             <g class="m-arm">
               <!-- A soft sleeve: wide at the shoulder, narrow at the wrist, slightly bent -->
               <path
@@ -92,6 +83,15 @@ const HATCH = Array.from({ length: 16 }, (_, i) => {
               <path class="m-crease" d="M101.8 78.2q0.6 2.2 -0.3 4" />
             </g>
           </g>
+
+          <!-- Coat: it goes on below the picture and dissolves in hatching -->
+          <path class="m-coat" d="M22 156C23 116 38 95 60 94S97 116 98 156Z" />
+          <path class="m-hatch" [attr.d]="hatch" />
+          <path class="m-fur m-band" d="M55 104h10v52H55Z" />
+          <path
+            class="m-fur"
+            d="M34 103C42 97 50 95 60 95S78 97 86 103L83 109C76 104.5 68 103 60 103S44 104.5 37 109Z"
+          />
         </g>
 
         <g class="m-head-act">

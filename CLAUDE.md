@@ -30,7 +30,8 @@
     `TEST_DB_URL=postgresql+asyncpg://... ` (локально был postgres 16 в `/usr/lib/postgresql/16/bin`).
 - `web_app/` — Angular 21 (standalone, signals). Один фронт = Telegram Mini App + сайт + PWA.
   - Зависимости ставить **bun** (`bun install`), не npm (у npm баг с этим lock-файлом). Сборка `npx ng build`.
-  - `core/` — `telegram.ts` (обёртка WebApp), `api.ts`, `store.ts` (состояние, гарды), `i18n.ts` (RU/EN), `time.ts`.
+  - `core/` — `telegram.ts` (обёртка WebApp; скрипт telegram.org грузит `tg-bridge.ts` до старта приложения: только в Mini App,
+    таймаут 3 с, иначе свой мост по протоколу web-events — у части пользователей telegram.org заблокирован; в index.html его не ставить), `api.ts`, `store.ts` (состояние, гарды), `i18n.ts` (RU/EN), `time.ts`.
   - `pages/` — home (ёлка, отсчёт, приглашение, «новогодняя волна»), register, new-wish (с конструктором шара),
     my-wishes, inbox (реакции/анонимный ответ), login (Telegram Login Widget).
   - `components/tree3d/` — 3D-сцена (three.js, лениво грузится, без WebGL / `?scene=2d` → 2D-ёлка `components/tree/`):

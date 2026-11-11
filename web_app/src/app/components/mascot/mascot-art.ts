@@ -90,18 +90,6 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
 
           <path class="m-coat m-fill-only" d="M22 156C23 116 38 95 60 94S97 116 98 156Z" />
           <path class="m-hatch" [attr.d]="hatch" />
-          <path class="m-fur m-band" d="M55 124h10v32H55Z" />
-          <!--
-            Fur collar: two triangular lapels from the shoulders meet in a "V" on the chest and
-            go on as the fur band down the coat. Under the arms, mostly behind the beard.
-          -->
-          <path class="m-fur" d="M35 101C42 97 51 95.5 61 95.5L60.5 135C55 123 45 110 35 101Z" />
-          <path class="m-fur" d="M85 101C78 97 69 95.5 59 95.5L59.5 135C65 123 75 110 85 101Z" />
-          <path
-            class="m-curl"
-            d="M44 105q2 3 1 6M51 115q2 3 1 6M76 105q-2 3 -1 6M69 115q-2 3 -1 6M60 104v24"
-          />
-
           <g class="m-arm-l">
             <path
               class="m-coat m-fill-only"
@@ -143,6 +131,19 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
               </g>
             </g>
           </g>
+
+          <!--
+            Fur trim, on top of the arms: two triangular lapels from the shoulders narrow down in a
+            "V" and go on as the fur band down the middle of the coat — one shape, no seam.
+          -->
+          <path
+            class="m-fur"
+            d="M35 101C42 97 51 95.5 60 95.5S78 97 85 101C77 110 69 120 65 130V156H55V130C51 120 43 110 35 101Z"
+          />
+          <path
+            class="m-curl"
+            d="M44 105q2 3 1 6M51 115q2 3 1 6M76 105q-2 3 -1 6M69 115q-2 3 -1 6"
+          />
         </g>
 
         <g class="m-head-act">

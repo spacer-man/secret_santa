@@ -495,6 +495,40 @@ interface Drawing {
   press: boolean;
   /** Grows with every redraw on hover: the same button, drawn anew */
   nonce: number;
+  /** The pencil outline scribbled around the button while it is hovered or pressed */
+  outline?: SVGSVGElement;
+}
+
+/**
+ * A careless pencil outline around a button: one line that goes round more
+ * than once, never along the same way twice. `round` — around a round button.
+ */
+function scribble(w: number, h: number, round: boolean, seed: number): string {
+  const turns = 1.55 + hash(seed * 3.9) * 0.2;
+  const margin = 3.5;
+  // Always an ellipse, the way a hand circles a word: it hugs the long sides and rounds the corners off
+  const [kx, ky] = round ? [1, 1] : [1.1, 1.32];
+  const steps = Math.max(18, Math.round(((w + h) * 2 * turns) / 13));
+  const start = -2.4 + hash(seed * 1.3) * 1.2;
+  const turn = (hash(seed * 6.1) - 0.5) * (round ? 0 : 0.035);
+  const tilt = [Math.cos(turn), Math.sin(turn)];
+  const pts: Pt[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const a = start + (i / steps) * turns * Math.PI * 2;
+    const [c, sn] = [Math.cos(a), Math.sin(a)];
+    const lap = (i / steps) * turns;
+    // Every lap drifts: a bit wider, a bit shifted
+    const out = margin + lap * 2.4 + noise1(i * 0.21 + seed) * 3.4;
+    const rx = (w / 2) * kx + out;
+    const ry = (h / 2) * ky + out;
+    const [x, y] = [c * rx, sn * ry];
+    // The whole loop is slightly askew and every lap is shifted against the previous one
+    const [sx, sy] = [noise1(lap * 3.1 + seed * 2) * 3, noise1(lap * 2.3 + seed * 5) * 2.4];
+    pts.push([w / 2 + x * tilt[0] - y * tilt[1] + sx, h / 2 + x * tilt[1] + y * tilt[0] + sy]);
+  }
+  return `M${smooth(pts, 3)
+    .map(([x, y]) => `${r1(x)} ${r1(y)}`)
+    .join('L')}`;
 }
 
 /** Elements that answer to the pointer */
@@ -623,6 +657,32 @@ export class Handmade {
     } else d.svg.innerHTML = draw(d.kind, el, w, h, seed, d.press);
   }
 
+  /** Scribbles the pencil outline around a hovered or pressed button, wipes it afterwards */
+  private outline(el: HTMLElement, d: Drawing): void {
+    const wanted = d.hover || d.press;
+    if (!wanted) {
+      d.outline?.remove();
+      d.outline = undefined;
+      return;
+    }
+    if (d.outline) return;
+    const [w, h] = [el.offsetWidth, el.offsetHeight];
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'hm-outline');
+    svg.setAttribute('aria-hidden', 'true');
+    // The ellipse reaches far beyond the button: its own, bigger room
+    const pad = Math.round(Math.max(w, h) * 0.12 + h * 0.2 + 18);
+    svg.setAttribute('width', String(w + pad * 2));
+    svg.setAttribute('height', String(h + pad * 2));
+    svg.setAttribute('viewBox', `${-pad} ${-pad} ${w + pad * 2} ${h + pad * 2}`);
+    svg.style.left = svg.style.top = `${-pad}px`;
+    const round = d.kind === 'tag-round';
+    // pathLength = 1: the line is "drawn" by moving one dash along it (see styles.scss)
+    svg.innerHTML = `<path pathLength="1" d="${scribble(w, h, round, d.seed + d.nonce * 3.3)}"/>`;
+    d.svg.after(svg);
+    d.outline = svg;
+  }
+
   /**
    * Buttons answer to the pointer. Hover (mouse): a still button is drawn anew
    * once, a boiling one stops; both get brighter. Press: the drawing spreads.
@@ -640,6 +700,7 @@ export class Handmade {
       // Hovering a still button draws it anew; pressing and releasing always redraws
       if (state === 'hover' && on && !d.boils) d.nonce++;
       if (state === 'press' || (state === 'hover' && on && !d.boils)) this.redraw(el, true);
+      this.outline(el, d);
     };
     document.addEventListener('pointerover', (e) => {
       const hit = find(e);

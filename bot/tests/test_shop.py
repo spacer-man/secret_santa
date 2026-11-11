@@ -214,9 +214,16 @@ def test_debug_tools(monkeypatch):
     register(9101)
     # Off by default: no such endpoint
     assert client.put("/api/debug", headers=h(9101), json={"level": 7}).status_code == 404
-    assert client.get("/api/config").json()["debug"] is False
+    assert client.get("/api/me", headers=h(9101)).json()["debug"] is False
 
+    # On, but not for a plain user
     monkeypatch.setattr(debug, "ENABLED", True)
+    assert client.put("/api/debug", headers=h(9101), json={"level": 7}).status_code == 404
+    assert client.get("/api/me", headers=h(9101)).json()["debug"] is False
+
+    # An admin
+    monkeypatch.setattr(debug, "ADMINS", frozenset({9101}))
+    assert client.get("/api/me", headers=h(9101)).json()["debug"] is True
     tree = client.put("/api/debug", headers=h(9101), json={"level": 7, "mandarins": 555}).json()
     assert tree["level"] == 7
     assert tree["mandarins"] == 555

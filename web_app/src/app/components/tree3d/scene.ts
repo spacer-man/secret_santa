@@ -45,6 +45,9 @@ interface Weather {
 
 const lerp = THREE.MathUtils.lerp;
 
+/** Size of the small arrows over the free places (the big one over a heap is 1.8) */
+const SMALL_ARROW = 1.4;
+
 interface BallSlot {
   top: THREE.Vector3;
   ball: THREE.Vector3;
@@ -2148,13 +2151,14 @@ export class TreeWorld {
         if (placedPads.has(i)) return;
         const b = makeBody(home.pos.x, home.pos.z, [{ dx: 0, dz: 0, r: 0.45 }]);
         resolve([b], obstacles, COURTYARD_RING);
-        const marker = this.arrowMarker(i);
+        // Big enough to be tapped with a finger from the corner view
+        const marker = this.arrowMarker(i, SMALL_ARROW);
         marker.position.set(b.x, terrainHeight(b.x, b.z), b.z);
         const hit = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.6, 0.6, 2.2, 8),
+          new THREE.CylinderGeometry(0.85, 0.85, 3, 8),
           new THREE.MeshBasicMaterial({ visible: false }),
         );
-        hit.position.y = 1.1;
+        hit.position.y = 1.5;
         hit.userData = { kind: 'pad', pad: i, item: null, react: marker, amount: 0.15 };
         this.clickables.push(hit);
         marker.add(hit);
@@ -2183,12 +2187,14 @@ export class TreeWorld {
         this.previews.push(big);
         this.dynamic.add(big);
 
-        // Crossfade by the distance of the camera to the corner
+        // Crossfade: flying to this corner hides its big arrow and shows the small ones;
+        // otherwise by the distance of the camera to the corner
         const group = small[ci];
         this.animated.push({
           update: () => {
             const d = this.camera.position.distanceTo(c);
-            const near = THREE.MathUtils.smoothstep(d, 7, 9.5); // 0 near, 1 far
+            const focused = this.focusTo === 1 && this.focusedCorner === ci ? this.focusBlend : 0;
+            const near = Math.min(THREE.MathUtils.smoothstep(d, 5.5, 7.5), 1 - focused); // 0 near, 1 far
             const k = this.decorMode ? near : 0;
             big.scale.setScalar(Math.max(k, 0.001));
             big.visible = this.decorMode && k > 0.02;
@@ -2533,8 +2539,11 @@ export class TreeWorld {
 
   private focusDist = 6.0;
   private focusElev = 0.42;
+  /** The corner the camera flies to / looks at (-1: none, e.g. the cabin) */
+  private focusedCorner = -1;
 
   focusCorner(corner: number): void {
+    this.focusedCorner = corner;
     // High enough to look over the figure on the nearest place
     this.focusDist = 8.2;
     this.focusElev = 0.85;
@@ -2551,6 +2560,7 @@ export class TreeWorld {
 
   /** Fly to the cabin (to see its lights) */
   focusCabin(): void {
+    this.focusedCorner = -1;
     const c = new THREE.Vector3(Math.cos(CABIN_ANGLE) * 12.5, 0, Math.sin(CABIN_ANGLE) * 12.5);
     // From the courtyard, a bit to the side: the whole front with the roof
     this.focusTarget.set(c.x * 0.97, 2.3, c.z * 0.97);

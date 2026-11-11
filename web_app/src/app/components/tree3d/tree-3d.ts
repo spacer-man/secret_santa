@@ -55,11 +55,10 @@ import type { LightSkin } from './cabin-lights';
       width: 2.4rem;
       height: 2.4rem;
       border-radius: 50%;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      background: rgba(12, 11, 34, 0.55);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-      color: #fff;
+      /* Looks like a round paper tag: drawn by core/handmade.ts, colours in styles.scss */
+      border: none;
+      background: none;
+      color: var(--ink);
       font-size: 1.3rem;
       line-height: 1;
       cursor: pointer;

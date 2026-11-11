@@ -24,6 +24,7 @@
   --gold: #a87618;
   --green: #2d7a57;
   --orange: #bd5f10;
+  --buy: #2f6f57;
   --wash: rgba(104, 138, 164, 0.3);
   --wash-ink: #5f86a6;
   --rarity-common: #7d7d8c;
@@ -65,6 +66,7 @@
   --gold: #e3b55b;
   --green: #4fc79a;
   --orange: #ffa040;
+  --buy: #3f9c7a;
   --wash: rgba(120, 160, 200, 0.22);
   --wash-ink: #7fa8cf;
   --rarity-common: #8b8ba0;
@@ -1574,12 +1576,7 @@ blockquote {
    the drawing replaces (CSS borders and backgrounds are switched off).
    ============================================================ */
 .hm-host {
-  position: relative;
   isolation: isolate;
-}
-.tabs.hm-host,
-.sheet.hm-host {
-  position: fixed;
 }
 svg.hm {
   position: absolute;
@@ -1593,6 +1590,14 @@ svg.hm {
 }
 .hm-fill {
   fill: var(--hm);
+}
+.hm-stroke {
+  fill: none;
+  stroke: var(--hm);
+  stroke-linecap: round;
+}
+.hm-dark {
+  --hm: var(--hm-dark, var(--ink));
 }
 .hm-edge {
   fill: none;
@@ -1734,9 +1739,52 @@ svg.hm {
 .card-icon > svg.hm {
   --hm: var(--accent);
 }
+/* Spruce green: the mandarin of the price must not melt into the button */
 .card-btn.price > svg.hm,
 .card-btn.primary > svg.hm {
-  --hm: var(--orange);
+  --hm: var(--buy);
+  --hm-dark: color-mix(in srgb, var(--buy) 60%, #000);
+}
+.btn-primary > svg.hm {
+  --hm-dark: color-mix(in srgb, var(--stamp) 60%, #000);
+}
+
+/* Buttons over the scene: paper tags stuck onto the illustration, each a little askew */
+.mandarin-chip,
+.decor-btn,
+.snow-btn,
+.zoom button {
+  color: var(--ink);
+  background: none;
+  border: none;
+  border-radius: 0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+}
+.mandarin-chip {
+  font-family: var(--slab);
+  transform: rotate(1.2deg);
+}
+.hud-actions .mandarin-chip:first-child {
+  transform: rotate(-1.6deg);
+}
+.decor-btn {
+  font-family: var(--slab);
+  transform: rotate(-1.4deg);
+}
+.decor-btn.active {
+  color: var(--stamp);
+  background: none;
+}
+.decor-btn.active > svg.hm {
+  --hm: var(--stamp);
+}
+.mandarin-chip > svg.hm,
+.decor-btn > svg.hm,
+.snow-btn > svg.hm,
+.zoom button > svg.hm {
+  filter: none;
 }
 
 /* Grain of the pencil (not on the frame over the animated scene) */
@@ -1750,6 +1798,11 @@ svg.hm {
 svg.hm-ink-block,
 svg.hm-wash {
   filter: url(#hm-ink);
+}
+/* Pencil hatching is a texture by itself: no filter (many filtered layers make panels open slowly) */
+:root[data-fill='hatch'] svg.hm-ink-block,
+:root[data-fill='hatch'] svg.hm-wash {
+  filter: none;
 }
 svg.hm-picture {
   filter: none;

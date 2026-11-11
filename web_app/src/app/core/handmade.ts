@@ -21,7 +21,9 @@ type Kind =
   | 'top-rule'
   | 'picture'
   | 'seal'
-  | 'wash';
+  | 'wash'
+  | 'tag'
+  | 'tag-round';
 
 /** What is drawn where. Colours come from CSS (`--hm`, see styles.scss) */
 const RULES: [selector: string, kind: Kind][] = [
@@ -35,6 +37,9 @@ const RULES: [selector: string, kind: Kind][] = [
   ['.tree-card', 'picture'],
   ['.seal', 'seal'],
   ['.sheet-emoji, .card-icon', 'wash'],
+  // Buttons over the scene: paper tags stuck onto the illustration
+  ['.mandarin-chip, .decor-btn', 'tag'],
+  ['.snow-btn, .zoom button', 'tag-round'],
 ];
 const SELECTOR = RULES.map(([s]) => s).join(', ');
 
@@ -265,6 +270,89 @@ function paint(shape: (seed: number, k: number) => string, seed: number, alpha: 
   return out + path(shape(seed, 0), 'hm-edge', ` opacity="${Math.min(1, alpha * 0.9)}"`);
 }
 
+/**
+ * How coloured areas are filled: 'hatch' — pencil hatching, 'wash' — layers of watercolour.
+ * `?fill=wash` in the URL switches to the watercolour for comparison.
+ */
+const FILL: 'hatch' | 'wash' =
+  new URLSearchParams(location.search).get('fill') === 'wash' ? 'wash' : 'hatch';
+
+interface Hatch {
+  /** Direction of the strokes, degrees */
+  angle: number;
+  /** Distance between the strokes, px */
+  gap: number;
+  /** Width of a stroke, px */
+  lw: number;
+  alpha: number;
+  seed: number;
+}
+
+/**
+ * Pencil hatching of a rectangle or of an ellipse inscribed into it: parallel
+ * strokes of uneven pressure; each one starts and ends a little off the edge,
+ * bends slightly, and now and then the hand skips a stroke
+ */
+function hatch(w: number, h: number, round: boolean, o: Hatch): string {
+  const a = (o.angle * Math.PI) / 180;
+  const [dx, dy] = [Math.cos(a), Math.sin(a)];
+  const [nx, ny] = [-dy, dx];
+  const [cx, cy] = [w / 2, h / 2];
+  const reach = Math.abs(nx) * cx + Math.abs(ny) * cy;
+  let out = '';
+  let k = 0;
+  for (let t = -reach; t <= reach; k++) {
+    const step = o.gap * (0.7 + 0.6 * hash(o.seed * 5.1 + k * 3.7));
+    const [px, py] = [cx + nx * t, cy + ny * t];
+    t += step;
+    // The part of the line inside the shape: s0..s1 along the direction
+    let s0: number;
+    let s1: number;
+    if (round) {
+      const [ex, ey] = [(px - cx) / cx, (py - cy) / cy];
+      const [fx, fy] = [dx / cx, dy / cy];
+      const A = fx * fx + fy * fy;
+      const B = 2 * (ex * fx + ey * fy);
+      const D = B * B - 4 * A * (ex * ex + ey * ey - 1);
+      if (D <= 0) continue;
+      s0 = (-B - Math.sqrt(D)) / (2 * A);
+      s1 = (-B + Math.sqrt(D)) / (2 * A);
+    } else {
+      s0 = -Infinity;
+      s1 = Infinity;
+      for (const [p, d, max] of [
+        [px, dx, w],
+        [py, dy, h],
+      ]) {
+        if (Math.abs(d) < 1e-6) {
+          if (p < 0 || p > max) s0 = Infinity;
+          continue;
+        }
+        const [u, v] = [(0 - p) / d, (max - p) / d];
+        s0 = Math.max(s0, Math.min(u, v));
+        s1 = Math.min(s1, Math.max(u, v));
+      }
+      if (!(s1 > s0)) continue;
+    }
+    if (hash(o.seed * 9.3 + k * 1.9) < 0.035) continue; // a skipped stroke
+    // Uneven ends: the hand does not stop exactly at the edge
+    s0 += (hash(o.seed * 2.3 + k * 7.1) - 0.6) * 5;
+    s1 += (hash(o.seed * 6.7 + k * 4.3) - 0.4) * 5;
+    if (s1 - s0 < 3) continue;
+    const bend = (hash(o.seed * 8.9 + k * 2.3) - 0.5) * Math.min(4, (s1 - s0) * 0.04);
+    const [x0, y0] = [px + dx * s0, py + dy * s0];
+    const [x1, y1] = [px + dx * s1, py + dy * s1];
+    const [mx, my] = [(x0 + x1) / 2 + nx * bend, (y0 + y1) / 2 + ny * bend];
+    const press = noise1(k * 0.37 + o.seed * 1.3);
+    const opacity = o.alpha * Math.max(0.25, Math.min(1, 0.7 + 0.5 * press));
+    const width = o.lw * (0.75 + 0.5 * hash(o.seed * 4.1 + k * 5.9));
+    out +=
+      `<path class="hm-stroke" opacity="${opacity.toFixed(2)}" stroke-width="${r1(width)}" ` +
+      `d="M${r1(x0)} ${r1(y0)}Q${r1(mx)} ${r1(my)} ${r1(x1)} ${r1(y1)}"/>`;
+  }
+  return out;
+}
+
 const faint = (markup: string, opacity: number): string => `<g opacity="${opacity}">${markup}</g>`;
 
 function draw(kind: Kind, el: HTMLElement, w: number, h: number, seed: number): string {
@@ -272,11 +360,21 @@ function draw(kind: Kind, el: HTMLElement, w: number, h: number, seed: number): 
     case 'stamp':
       // A faint wash, a thick outer frame and a thin inner one
       return (
-        paint((s) => inkRect(w, h, 1.6, s), seed, 0.035) +
+        (FILL === 'hatch'
+          ? hatch(w, h, false, { angle: -38, gap: 14, lw: 3.4, alpha: 0.12, seed })
+          : paint((s) => inkRect(w, h, 1.6, s), seed, 0.035)) +
         frame(w, h, 0, 6, { w: 2.8, seed, taper: 0.45 }) +
         faint(frame(w, h, 6, 4, { w: 1.3, seed: seed + 40, taper: 0.6 }), 0.7)
       );
     case 'ink-block':
+      if (FILL === 'hatch')
+        // Coloured pencil: a pale base, dense hatching, a lighter second pass across it, an outline
+        return (
+          path(inkRect(w, h, 1.2, seed), 'hm-fill', ' opacity="0.42"') +
+          hatch(w, h, false, { angle: -42, gap: 5.2, lw: 6, alpha: 0.85, seed }) +
+          hatch(w, h, false, { angle: -20, gap: 12, lw: 4.5, alpha: 0.38, seed: seed + 50 }) +
+          `<g class="hm-dark">${frame(w, h, 0, 4, { w: 1.6, seed: seed + 9, taper: 0.5 })}</g>`
+        );
       // The darker "shadow" print below and the block itself in three layers of ink
       return (
         path(inkRect(w, h, 1.4, seed + 70), 'hm-shade', ' transform="translate(1 3)"') +
@@ -327,11 +425,29 @@ function draw(kind: Kind, el: HTMLElement, w: number, h: number, seed: number): 
       );
     }
     case 'wash':
+      if (FILL === 'hatch')
+        return (
+          hatch(w, h, true, { angle: -40, gap: 6.5, lw: 4.4, alpha: 0.42, seed }) +
+          hatch(w, h, true, { angle: 24, gap: 13, lw: 3.4, alpha: 0.2, seed: seed + 50 })
+        );
       return paint(
         (s, k) => blot(w / 2, h / 2, w * 0.42 * (1 - k * 0.06), h * 0.4 * (1 - k * 0.05), s),
         seed,
         0.14,
       );
+    case 'tag':
+      // A slip of paper stuck onto the picture
+      return (
+        path(inkRect(w, h, 1.1, seed), 'hm-paper') +
+        frame(w, h, 1, 3, { w: 1.5, seed: seed + 3, taper: 0.5, jit: 0.8 })
+      );
+    case 'tag-round': {
+      const c = w / 2;
+      return (
+        path(blot(c, h / 2, c, h / 2, seed), 'hm-paper') +
+        ring(c, h / 2, c - 1.5, { w: 1.5, seed: seed + 3, taper: 0.5 })
+      );
+    }
   }
 }
 
@@ -362,6 +478,7 @@ export class Handmade {
   private boilFrame = 0;
 
   start(): void {
+    document.documentElement.dataset['fill'] = FILL;
     // Grain of the pencil lead and of the ink: tiny bald spots all over the drawing
     document.body.insertAdjacentHTML(
       'beforeend',
@@ -416,6 +533,8 @@ export class Handmade {
       svg.setAttribute('class', `hm hm-${kind}`);
       svg.setAttribute('aria-hidden', 'true');
       el.classList.add('hm-host');
+      // The drawing is placed against its element (absolute/fixed elements already are a frame)
+      if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
       if (kind === 'picture') el.append(svg);
       else el.prepend(svg);
       this.drawings.set(el, {

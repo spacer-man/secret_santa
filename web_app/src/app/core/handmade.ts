@@ -510,7 +510,10 @@ function draw(
     case 'field':
       return frame(w, h, 0, 4, { w: 1.7, seed, taper: 0.5 });
     case 'sheet-frame':
-      return frame(w, h, 5, 3, { w: 1.2, seed, taper: 0.5, jit: 0.8 });
+      return (
+        `<g class="hm-frost">${frost(w, h, seed)}</g>` +
+        frame(w, h, 5, 3, { w: 1.2, seed, taper: 0.5, jit: 0.8 })
+      );
     case 'title': {
       // Two rules on both sides of the text
       const range = document.createRange();
@@ -579,6 +582,162 @@ function draw(
       );
     }
   }
+}
+
+// ====== Frost on the sheet ====== //
+
+/**
+ * Ice lines collected by thickness: thousands of fine needles go into a few
+ * `<path>` elements (one per thickness), so the frost costs almost nothing to draw.
+ */
+class Ice {
+  private readonly d: string[] = ['', '', ''];
+  constructor(private readonly seed: number) {}
+
+  /** A needle from (x, y) in direction `a`; `size` 0 (finest) .. 2 (a stem) */
+  needle(x: number, y: number, a: number, len: number, size: 0 | 1 | 2, seed: number): void {
+    // A long needle bends very slightly, as a hand-drawn line does
+    const bend = len > 14 ? (hash(seed * 5.1 + this.seed) - 0.5) * len * 0.08 : 0;
+    const mx = x + Math.cos(a) * len * 0.5 - Math.sin(a) * bend;
+    const my = y + Math.sin(a) * len * 0.5 + Math.cos(a) * bend;
+    const ex = x + Math.cos(a) * len;
+    const ey = y + Math.sin(a) * len;
+    this.d[size] +=
+      `M${r1(x)} ${r1(y)}Q${r1(2 * mx - (x + ex) / 2)} ${r1(2 * my - (y + ey) / 2)} ${r1(ex)} ${r1(ey)}`;
+  }
+
+  toString(): string {
+    const widths = [0.7, 1.05, 1.5];
+    const alphas = [0.55, 0.75, 0.9];
+    return this.d
+      .map((d, i) =>
+        d
+          ? `<path class="hm-stroke" stroke-width="${widths[i]}" opacity="${alphas[i]}" d="${d}"/>`
+          : '',
+      )
+      .join('');
+  }
+}
+
+/**
+ * A frost feather, as on a window pane: a stem with dense needles on both
+ * sides at ~60°, shorter towards the tip; the big needles have needles of their own.
+ */
+function feather(
+  ice: Ice,
+  x: number,
+  y: number,
+  a: number,
+  len: number,
+  depth: number,
+  seed: number,
+) {
+  ice.needle(x, y, a, len, depth >= 2 ? 2 : depth === 1 ? 1 : 0, seed);
+  if (depth === 0 || len < 8) return;
+  const gap = depth >= 2 ? 7 : 4.5;
+  const spread = 1.0 + (hash(seed * 1.9) - 0.5) * 0.2;
+  for (let t = gap / len + 0.06; t < 0.94; t += gap / len) {
+    const px = x + Math.cos(a) * len * t;
+    const py = y + Math.sin(a) * len * t;
+    // Needles get shorter towards the tip; a little randomness keeps it alive
+    const sub = len * (depth >= 2 ? 0.36 : 0.3) * (1 - t) * (0.7 + hash(seed * 3.7 + t * 91) * 0.6);
+    for (const side of [1, -1]) {
+      const turn = side * (spread + (hash(seed * 5.3 + t * 57 + side) - 0.5) * 0.2);
+      if (sub >= 3) feather(ice, px, py, a + turn, sub, depth - 1, seed + t * 31 + side * 7);
+    }
+  }
+}
+
+/** Frost creeping in from a corner of the sheet; `a` is the direction into the sheet */
+function cornerFrost(ice: Ice, x: number, y: number, a: number, size: number, seed: number) {
+  const stems = 3;
+  for (let i = 0; i < stems; i++) {
+    // A fan of feathers; the middle one is the longest
+    const k = i / (stems - 1) - 0.5;
+    const dir = a + k * 1.25 + (hash(seed + i * 4.1) - 0.5) * 0.2;
+    const len = size * (1 - Math.abs(k) * 0.55) * (0.85 + hash(seed * 2.2 + i) * 0.3);
+    feather(ice, x, y, dir, len, 2, seed + i * 31.7);
+  }
+  // A few loose crystals in front of the feathers
+  for (let i = 0; i < 3; i++) {
+    const d = size * (0.9 + hash(seed * 6.1 + i) * 0.35);
+    const b = a + (hash(seed * 8.3 + i) - 0.5) * 1.3;
+    snowflake(
+      ice,
+      x + Math.cos(b) * d,
+      y + Math.sin(b) * d,
+      4 + hash(seed + i) * 3,
+      seed + i * 9.9,
+    );
+  }
+}
+
+/** A six-armed snowflake: a dendrite with twigs, a star with a hexagon, or a star with short rays */
+function snowflake(ice: Ice, cx: number, cy: number, r: number, seed: number): void {
+  const kind = Math.floor(hash(seed * 6.6) * 3);
+  const rot = hash(seed * 8.8) * Math.PI;
+  const big = r > 9;
+  for (let k = 0; k < 6; k++) {
+    const a = rot + (k * Math.PI) / 3;
+    const s = seed + k * 3.3;
+    ice.needle(cx, cy, a, r, big ? 2 : 1, s);
+    const at = (t: number): Pt => [cx + Math.cos(a) * r * t, cy + Math.sin(a) * r * t];
+    if (kind === 0) {
+      // Pairs of twigs along every arm
+      for (const [t, l] of [
+        [0.38, 0.36],
+        [0.62, 0.28],
+        [0.82, 0.18],
+      ]) {
+        const [x, y] = at(t);
+        ice.needle(x, y, a + 1.05, r * l, big ? 1 : 0, s + t * 7);
+        ice.needle(x, y, a - 1.05, r * l, big ? 1 : 0, s + t * 9);
+      }
+    } else if (kind === 1) {
+      // A hexagon around the centre and a "V" at the tip
+      const [x0, y0] = at(0.42);
+      const b = a + Math.PI / 3;
+      const x1 = cx + Math.cos(b) * r * 0.42;
+      const y1 = cy + Math.sin(b) * r * 0.42;
+      ice.needle(x0, y0, Math.atan2(y1 - y0, x1 - x0), Math.hypot(x1 - x0, y1 - y0), 1, s + 1);
+      const [x, y] = at(0.72);
+      ice.needle(x, y, a + 0.75, r * 0.3, big ? 1 : 0, s + 2);
+      ice.needle(x, y, a - 0.75, r * 0.3, big ? 1 : 0, s + 3);
+    } else {
+      // Short rays between the arms and a cross bar on every arm
+      ice.needle(cx, cy, a + Math.PI / 6, r * 0.42, 0, s + 4);
+      const [x, y] = at(0.55);
+      ice.needle(x, y, a + Math.PI / 2, r * 0.16, 0, s + 5);
+      ice.needle(x, y, a - Math.PI / 2, r * 0.16, 0, s + 6);
+    }
+  }
+}
+
+/**
+ * Frost on the paper: ice feathers creeping in from the corners and pencil
+ * snowflakes along the edges of the sheet, half hidden under the content.
+ */
+function frost(w: number, h: number, seed: number): string {
+  const ice = new Ice(seed);
+  const size = Math.min(110, w * 0.28);
+  cornerFrost(ice, 3, 3, Math.PI / 4, size, seed);
+  cornerFrost(ice, w - 3, 3, (Math.PI * 3) / 4, size * 0.8, seed + 1);
+  cornerFrost(ice, w - 3, h - 3, (-Math.PI * 3) / 4, size * 0.75, seed + 2);
+  cornerFrost(ice, 3, h - 3, -Math.PI / 4, size * 0.9, seed + 3);
+  // Snowflakes in the margins: about one per 200 px of the sheet, on alternating sides
+  for (let y = size * 1.6, i = 0; y < h - size * 1.4; i++) {
+    const left = (i + Math.round(hash(seed * 4.4))) % 2 === 0;
+    const r = 9 + hash(seed * 3.1 + i) * 9;
+    const x = left ? 8 + r * 0.25 : w - 8 - r * 0.25;
+    snowflake(ice, x, y, r, seed + i * 17.9);
+    y += 200 * (0.7 + hash(seed + i * 2.9) * 0.6);
+  }
+  // Inside the sheet only: the frost must not hang over its edge
+  const clip = `hm-frost-${Math.round(seed * 1000)}`;
+  return (
+    `<clipPath id="${clip}"><rect x="2" y="2" width="${r1(w - 4)}" height="${r1(h - 4)}"/></clipPath>` +
+    `<g clip-path="url(#${clip})">${ice}</g>`
+  );
 }
 
 /** Moves a path made of absolute "x y" pairs */

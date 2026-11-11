@@ -27,6 +27,7 @@
   --buy: #2f6f57;
   --wash: rgba(104, 138, 164, 0.3);
   --wash-ink: #5f86a6;
+  --frost: rgba(78, 128, 168, 0.5);
   --rarity-common: #7d7d8c;
   --rarity-rare: #1f86ad;
   --rarity-epic: #8748bd;
@@ -69,6 +70,7 @@
   --buy: #2f8062;
   --wash: rgba(120, 160, 200, 0.22);
   --wash-ink: #7fa8cf;
+  --frost: rgba(160, 200, 240, 0.42);
   --rarity-common: #8b8ba0;
   --rarity-rare: #4cc9f0;
   --rarity-epic: #c77dff;
@@ -1636,6 +1638,10 @@ svg.hm {
 .page > svg.hm {
   z-index: 0;
   --hm: var(--rule-soft);
+}
+/* Frost on the sheet: ice ferns in the corners, snowflakes along the edges */
+.page > svg.hm .hm-frost {
+  --hm: var(--frost);
 }
 
 /* Stamp frame */

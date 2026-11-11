@@ -15,10 +15,14 @@ from . import auth
 MEDIA_URL_TTL = 24 * 3600
 
 
+# The expiry is rounded up to this step: the URL of a file stays the same for a while
+# (the browser can cache it, two answers a second apart are equal)
+MEDIA_URL_STEP = 3600
+
+
 def media_url(media_id: UUID, bot_token: str) -> str:
-    token = auth.sign(
-        {"m": media_id.hex, "exp": int(time.time()) + MEDIA_URL_TTL}, bot_token, "media"
-    )
+    expires = (int(time.time()) // MEDIA_URL_STEP + 1) * MEDIA_URL_STEP + MEDIA_URL_TTL
+    token = auth.sign({"m": media_id.hex, "exp": expires}, bot_token, "media")
     return f"/api/media/{media_id}?t={token}"
 
 

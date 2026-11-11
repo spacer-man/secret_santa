@@ -968,14 +968,23 @@ blockquote {
 .swatch {
   width: 1.8rem;
   height: 1.8rem;
+  padding: 0;
   border-radius: 50%;
   border: 2px solid transparent;
+  /* The colour fills the circle only (not under the border), a soft shade along the round edge */
+  background-origin: border-box;
+  box-shadow: inset -2px -3px 5px rgba(0, 0, 0, 0.28);
   cursor: pointer;
 }
 .swatch.selected,
 .pattern-btn.selected {
   border-color: var(--ink);
   box-shadow: 0 0 0 2px var(--rule-soft);
+}
+.swatch.selected {
+  box-shadow:
+    inset -2px -3px 5px rgba(0, 0, 0, 0.28),
+    0 0 0 2px var(--rule-soft);
 }
 .pattern-btn {
   width: 2.3rem;
@@ -986,8 +995,8 @@ blockquote {
   background: var(--paper-2);
   cursor: pointer;
 }
-/* Not the hand-drawn frame (svg.hm): its size is set by handmade.ts */
-.pattern-btn > svg:not(.hm) {
+/* Only the picture of the ball: the hand-drawn frame and outline (svg.hm, svg.hm-outline) size themselves */
+.pattern-btn > svg.pattern-art {
   display: block;
   width: 100%;
   height: 100%;

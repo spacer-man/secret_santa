@@ -23,25 +23,55 @@ type Kind =
   | 'seal'
   | 'wash'
   | 'tag'
-  | 'tag-round';
+  | 'tag-round'
+  | 'light'
+  | 'bar-track'
+  | 'bar-fill'
+  | 'note'
+  | 'chip'
+  | 'rule'
+  | 'field';
 
 /** What is drawn where. Colours come from CSS (`--hm`, see styles.scss) */
 const RULES: [selector: string, kind: Kind][] = [
   ['.festive, .gift-card', 'stamp'],
-  ['.btn-primary, .card-btn.price, .card-btn.primary', 'ink-block'],
-  ['.btn-secondary, .shop-card', 'card'],
+  // Filled buttons and marks: pencil hatching
+  ['.btn-primary, .card-btn.price, .card-btn.primary, .shop-tab.active, .toast', 'ink-block'],
+  // Dashed-looking secondary actions: one light line
+  ['.btn-ghost, .card-btn.quiet', 'light'],
+  // Framed things: buttons, options to choose from, cards
+  [
+    '.btn-secondary, .shop-card, .card-btn, .snow-mode, .reaction, .pattern-btn, .shop-set, .theme-toggle',
+    'card',
+  ],
   ['.page', 'sheet-frame'],
   ['.card > h2, .label, .page-title', 'title'],
-  ['.number, .stats b', 'underline'],
+  ['.number, .stats b, .tabs a.active', 'underline'],
+  ['.sheet h3, .earn li, .card.row', 'rule'],
   ['.tabs, .sheet', 'top-rule'],
   ['.tree-card', 'picture'],
   ['.seal', 'seal'],
-  ['.sheet-emoji, .card-icon', 'wash'],
+  ['.sheet-emoji, .card-icon, .hero-emoji', 'wash'],
+  // Progress: a pencil line and a hatched part of it
+  ['.level-bar, .wave .bar, .friends-bar', 'bar-track'],
+  ['.level-bar > span, .wave .bar > span, .friends-bar > span', 'bar-fill'],
+  // Bigger tinted areas: a watercolour wash (quotes, hints, the row of the user)
+  ['.quote, blockquote, .idea, .designer, .wave li.mine, .shop-tabs', 'note'],
+  ['.badge, .chip', 'chip'],
+  // Form fields cannot hold a drawing inside: it is laid over them
+  ['.select, .textarea', 'field'],
   // Buttons over the scene: paper tags stuck onto the illustration
   ['.mandarin-chip, .decor-btn', 'tag'],
   ['.snow-btn, .zoom button', 'tag-round'],
 ];
 const SELECTOR = RULES.map(([s]) => s).join(', ');
+const kindOf = (el: Element): Kind | undefined => RULES.find(([s]) => el.matches(s))?.[1];
+
+/** Kinds whose drawing replaces the CSS box of the element (its background and border are switched off) */
+const BARE: Kind[] = ['ink-block', 'card', 'light', 'bar-track', 'bar-fill', 'note', 'chip'];
+
+/** Classes that change how an element is drawn */
+const STATES = ['selected', 'active', 'done', 'mine', 'locked'];
 
 /** What "boils": a few variants of the drawing are shown in turn, as in drawn animation */
 const BOILING = '.seal, .btn-primary';
@@ -446,8 +476,39 @@ function draw(
       return (
         (press ? hatch(w, h, false, { angle: -42, gap: 9, lw: 5, alpha: 0.14, seed }) : '') +
         frame(w, h, 0, 5, { w: 1.9 * bold, seed, taper: 0.55 }) +
-        faint(frame(w, h, 4, 3, { w: 1.1 * bold, seed: seed + 40, taper: 0.7 }), 0.45)
+        faint(frame(w, h, 4, 3, { w: 1.1 * bold, seed: seed + 40, taper: 0.7 }), 0.45) +
+        // The chosen option is circled, as one circles an answer with a pencil
+        (el.matches('.selected')
+          ? scribble(w, h, false, seed + 5)
+              .map(
+                (piece) =>
+                  `<path class="hm-ring" stroke-width="${r1(Math.min(6, Math.max(3.5, h * 0.09)))}" d="${piece}"/>`,
+              )
+              .join('')
+          : '')
       );
+    case 'light':
+      return faint(frame(w, h, 0, 3, { w: 1.4 * bold, seed, taper: 0.6 }), 0.8);
+    case 'bar-track':
+      return faint(
+        line(0, h / 2, w, h / 2, { w: Math.max(1.6, h * 0.3), seed, taper: 0.3, jit: 0.6 }),
+        0.55,
+      );
+    case 'bar-fill':
+      return hatch(w, h, false, { angle: -58, gap: 3.4, lw: 3.6, alpha: 0.95, seed });
+    case 'note':
+      return (
+        paint((sd) => inkRect(w, h, 1.4, sd), seed, 0.045) +
+        (el.matches('blockquote, .idea, .mine')
+          ? line(1, -2, 1, h + 2, { w: 3, seed: seed + 4, taper: 0.5, jit: 0.7 })
+          : '')
+      );
+    case 'chip':
+      return hatch(w, h, false, { angle: -42, gap: 4.6, lw: 4.8, alpha: 0.3, seed });
+    case 'rule':
+      return line(0, h - 0.5, w, h - 0.5, { w: 1.4, seed, taper: 0.6, jit: 0.7 });
+    case 'field':
+      return frame(w, h, 0, 4, { w: 1.7, seed, taper: 0.5 });
     case 'sheet-frame':
       return frame(w, h, 5, 3, { w: 1.2, seed, taper: 0.5, jit: 0.8 });
     case 'title': {
@@ -597,10 +658,10 @@ const SCRIBBLE_MS = 520;
 
 /** Elements that answer to the pointer */
 const BUTTONS =
-  '.btn-primary, .btn-secondary, .card-btn.price, .card-btn.primary, .mandarin-chip, .decor-btn, .snow-btn, .zoom button';
+  '.btn-primary, .btn-secondary, .btn-ghost, .card-btn, .snow-mode, .reaction, .pattern-btn, .theme-toggle, .mandarin-chip, .decor-btn, .snow-btn, .zoom button';
 
 /** Room around the element for strokes that overshoot it, px */
-const PAD = 14;
+const PAD = 18;
 
 /**
  * A tile of pencil grain as a CSS mask: `holes` of the pixels are faint (`hole` of the
@@ -642,6 +703,9 @@ export class Handmade {
       childList: true,
       subtree: true,
       characterData: true,
+      // Classes: an option gets selected, a tab becomes active
+      attributes: true,
+      attributeFilter: ['class'],
     });
     document.fonts?.ready.then(() => this.drawings.forEach((_, el) => this.redraw(el, true)));
     this.schedule();
@@ -659,29 +723,36 @@ export class Handmade {
   }
 
   private scan(): void {
-    // Forget what has left the page
-    this.drawings.forEach((_, el) => {
-      if (!el.isConnected) {
-        this.resizes.unobserve(el);
-        this.drawings.delete(el);
-      }
+    // Forget what has left the page or is no longer what it was (a tab that stopped being active…)
+    this.drawings.forEach((d, el) => {
+      if (el.isConnected && kindOf(el) === d.kind) return;
+      this.resizes.unobserve(el);
+      d.svg.remove();
+      d.outline?.remove();
+      el.classList.remove('hm-host', 'hm-bare', 'hm-btn');
+      this.drawings.delete(el);
     });
     document.querySelectorAll<HTMLElement>(SELECTOR).forEach((el) => {
-      const known = this.drawings.get(el);
-      if (known) {
-        // Titles depend on their text: redraw when it changes
-        if (known.kind === 'title') this.redraw(el);
+      if (this.drawings.has(el)) {
+        // The text, the size or the state (selected, done…) may have changed
+        this.redraw(el);
         return;
       }
-      const kind = RULES.find(([s]) => el.matches(s))![1];
+      const kind = kindOf(el)!;
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', `hm hm-${kind}`);
       svg.setAttribute('aria-hidden', 'true');
-      el.classList.add('hm-host');
-      // The drawing is placed against its element (absolute/fixed elements already are a frame)
-      if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
-      if (kind === 'picture') el.append(svg);
-      else el.prepend(svg);
+      if (kind === 'field') {
+        // Laid over the field, as its next sibling
+        el.after(svg);
+      } else {
+        el.classList.add('hm-host');
+        if (BARE.includes(kind)) el.classList.add('hm-bare');
+        // The drawing is placed against its element (absolute/fixed elements already are a frame)
+        if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+        if (kind === 'picture') el.append(svg);
+        else el.prepend(svg);
+      }
       this.drawings.set(el, {
         kind,
         seed: ++this.counter * 17.7,
@@ -709,8 +780,14 @@ export class Handmade {
     const w = el.offsetWidth;
     const h = el.offsetHeight;
     if (!w || !h) return;
+    if (d.kind === 'field') {
+      // Follows the field: it is not inside it
+      d.svg.style.left = `${el.offsetLeft - PAD}px`;
+      d.svg.style.top = `${el.offsetTop - PAD}px`;
+    }
     const textKey = d.kind === 'title' ? (el.textContent ?? '') : '';
-    const size = `${w}x${h}|${textKey}`;
+    const state = STATES.filter((c) => el.classList.contains(c)).join('.');
+    const size = `${w}x${h}|${textKey}|${state}`;
     if (size === d.size && !force) return;
     d.size = size;
     d.svg.setAttribute('width', String(w + PAD * 2));

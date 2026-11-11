@@ -66,7 +66,7 @@
   --gold: #e3b55b;
   --green: #4fc79a;
   --orange: #ffa040;
-  --buy: #3f9c7a;
+  --buy: #2f8062;
   --wash: rgba(120, 160, 200, 0.22);
   --wash-ink: #7fa8cf;
   --rarity-common: #8b8ba0;
@@ -1580,9 +1580,9 @@ blockquote {
 }
 svg.hm {
   position: absolute;
-  /* The drawing is bigger than its element by PAD (handmade.ts): strokes overshoot the corners */
-  left: -14px;
-  top: -14px;
+  /* The drawing is bigger than its element by PAD = 18 px (handmade.ts): strokes overshoot the corners */
+  left: -18px;
+  top: -18px;
   z-index: -1;
   display: block !important;
   overflow: visible;
@@ -1790,7 +1790,10 @@ svg.hm {
   mask-size: 160px 160px;
 }
 svg.hm-ink-block,
-svg.hm-wash {
+svg.hm-wash,
+svg.hm-chip,
+svg.hm-bar-fill,
+svg.hm-note {
   -webkit-mask-image: var(--hm-grain-soft);
   mask-image: var(--hm-grain-soft);
 }
@@ -1884,4 +1887,148 @@ svg.hm-anim .hm-v .hm-seq {
 }
 svg.hm.hm-press {
   filter: brightness(0.93);
+}
+
+/* ============================================================
+   The same hand everywhere: the rest of the elements
+   ============================================================ */
+/* The drawing replaces the CSS box */
+.hm-bare {
+  background: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.hm-ring {
+  fill: none;
+  stroke: var(--stamp);
+  stroke-linecap: butt;
+  stroke-linejoin: round;
+  opacity: 0.55;
+}
+
+/* Soft pencil for quiet things */
+.btn-ghost > svg.hm,
+.card-btn.quiet > svg.hm,
+.snow-mode > svg.hm,
+.reaction > svg.hm,
+.pattern-btn > svg.hm,
+.theme-toggle > svg.hm,
+.sheet h3 > svg.hm,
+.earn li > svg.hm,
+.card.row > svg.hm,
+.level-bar > svg.hm,
+.wave .bar > svg.hm,
+.friends-bar > svg.hm,
+.wave .bar > span > svg.hm {
+  --hm: var(--ink-2);
+}
+.btn-ghost {
+  border: none;
+}
+.sheet h3,
+.earn li {
+  border-bottom: none;
+}
+.card.row {
+  border-top: none;
+}
+.card.row > svg.hm {
+  transform: translateY(calc(-100% + 36px));
+}
+
+/* Dark blocks: the active tab of the shop, the toast */
+.shop-tab.active > svg.hm,
+.toast > svg.hm {
+  --hm: var(--ink);
+  --hm-dark: var(--ink);
+}
+.toast {
+  background: none;
+  box-shadow: none;
+}
+
+/* Progress */
+.level-bar,
+.wave .bar,
+.friends-bar {
+  overflow: visible !important;
+}
+.level-bar > span,
+.wave .bar > span,
+.friends-bar > span {
+  display: block;
+  height: 100%;
+}
+.level-bar > span > svg.hm,
+.wave li.done .bar > span > svg.hm {
+  --hm: var(--stamp);
+}
+.friends-bar > span > svg.hm {
+  --hm: var(--gold);
+}
+
+/* Notes */
+.quote > svg.hm,
+.designer > svg.hm,
+.shop-tabs > svg.hm {
+  --hm: var(--ink);
+}
+blockquote > svg.hm,
+.wave li.mine > svg.hm {
+  --hm: var(--stamp);
+}
+.idea > svg.hm {
+  --hm: var(--gold);
+}
+blockquote,
+.idea {
+  border-left-color: transparent;
+}
+.wave li.mine {
+  box-shadow: none;
+}
+.badge > svg.hm,
+.chip > svg.hm {
+  --hm: currentColor;
+}
+.shop-set > svg.hm {
+  --hm: var(--gold);
+}
+.shop-set.done > svg.hm {
+  --hm: var(--green);
+}
+
+/* The active tab of the bottom bar: a red pencil underline */
+.tabs a.active {
+  background: none;
+}
+.tabs a.active > svg.hm {
+  --hm: var(--stamp);
+}
+
+/* Form fields: the frame is laid over them */
+.select,
+.textarea {
+  border-color: transparent;
+}
+.select:focus,
+.textarea:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+svg.hm-field {
+  z-index: 1;
+}
+.select:focus + svg.hm-field,
+.textarea:focus + svg.hm-field {
+  --hm: var(--stamp);
+}
+
+/* Price buttons: light text on the green in both themes; a locked price stays readable */
+.card-btn.price,
+.card-btn.primary {
+  color: #f6f1e4 !important;
+}
+.card-btn.price:disabled {
+  opacity: 0.7 !important;
 }

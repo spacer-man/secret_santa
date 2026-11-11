@@ -223,7 +223,6 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     }
     .shop-pages {
       display: grid;
-      perspective: 1400px;
     }
     .shop-page {
       grid-area: 1 / 1;
@@ -231,13 +230,16 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       flex-direction: column;
       gap: 0.6rem;
       min-width: 0;
-      transform-origin: 0 50%;
     }
-    .page-in {
-      animation: page-in var(--page-ms) cubic-bezier(0.2, 0.7, 0.3, 1) both;
+    /* A swipe between screens, as on a phone: both pages move side by side, flat, with the same
+       easing (the sheet clips them at its edges) */
+    .page-in,
+    .page-out {
+      --swipe: calc(100% + 2.5rem);
+      animation: page-in var(--page-ms) cubic-bezier(0.25, 0.8, 0.25, 1) both;
     }
     .page-out {
-      animation: page-out var(--page-ms) cubic-bezier(0.5, 0, 0.8, 0.4) both;
+      animation-name: page-out;
       pointer-events: none;
     }
     .back .page-in {
@@ -246,29 +248,25 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     .back .page-out {
       animation-name: page-out-back;
     }
-    /* Forward: the old page is turned over to the left, the new one lies down from the right */
+    /* Forward (a tab on the right): the content goes to the left, the new one comes from the right */
     @keyframes page-in {
       from {
-        transform: translateX(35%) rotateY(-28deg);
-        opacity: 0;
+        transform: translateX(var(--swipe));
       }
     }
     @keyframes page-out {
       to {
-        transform: translateX(-35%) rotateY(28deg);
-        opacity: 0;
+        transform: translateX(calc(-1 * var(--swipe)));
       }
     }
     @keyframes page-in-back {
       from {
-        transform: translateX(-35%) rotateY(28deg);
-        opacity: 0;
+        transform: translateX(calc(-1 * var(--swipe)));
       }
     }
     @keyframes page-out-back {
       to {
-        transform: translateX(35%) rotateY(-28deg);
-        opacity: 0;
+        transform: translateX(var(--swipe));
       }
     }
     @media (prefers-reduced-motion: reduce) {

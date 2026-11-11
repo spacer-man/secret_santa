@@ -671,14 +671,16 @@ export class Handmade {
     svg.setAttribute('class', 'hm-outline');
     svg.setAttribute('aria-hidden', 'true');
     // The ellipse reaches far beyond the button: its own, bigger room
-    const pad = Math.round(Math.max(w, h) * 0.12 + h * 0.2 + 18);
+    const pad = Math.round(Math.max(w, h) * 0.12 + h * 0.2 + 26);
     svg.setAttribute('width', String(w + pad * 2));
     svg.setAttribute('height', String(h + pad * 2));
     svg.setAttribute('viewBox', `${-pad} ${-pad} ${w + pad * 2} ${h + pad * 2}`);
     svg.style.left = svg.style.top = `${-pad}px`;
     const round = d.kind === 'tag-round';
     // pathLength = 1: the line is "drawn" by moving one dash along it (see styles.scss)
-    svg.innerHTML = `<path pathLength="1" d="${scribble(w, h, round, d.seed + d.nonce * 3.3)}"/>`;
+    // A very thick soft pencil; on small buttons a thinner one, or the ring becomes a blot
+    const width = Math.min(8, Math.max(4.5, h * 0.13));
+    svg.innerHTML = `<path pathLength="1" stroke-width="${r1(width)}" d="${scribble(w, h, round, d.seed + d.nonce * 3.3)}"/>`;
     d.svg.after(svg);
     d.outline = svg;
   }

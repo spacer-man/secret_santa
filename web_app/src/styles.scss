@@ -1820,7 +1820,7 @@ svg.hm-outline {
 svg.hm-outline path {
   fill: none;
   stroke: var(--ink);
-  stroke-width: 2;
+  /* A thick soft pencil, almost a crayon: the width is set per button by handmade.ts */
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 0.85;

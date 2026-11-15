@@ -2154,34 +2154,62 @@ svg.hm-field {
 }
 
 /* ===== Mascot: Ded Moroz / Santa ===== */
+/*
+ * Coloured pencil on the paper of the sheet, as the rest of the interface: fills are careless
+ * hatching over a pale base (patterns inside the drawing, see mascot-art.ts), outlines break
+ * here and there, the grain of the pencil lies over everything. On the dark sheet it is chalk.
+ */
 .mascot-art {
   --m-line: #2b2522;
-  --m-fur: #fbf8f1;
-  --m-skin: #f3c9a6;
+  --m-fur: #fdfbf5;
+  --m-skin: #f0bf98;
   --m-cheek: #ef8f86;
   --m-nose: #e7837a;
   --m-coat: #c8392d;
+  /* What the pale base of a fill is mixed with */
+  --m-paper: var(--paper);
+  --m-fur-base: color-mix(in srgb, var(--m-fur) 55%, var(--paper-3));
   display: block;
 }
 .mascot-art.moroz {
   --m-coat: #2f62a6;
+}
+:root[data-theme='dark'] .mascot-art {
+  --m-line: #121318;
+  --m-coat: #d8493c;
+  --m-fur-base: color-mix(in srgb, var(--m-fur) 62%, var(--paper-3));
+}
+:root[data-theme='dark'] .mascot-art.moroz {
+  --m-coat: #4a7fc6;
 }
 .mascot-art svg {
   display: block;
   width: 100%;
   height: auto;
   overflow: visible;
-  /* The coat does not end with a cut: it fades out into the paper */
-  -webkit-mask-image: linear-gradient(#000 0 74%, transparent 97%);
-  mask-image: linear-gradient(#000 0 74%, transparent 97%);
+  /* The coat does not end with a cut: it fades out into the paper. Plus the grain of the pencil */
+  -webkit-mask-image: linear-gradient(#000 0 74%, transparent 97%), var(--hm-grain-soft);
+  mask-image: linear-gradient(#000 0 74%, transparent 97%), var(--hm-grain-soft);
+  -webkit-mask-size:
+    100% 100%,
+    160px 160px;
+  mask-size:
+    100% 100%,
+    160px 160px;
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
 }
+/* Outlines: a soft pencil that lifts now and then (the place of the gaps changes as he boils) */
 .mascot-art :is(.m-coat, .m-fur, .m-skin, .m-nose, .m-mitt) {
   stroke: var(--m-line);
-  stroke-width: 1.8;
+  stroke-width: 1.9;
   stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-dasharray: 52 3.4 33 3 71 3.6;
+  stroke-dashoffset: var(--m-dash, 0);
 }
 .m-coat {
-  fill: var(--m-coat);
+  fill: var(--m-fill-coat, var(--m-coat));
 }
 /* A second copy of a shape, without its outline: hides the inner lines where parts overlap */
 .mascot-art .m-fill-only {
@@ -2189,7 +2217,30 @@ svg.hm-field {
 }
 .m-fur,
 .m-mitt {
-  fill: var(--m-fur);
+  fill: var(--m-fill-fur, var(--m-fur));
+}
+/* The patterns of the hatched fills */
+.m-hatch-line {
+  fill: none;
+  stroke-linecap: round;
+}
+.m-coat-hatch .m-base {
+  fill: color-mix(in srgb, var(--m-coat) 52%, var(--m-paper));
+}
+.m-coat-hatch .m-hatch-line {
+  stroke: var(--m-coat);
+}
+.m-fur-hatch .m-base {
+  fill: var(--m-fur-base);
+}
+.m-fur-hatch .m-hatch-line {
+  stroke: var(--m-fur);
+}
+.m-skin-hatch .m-base {
+  fill: color-mix(in srgb, var(--m-skin) 70%, var(--m-paper));
+}
+.m-skin-hatch .m-hatch-line {
+  stroke: var(--m-skin);
 }
 .m-hatch {
   fill: none;
@@ -2199,7 +2250,7 @@ svg.hm-field {
   opacity: 0.45;
 }
 .m-skin {
-  fill: var(--m-skin);
+  fill: var(--m-fill-skin, var(--m-skin));
 }
 .m-nose {
   fill: var(--m-nose);
@@ -2209,7 +2260,7 @@ svg.hm-field {
   opacity: 0.55;
 }
 .m-eye {
-  fill: var(--m-line);
+  fill: #2b2522;
   transform-box: fill-box;
   transform-origin: center;
   animation: mascot-blink 5.2s infinite;
@@ -2219,13 +2270,16 @@ svg.hm-field {
   transform-box: fill-box;
   transform-origin: center top;
 }
-.m-brow {
+.m-brow,
+.m-brow-out {
   fill: none;
   stroke: var(--m-fur);
-  stroke-width: 4.2;
+  stroke-width: 4;
   stroke-linecap: round;
-  paint-order: stroke;
-  filter: drop-shadow(0 0 0.6px var(--m-line)) drop-shadow(0 0 0.6px var(--m-line));
+}
+.m-brow-out {
+  stroke: var(--m-line);
+  stroke-width: 6.4;
 }
 .m-curl,
 .m-line,

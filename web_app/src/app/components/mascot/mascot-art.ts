@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   afterNextRender,
   effect,
   inject,
@@ -37,6 +38,98 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
   return `M${x} ${150 - (i % 3) * 2}l${(len * 0.64).toFixed(1)} ${(-len * 0.77).toFixed(1)}`;
 }).join('');
 
+// ====== Pencil look: the drawing "boils" slowly, as the hand-drawn interface does ====== //
+
+/** Variants of the drawing shown in turn, and how long each one stays (slow: he must not flicker) */
+const BOIL_VARIANTS = 4;
+const BOIL_MS = 460;
+/** How far the points of a line wander between the variants, in units of the drawing */
+const BOIL_AMP = 0.55;
+/** Small details of the face wander less, the eyes and the mouth do not at all */
+const FINE = '.m-curl, .m-specs, .m-line, .m-shine, .m-flake, .m-brow, .m-brow-out, .m-nose';
+const STILL = '.m-eye, .m-mouth, .m-hatch-line, .m-base';
+/** Direction of the hatching, degrees; every variant leans a little differently */
+const HATCH_ANGLE = -42;
+
+/**
+ * Strokes of a hatching tile (48 x 27, repeats seamlessly): y, width, pressure, wave and
+ * where the pencil lifts (dashes sum up to the width of the tile)
+ */
+const STROKES = (
+  [
+    [2.1, 3.4, 1, -1.2, null],
+    [6.9, 2.3, 0.7, 0.9, '29 3 13 3'],
+    [10.6, 3.1, 0.95, -0.6, '17 2.5 26.5 2'],
+    [15.8, 3.7, 1, 1.3, null],
+    [20.3, 2.1, 0.6, -1, '9 3 34 2'],
+    [24.4, 2.9, 0.9, 0.7, '38 3.5 4.5 2'],
+  ] as const
+).map(([y, w, o, wave, dash]) => ({
+  w,
+  o,
+  dash,
+  d: `M0 ${y}q12 ${wave} 24 0t24 0`,
+}));
+
+/** Numbers of every path command; an arc keeps its radii, rotation and flags */
+const ARITY: Record<string, number> = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7 };
+
+function hashText(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/** Seeded random in -1..1 */
+function random(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 2147483648 - 1;
+  };
+}
+
+/**
+ * The same path drawn by hand once more: every point is a bit off. The result depends only
+ * on the path and the seed, so two copies of a shape (outline and fill) stay identical.
+ */
+function redraw(d: string, seed: number, amp: number): string {
+  const rnd = random(hashText(d) + seed * 7919);
+  let command = '';
+  let i = 0;
+  return d.replace(/([a-zA-Z])|(-?\d*\.?\d+)/g, (text, letter?: string) => {
+    if (letter) {
+      command = letter.toUpperCase();
+      i = 0;
+      return letter;
+    }
+    const k = i++ % (ARITY[command] ?? 1);
+    if (command === 'A' && k < 5) return ' ' + text;
+    return ' ' + (Number(text) + rnd() * amp).toFixed(2);
+  });
+}
+
+/** All the drawings on the page boil in step, on one slow timer */
+const drawings = new Set<() => void>();
+let boilFrame = 0;
+let boilTimer: ReturnType<typeof setInterval> | undefined;
+let uid = 0;
+
+function boil(draw: () => void): () => void {
+  drawings.add(draw);
+  boilTimer ??= setInterval(() => {
+    boilFrame = (boilFrame + 1) % BOIL_VARIANTS;
+    drawings.forEach((fn) => fn());
+  }, BOIL_MS);
+  return () => {
+    drawings.delete(draw);
+    if (!drawings.size) {
+      clearInterval(boilTimer);
+      boilTimer = undefined;
+    }
+  };
+}
+
 /**
  * The mascot drawn as a bust: Ded Moroz (blue coat, a round fur hat, a long
  * beard) or Santa (red coat, a floppy hat with a pompom). The character shows
@@ -47,6 +140,10 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
  * talks he nods and looks at the bubble. Now and then he does something of his
  * character (waves, hops, sighs, shakes his head…); a new hero or character
  * makes him hop. The bottom of the coat dissolves in pencil hatching instead of a cut.
+ *
+ * He is drawn like the rest of the interface: coloured pencil on paper. The fills are careless
+ * hatching over a pale base (SVG patterns of this drawing), the lines break here and there,
+ * and the whole drawing slowly "boils": a few times a second every line is drawn a bit differently.
  */
 @Component({
   selector: 'mascot-art',
@@ -54,9 +151,36 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
   host: {
     '[class]': '"mascot-art " + hero() + " " + mood() + (act() ? " act-" + act() : "")',
     '[class.talking]': 'talking()',
+    '[style.--m-fill-coat]': 'fill("coat")',
+    '[style.--m-fill-fur]': 'fill("fur")',
+    '[style.--m-fill-skin]': 'fill("skin")',
   },
   template: `
     <svg viewBox="-10 -14 140 164" aria-hidden="true">
+      <!-- Hatched fills: a pale base and uneven pencil strokes with gaps, one pattern per colour -->
+      <defs>
+        @for (c of colours; track c) {
+          <pattern
+            [attr.id]="id + '-' + c"
+            [attr.class]="'m-pattern m-' + c + '-hatch'"
+            patternUnits="userSpaceOnUse"
+            width="48"
+            height="27"
+          >
+            <rect class="m-base" width="48" height="27" />
+            <!-- Strokes of one direction, but uneven: other gaps, widths, pressure and waves -->
+            @for (l of strokes; track $index) {
+              <path
+                class="m-hatch-line"
+                [attr.stroke-width]="l.w"
+                [attr.opacity]="l.o"
+                [attr.stroke-dasharray]="l.dash"
+                [attr.d]="l.d"
+              />
+            }
+          </pattern>
+        }
+      </defs>
       <g class="m-all">
         <g class="m-breath">
           <!--
@@ -135,10 +259,11 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
           <!--
             Fur trim, on top of the arms: two triangular lapels from the shoulders narrow down in a
             "V" and go on as the fur band down the middle of the coat — one shape, no seam.
+            Their ends on the shoulders are round, as the shoulders are.
           -->
           <path
             class="m-fur"
-            d="M35 101C42 97 51 95.5 60 95.5S78 97 85 101C77 110 69 120 65 130V156H55V130C51 120 43 110 35 101Z"
+            d="M36.5 99.6C43 96.6 51 95.5 60 95.5S77 96.6 83.5 99.6C86.8 101.2 87.2 104.6 85 107C78 114.5 69 122 65 131V156H55V131C51 122 42 114.5 35 107C32.8 104.6 33.2 101.2 36.5 99.6Z"
           />
           <path
             class="m-curl"
@@ -171,12 +296,15 @@ const HATCH = Array.from({ length: 14 }, (_, i) => {
             <g class="m-brows">
               @switch (mood()) {
                 @case ('grumpy') {
+                  <path class="m-brow-out" d="M44 50L57 54M76 50L63 54" />
                   <path class="m-brow" d="M44 50L57 54M76 50L63 54" />
                 }
                 @case ('jolly') {
+                  <path class="m-brow-out" d="M44 51Q50 45 57 49M63 49Q70 45 76 51" />
                   <path class="m-brow" d="M44 51Q50 45 57 49M63 49Q70 45 76 51" />
                 }
                 @default {
+                  <path class="m-brow-out" d="M45 53Q51 49 57 52M63 52Q69 49 75 53" />
                   <path class="m-brow" d="M45 53Q51 49 57 52M63 52Q69 49 75 53" />
                 }
               }
@@ -250,6 +378,13 @@ export class MascotArt {
   readonly hello = input(false);
 
   protected readonly hatch = HATCH;
+  protected readonly colours = ['coat', 'fur', 'skin'];
+  protected readonly strokes = STROKES;
+  /** Ids of the patterns must differ between the drawings on a page (their colours differ) */
+  protected readonly id = `mascot-${++uid}`;
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  /** Variants of every line, made once: the element → its attribute in each variant */
+  private readonly variants = new WeakMap<Element, string[]>();
   protected readonly act = signal<Act | null>(null);
   private timers: ReturnType<typeof setTimeout>[] = [];
   private calm = false;
@@ -257,10 +392,13 @@ export class MascotArt {
   constructor() {
     afterNextRender(() => {
       this.calm = !!matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      this.draw();
       if (this.calm) return;
+      destroy.onDestroy(boil(() => this.draw()));
       if (this.hello()) this.later(() => this.play('wave'), 500);
       this.idle();
     });
+    const destroy = inject(DestroyRef);
     // Another hero or character: he hops, as if just put on
     let first = true;
     effect(() => {
@@ -269,7 +407,47 @@ export class MascotArt {
       if (!first) this.play('hop');
       first = false;
     });
-    inject(DestroyRef).onDestroy(() => this.timers.forEach(clearTimeout));
+    destroy.onDestroy(() => this.timers.forEach(clearTimeout));
+  }
+
+  protected fill(colour: string): string {
+    return `url(#${this.id}-${colour})`;
+  }
+
+  /** Shows the current variant of the drawing: every line and the hatching are a bit different */
+  private draw(): void {
+    const frame = boilFrame;
+    const svg = this.host.nativeElement.querySelector('svg');
+    if (!svg) return;
+    for (const el of svg.querySelectorAll('path, ellipse, circle, rect')) {
+      if (el.matches(STILL)) continue;
+      const path = el.tagName === 'path';
+      let list = this.variants.get(el);
+      if (!list) {
+        const amp = BOIL_AMP * (el.matches(FINE) ? 0.5 : 1);
+        // A path is redrawn point by point; a round shape or a box is just put a bit aside
+        const source = path ? (el.getAttribute('d') ?? '') : hashText(el.outerHTML).toString();
+        list = Array.from({ length: BOIL_VARIANTS }, (_, i) => {
+          if (path) return redraw(source, i, amp);
+          const rnd = random(Number(source) + i * 7919);
+          return `${(rnd() * amp * 0.7).toFixed(2)}px ${(rnd() * amp * 0.7).toFixed(2)}px`;
+        });
+        this.variants.set(el, list);
+      }
+      if (path) el.setAttribute('d', list[frame]);
+      else (el as SVGElement).style.translate = list[frame];
+    }
+    // The hatching is laid anew: another lean and another place of the strokes
+    const rnd = random(frame * 31 + 5);
+    for (const pattern of svg.querySelectorAll('pattern')) {
+      const angle = HATCH_ANGLE + rnd() * 3;
+      pattern.setAttribute(
+        'patternTransform',
+        `rotate(${angle.toFixed(1)}) translate(${(rnd() * 20).toFixed(1)} ${(rnd() * 12).toFixed(1)})`,
+      );
+    }
+    // The pencil lifts in other places of the outline
+    svg.style.setProperty('--m-dash', String(frame * 23));
   }
 
   private play(act: Act): void {

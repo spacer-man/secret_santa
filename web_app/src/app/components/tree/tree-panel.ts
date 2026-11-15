@@ -82,7 +82,7 @@ function readSeen(): Record<string, string> | null {
             #scene3d
             [tree]="t"
             [decorMode]="decorMode()"
-            [previewItem]="placing()"
+            [preview]="preview()"
             [snowfall]="shownSnow()"
             [cabinLights]="shownLights()"
             (cabinClick)="openLights()"
@@ -97,8 +97,19 @@ function readSeen(): Record<string, string> | null {
           />
           @if (decorMode()) {
             <p class="drag-hint decor-hint">
-              ✨ {{ i18n.t(cornerFocused() ? 'decorHintPlace' : 'decorHint') }}
+              ✨
+              {{
+                i18n.t(
+                  preview() ? 'decorHintConfirm' : cornerFocused() ? 'decorHintPlace' : 'decorHint'
+                )
+              }}
             </p>
+            @if (preview()) {
+              <!-- The figure is tried on a place: put it there for real -->
+              <button class="decor-btn decor-confirm" (click)="confirmPreview()">
+                ✓ {{ i18n.t('padPutHere') }}
+              </button>
+            }
             @if (cornerFocused()) {
               <!-- Back to the whole yard: choose another heap without leaving the mode -->
               <button class="decor-btn decor-back" (click)="backToYard()">
@@ -211,14 +222,14 @@ function readSeen(): Record<string, string> | null {
                   <button
                     class="btn btn-secondary wide pad-pick"
                     [disabled]="shop.busy()"
-                    (click)="padPlace(s.pad, f.key)"
+                    (click)="padPick(s.pad, f.key, !!s.item)"
                   >
                     @if (shop.image(f.key); as src) {
                       <img class="pick-figure" [src]="src" alt="" />
                     } @else {
                       {{ shop.icon(f.key) }}
                     }
-                    {{ shop.name(f.key) }} — {{ i18n.t('padPutHere') }}
+                    {{ shop.name(f.key) }} — {{ i18n.t(s.item ? 'padPutHere' : 'padTry') }}
                   </button>
                 }
                 @if (padReplacing()) {
@@ -369,8 +380,10 @@ export class TreePanel {
   protected readonly cornerFocused = signal(false);
 
   protected readonly shop = inject(ShopState);
-  /** Figure being placed in the yard (chosen in the shop) */
+  /** Figure chosen in the shop to be placed: the next free place tapped tries it on at once */
   protected readonly placing = signal<string | null>(null);
+  /** A figure tried on a free place: its translucent preview stands there until confirmed */
+  protected readonly preview = signal<{ item: string; pad: number } | null>(null);
   private placeSettling = false;
   protected readonly padReplacing = signal(false);
 
@@ -604,16 +617,10 @@ export class TreePanel {
   startPlacing(item: string): void {
     this.placeSettling = false;
     this.placing.set(item);
+    this.preview.set(null);
     this.cornerFocused.set(false);
     this.decorMode.set(true);
     this.sheet.set(null);
-  }
-
-  private finishPlacing(): void {
-    this.placing.set(null);
-    this.placeSettling = false;
-    this.decorMode.set(false);
-    this.scene3d()?.clearFocus();
   }
 
   /** From a corner back to the view of the whole yard (the decorate mode stays on) */
@@ -625,33 +632,55 @@ export class TreePanel {
   toggleDecor(): void {
     this.tg.haptic('light');
     this.placing.set(null);
+    this.preview.set(null);
     this.decorMode.update((v) => !v);
     if (!this.decorMode()) this.scene3d()?.clearFocus();
   }
 
   openPad(e: { pad: number; corner: string; item: string | null }): void {
     this.tg.haptic('light');
-    const figure = this.placing();
-    if (figure) {
-      this.putFigure(figure, e.pad);
-      return;
+    if (!e.item) {
+      // The previewed figure itself was tapped: put it there
+      if (this.preview()?.pad === e.pad) {
+        this.confirmPreview();
+        return;
+      }
+      // A figure came from the shop: try it on this place at once, no list
+      const figure = this.placing();
+      if (figure) {
+        this.preview.set({ item: figure, pad: e.pad });
+        return;
+      }
     }
     this.padReplacing.set(false);
     // Let the camera fly first, then show the sheet
     setTimeout(() => this.sheet.set({ kind: 'pad', ...e }), 650);
   }
 
-  /** A place was chosen for the figure: put it there, let the user see it, leave the mode */
-  private async putFigure(item: string, pad: number): Promise<void> {
-    if (this.placeSettling) return;
+  /** The tried-on figure is put on its place for real; the decorate mode goes on */
+  protected async confirmPreview(): Promise<void> {
+    const p = this.preview();
+    if (!p || this.placeSettling) return;
     this.placeSettling = true;
-    if (await this.shop.place(item, pad)) {
-      await this.load();
-      this.store.showToast(this.i18n.t('placedToast'));
-      setTimeout(() => this.finishPlacing(), 900);
-    } else {
+    this.tg.haptic('light');
+    try {
+      if (await this.shop.place(p.item, p.pad)) {
+        await this.load();
+        this.store.showToast(this.i18n.t('placedToast'));
+        this.preview.set(null);
+        this.placing.set(null);
+      }
+    } finally {
       this.placeSettling = false;
     }
+  }
+
+  /** A figure picked from the list: tried on a free place, put at once instead of the figure standing there */
+  protected padPick(pad: number, item: string, occupied: boolean): Promise<void> | void {
+    if (occupied) return this.padPlace(pad, item);
+    this.tg.haptic('light');
+    this.preview.set({ item, pad });
+    this.sheet.set(null);
   }
 
   async padPlace(pad: number, item: string): Promise<void> {

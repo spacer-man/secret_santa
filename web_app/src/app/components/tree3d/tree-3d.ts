@@ -174,7 +174,7 @@ export class Tree3d implements OnDestroy {
   /** Decorate mode: free courtyard places glow and can be chosen */
   readonly decorMode = input(false);
   /** Figure being placed: free places show its translucent preview */
-  readonly previewItem = input<string | null>(null);
+  readonly preview = input<{ item: string; pad: number } | null>(null);
   /** 0 clear (starry sky), 1 light, 2 snowfall, 3 blizzard */
   readonly snowfall = input(1);
   /** Fringe lights under the cabin roof */
@@ -217,7 +217,7 @@ export class Tree3d implements OnDestroy {
     });
     effect(() => {
       const on = this.decorMode();
-      const item = this.previewItem();
+      const item = this.preview();
       this.world?.setDecorMode(on, item);
     });
     effect(() => {
@@ -254,7 +254,7 @@ export class Tree3d implements OnDestroy {
       if (this.destroyed) return;
       // Built: from now on the inputs go straight to the world
       this.world = world;
-      world.setDecorMode(this.decorMode(), this.previewItem());
+      world.setDecorMode(this.decorMode(), this.preview());
       world.setSnowfall(this.snowfall(), true);
       world.setCabinLights(this.cabinLights() as LightSkin | null);
       // For screenshots/tests only: ?debug exposes the scene

@@ -1053,6 +1053,15 @@ blockquote {
   color: #1a1a21;
   border-color: transparent;
 }
+/* The tried-on figure is confirmed here: in the middle, above the hint */
+.decor-btn.decor-confirm {
+  left: 50%;
+  bottom: 2.4rem;
+  transform: translateX(-50%) rotate(-1deg);
+  white-space: nowrap;
+  font-size: 0.95rem;
+  color: var(--buy);
+}
 /* Above "Done": back from a corner to the whole yard */
 .decor-btn.decor-back {
   bottom: 5.5rem;

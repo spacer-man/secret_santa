@@ -2199,14 +2199,37 @@ svg.hm-field {
   -webkit-mask-composite: source-in;
   mask-composite: intersect;
 }
-/* Outlines: a soft pencil that lifts now and then (the place of the gaps changes as he boils) */
+/*
+ * Outlines are pencil: the main line lifts now and then, a heavier pass lies over it in pieces
+ * (where the hand pressed), a thin stray line runs beside. The two extra passes are added by
+ * mascot-art.ts; all three boil apart, the places of the gaps change with every variant.
+ */
 .mascot-art :is(.m-coat, .m-fur, .m-skin, .m-nose, .m-mitt) {
   stroke: var(--m-line);
-  stroke-width: 1.9;
+  stroke-width: 1.35;
   stroke-linejoin: round;
   stroke-linecap: round;
   stroke-dasharray: 52 3.4 33 3 71 3.6;
   stroke-dashoffset: var(--m-dash, 0);
+}
+.mascot-art .m-pass {
+  fill: none;
+  stroke: var(--m-line);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.mascot-art .m-pass2 {
+  stroke-width: 2.3;
+  opacity: 0.5;
+  stroke-dasharray: 19 21 31 13 9 27 44 17;
+  stroke-dashoffset: calc(var(--m-dash, 0) * 1.7);
+}
+.mascot-art .m-pass3 {
+  stroke-width: 0.85;
+  opacity: 0.6;
+  stroke-dasharray: 41 11 24 15 62 9;
+  stroke-dashoffset: calc(var(--m-dash, 0) * -1.3 + 20);
 }
 .m-coat {
   fill: var(--m-fill-coat, var(--m-coat));

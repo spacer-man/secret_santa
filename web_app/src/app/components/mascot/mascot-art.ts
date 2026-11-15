@@ -47,7 +47,9 @@ const BOIL_MS = 460;
 const BOIL_AMP = 0.55;
 /** Small details of the face wander less, the eyes and the mouth do not at all */
 const FINE = '.m-curl, .m-specs, .m-line, .m-shine, .m-flake, .m-brow, .m-brow-out, .m-nose';
-const STILL = '.m-eye, .m-mouth, .m-hatch-line, .m-base';
+const STILL = '.m-eye, .m-mouth, .m-hatch-line, .m-base, .m-pass';
+/** Shapes with an outline: the pencil goes over it three times (the fill-only copies have none) */
+const OUTLINED = ':is(.m-coat, .m-fur, .m-skin, .m-nose, .m-mitt, .m-shades):not(.m-fill-only)';
 /** Direction of the hatching, degrees; every variant leans a little differently */
 const HATCH_ANGLE = -42;
 
@@ -107,6 +109,30 @@ function redraw(d: string, seed: number, amp: number): string {
     if (command === 'A' && k < 5) return ' ' + text;
     return ' ' + (Number(text) + rnd() * amp).toFixed(2);
   });
+}
+
+interface Pass {
+  el: SVGElement;
+  list: string[];
+}
+
+/**
+ * The variants of a shape: a path is redrawn point by point, a round shape or a box is
+ * just put a bit aside. `salt` gives another hand to the extra passes of the same shape.
+ */
+function variantsOf(el: Element, salt: number, amp: number): string[] {
+  const d = el.tagName === 'path' ? (el.getAttribute('d') ?? '') : null;
+  const seed = hashText(el.outerHTML);
+  return Array.from({ length: BOIL_VARIANTS }, (_, i) => {
+    if (d !== null) return redraw(d, i + salt, amp);
+    const rnd = random(seed + (i + salt) * 7919);
+    return `${(rnd() * amp * 0.7).toFixed(2)}px ${(rnd() * amp * 0.7).toFixed(2)}px`;
+  });
+}
+
+function show(el: SVGElement, variant: string): void {
+  if (el.tagName === 'path') el.setAttribute('d', variant);
+  else el.style.translate = variant;
 }
 
 /** All the drawings on the page boil in step, on one slow timer */
@@ -385,6 +411,8 @@ export class MascotArt {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   /** Variants of every line, made once: the element → its attribute in each variant */
   private readonly variants = new WeakMap<Element, string[]>();
+  /** Extra pencil passes of the outlined shapes (elements this component adds itself) */
+  private readonly passes = new Map<Element, Pass[]>();
   protected readonly act = signal<Act | null>(null);
   private timers: ReturnType<typeof setTimeout>[] = [];
   private calm = false;
@@ -419,23 +447,23 @@ export class MascotArt {
     const frame = boilFrame;
     const svg = this.host.nativeElement.querySelector('svg');
     if (!svg) return;
-    for (const el of svg.querySelectorAll('path, ellipse, circle, rect')) {
+    // Extra passes of shapes that are gone (another hat, another beard) go too
+    for (const [el, extra] of this.passes) {
+      if (el.isConnected) continue;
+      extra.forEach((pass) => pass.el.remove());
+      this.passes.delete(el);
+    }
+    for (const el of svg.querySelectorAll<SVGElement>('path, ellipse, circle, rect')) {
       if (el.matches(STILL)) continue;
-      const path = el.tagName === 'path';
       let list = this.variants.get(el);
       if (!list) {
         const amp = BOIL_AMP * (el.matches(FINE) ? 0.5 : 1);
-        // A path is redrawn point by point; a round shape or a box is just put a bit aside
-        const source = path ? (el.getAttribute('d') ?? '') : hashText(el.outerHTML).toString();
-        list = Array.from({ length: BOIL_VARIANTS }, (_, i) => {
-          if (path) return redraw(source, i, amp);
-          const rnd = random(Number(source) + i * 7919);
-          return `${(rnd() * amp * 0.7).toFixed(2)}px ${(rnd() * amp * 0.7).toFixed(2)}px`;
-        });
+        list = variantsOf(el, 0, amp);
         this.variants.set(el, list);
+        if (el.matches(OUTLINED)) this.passes.set(el, this.morePasses(el, amp));
       }
-      if (path) el.setAttribute('d', list[frame]);
-      else (el as SVGElement).style.translate = list[frame];
+      show(el, list[frame]);
+      this.passes.get(el)?.forEach((pass) => show(pass.el, pass.list[frame]));
     }
     // The hatching is laid anew: another lean and another place of the strokes
     const rnd = random(frame * 31 + 5);
@@ -448,6 +476,20 @@ export class MascotArt {
     }
     // The pencil lifts in other places of the outline
     svg.style.setProperty('--m-dash', String(frame * 23));
+  }
+
+  /**
+   * The outline is gone over with the pencil twice more, each time a bit off: a heavier pass
+   * in pieces (where the hand pressed) and a thin stray line beside. The copies lie right
+   * after the outline, so the fills that hide the inner seams hide them as well.
+   */
+  private morePasses(el: SVGElement, amp: number): Pass[] {
+    return [2, 3].map((n) => {
+      const pass = el.cloneNode(false) as SVGElement;
+      pass.setAttribute('class', `m-pass m-pass${n}`);
+      el.after(pass);
+      return { el: pass, list: variantsOf(el, n * 101, amp * (n === 2 ? 1.5 : 2.1)) };
+    });
   }
 
   private play(act: Act): void {

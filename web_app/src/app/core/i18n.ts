@@ -37,6 +37,7 @@ const ru = {
     string
   >,
   decorDone: 'Готово',
+  decorBack: 'Весь двор',
   decorHint: 'Нажми на стрелку над подарками',
   decorHintPlace: 'Выбери место для фигуры',
   padFree: 'Свободное место. Поставь сюда фигуру из своей коллекции',
@@ -271,6 +272,7 @@ const en: Dict = {
     blizzard: 'Blizzard',
   } as Record<string, string>,
   decorDone: 'Done',
+  decorBack: 'Whole yard',
   decorHint: 'Tap an arrow above the presents',
   decorHintPlace: 'Pick a place for a figure',
   padFree: 'A free spot. Put a figure from your collection here',

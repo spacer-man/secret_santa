@@ -2577,6 +2577,7 @@ export class TreeWorld {
   }
 
   clearFocus(): void {
+    this.zoomOutOfFocus = 0;
     if (this.focusTo === 1) this.callbacks.focusLost();
     this.focusTo = 0;
     this.start();
@@ -2985,7 +2986,17 @@ export class TreeWorld {
   private zoomTarget = ZOOM_DEFAULT;
 
   /** Zoom in (negative) or out (positive) */
+  /** How far the user has zoomed out while the camera is at a corner */
+  private zoomOutOfFocus = 0;
+
   zoomBy(delta: number): void {
+    // Zooming out of a corner (or the cabin) is the way back to the whole yard.
+    // Not on the first pixel: a pinch trembles, the wheel may tick by accident
+    if (this.focusTo === 1) {
+      this.zoomOutOfFocus = Math.max(0, this.zoomOutOfFocus + delta);
+      if (this.zoomOutOfFocus > 0.08) this.clearFocus();
+      return;
+    }
     this.zoomTarget = THREE.MathUtils.clamp(this.zoomTarget + delta, 0, 1);
     this.lastInteraction = this.clock.getElapsedTime();
     this.start();

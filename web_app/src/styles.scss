@@ -1053,6 +1053,10 @@ blockquote {
   color: #1a1a21;
   border-color: transparent;
 }
+/* Above "Done": back from a corner to the whole yard */
+.decor-btn.decor-back {
+  bottom: 5.5rem;
+}
 .decor-hint {
   color: var(--gold-color);
   font-weight: 700;

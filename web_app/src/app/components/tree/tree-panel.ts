@@ -99,6 +99,12 @@ function readSeen(): Record<string, string> | null {
             <p class="drag-hint decor-hint">
               ✨ {{ i18n.t(cornerFocused() ? 'decorHintPlace' : 'decorHint') }}
             </p>
+            @if (cornerFocused()) {
+              <!-- Back to the whole yard: choose another heap without leaving the mode -->
+              <button class="decor-btn decor-back" (click)="backToYard()">
+                ← {{ i18n.t('decorBack') }}
+              </button>
+            }
             <button class="decor-btn active" (click)="toggleDecor()">
               ✓ {{ i18n.t('decorDone') }}
             </button>
@@ -607,6 +613,12 @@ export class TreePanel {
     this.placing.set(null);
     this.placeSettling = false;
     this.decorMode.set(false);
+    this.scene3d()?.clearFocus();
+  }
+
+  /** From a corner back to the view of the whole yard (the decorate mode stays on) */
+  backToYard(): void {
+    this.tg.haptic('light');
     this.scene3d()?.clearFocus();
   }
 

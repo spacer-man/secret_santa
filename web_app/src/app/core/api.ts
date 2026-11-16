@@ -36,6 +36,8 @@ export type Channel = 'telegram' | 'push' | 'email';
 export interface AccountSummary {
   registered_at: string;
   timezone: string;
+  language: string;
+  notify: Channel[];
   identities: IdentityKind[];
   email: string | null;
   wishes: number;
@@ -47,15 +49,26 @@ export interface AccountSummary {
 
 /** What a merge does besides adding up (bot/src/services/accounts.py) */
 export interface MergeReport {
+  /** What must be chosen (keys of MergeChoices): both accounts have their own */
+  conflicts: (keyof MergeChoices)[];
   refunded: number;
   refunded_mandarins: number;
   unplaced: number;
   rewards_dropped: number;
   rewards_dropped_mandarins: number;
   gifts_dropped: number;
-  identities_dropped: IdentityKind[];
-  email_dropped: string | null;
+  /** Ways to sign in that go away, and whose (the other one of the kind was chosen) */
+  identities_dropped: { kind: IdentityKind; side: MergeSide; email: string | null }[];
 }
+
+export type MergeSide = 'mine' | 'other';
+/** Whose to keep where both accounts have their own (absent: "mine") */
+export type MergeChoices = Partial<
+  Record<
+    'timezone' | 'language' | 'notify' | 'telegram' | 'email' | 'google' | 'yard' | 'gifts',
+    MergeSide
+  >
+>;
 
 /** The merge done on the server and rolled back: what the merged account will have */
 export interface MergePreview {
@@ -77,6 +90,8 @@ export type LinkResult =
       mine: AccountSummary;
       other: AccountSummary;
       preview: MergePreview;
+      /** Choices that can't be "other" here (the Mini App keeps its Telegram) */
+      locked: string[];
     };
 
 export interface Config {
@@ -278,8 +293,14 @@ export class Api {
   logout = () => (this.session = null);
 
   link = (proof: LinkProof) => this.request<LinkResult>('POST', '/me/link', proof);
-  merge = (mergeToken: string, timezone: 'mine' | 'other') =>
-    this.request<Me>('POST', '/me/merge', { merge_token: mergeToken, timezone });
+  mergePreview = (mergeToken: string, choices: MergeChoices) =>
+    this.request<MergePreview>('POST', '/me/merge/preview', { merge_token: mergeToken, choices });
+  /** `token`: a new session when the way this one signed in went away in the merge */
+  merge = (mergeToken: string, choices: MergeChoices) =>
+    this.request<{ me: Me; token?: string }>('POST', '/me/merge', {
+      merge_token: mergeToken,
+      choices,
+    });
   unlink = (kind: IdentityKind) => this.request<Me>('DELETE', `/me/link/${kind}`);
   setNotify = (channels: Channel[]) => this.request<Me>('PUT', '/me/notify', { channels });
   pushSubscribe = (sub: PushSubscriptionJSON) => this.request<void>('POST', '/push', sub);

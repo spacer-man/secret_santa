@@ -49,6 +49,8 @@ class Principal(BaseModel):
     first_name: str | None = None
     language_code: str | None = None
     start_param: str | None = None
+    # Signed in by the Mini App (initData): the session can't be replaced by our token
+    via_tma: bool = False
 
     @property
     def telegram_id(self) -> int | None:
@@ -173,7 +175,9 @@ def parse_authorization(header: str | None, bot_token: str) -> Principal:
     scheme, _, value = header.partition(" ")
     match scheme.lower():
         case "tma":
-            return Principal.telegram(check_init_data(value, bot_token))
+            principal = Principal.telegram(check_init_data(value, bot_token))
+            principal.via_tma = True
+            return principal
         case "bearer":
             return read_session(value, bot_token)
     raise AuthError("Unknown auth scheme")

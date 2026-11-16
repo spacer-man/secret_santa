@@ -12,6 +12,7 @@ import hmac
 import re
 import secrets
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -32,7 +33,7 @@ from db.models import (
     Wish,
 )
 from services import mandarins
-from services.notifier import CHANNELS
+from services.notifier import CHANNELS, lang_of
 from services.shop import max_copies
 
 CODE_TTL = timedelta(minutes=10)
@@ -223,11 +224,39 @@ async def set_channels(user_id: UUID, chosen: list[str]) -> None:
 
 
 # ====== Merge ====== #
+Side = Literal["mine", "other"]
+
+
+class MergeChoices(BaseModel):
+    """
+    Whose to keep where both accounts have their own and only one can stay. Nothing is decided
+    by chance: every such place is listed in ``MergeReport.conflicts`` and asked.
+    """
+
+    timezone: Side = "mine"
+    language: Side = "mine"
+    # Notification channels
+    notify: Side = "mine"
+    # Ways to sign in that both accounts have (each account has its own)
+    telegram: Side = "mine"
+    email: Side = "mine"
+    google: Side = "mine"
+    # Whose figure stays on a courtyard place both accounts use (the other is put away)
+    yard: Side = "mine"
+    # Whose gift stays for a year both accounts opened a gift in
+    gifts: Side = "mine"
+
+
+CHOICES = tuple(MergeChoices.model_fields)
+
+
 class AccountSummary(BaseModel):
     """What an account has: shown before a merge (and what the merged one will have)"""
 
     registered_at: datetime
     timezone: str
+    language: str
+    notify: list[str]
     identities: list[IdentityKind]
     email: str | None = None
     wishes: int
@@ -237,27 +266,39 @@ class AccountSummary(BaseModel):
     friends: int
 
 
+class DroppedIdentity(BaseModel):
+    kind: IdentityKind
+    # Whose one goes away
+    side: Side
+    email: str | None = None
+
+
 class MergeReport(BaseModel):
     """What a merge does besides adding things up: shown to the person before it"""
 
+    # What must be chosen (keys of MergeChoices): both accounts have their own
+    conflicts: list[str] = []
     # Copies over the limit, paid back in mandarins
     refunded: int = 0
     refunded_mandarins: int = 0
-    # Figures put away from a place taken by a figure of the kept account
+    # Figures put away: their place is taken by the figure chosen to stay
     unplaced: int = 0
     # Rewards not doubled (the same thing rewarded in both) or for inviting each other
     rewards_dropped: int = 0
     rewards_dropped_mandarins: int = 0
-    # Opened gifts of a year the kept account has its own opened gift for
+    # Opened gifts that don't stay: the other account's gift of the same year was chosen
     gifts_dropped: int = 0
-    # Ways to sign in of the other account the kept one already has (its own stays)
-    identities_dropped: list[IdentityKind] = []
-    email_dropped: str | None = None
+    # Ways to sign in that go away (the other one of the same kind was chosen)
+    identities_dropped: list[DroppedIdentity] = []
 
 
 class MergePreview(BaseModel):
     result: AccountSummary
     report: MergeReport
+
+
+def _language(user: User) -> str:
+    return lang_of(user.language)
 
 
 async def _summary(session: AsyncSession, user_id: UUID) -> AccountSummary:
@@ -271,6 +312,8 @@ async def _summary(session: AsyncSession, user_id: UUID) -> AccountSummary:
     return AccountSummary(
         registered_at=user.registered_at,
         timezone=user.timezone,
+        language=_language(user),
+        notify=channels(user),
         identities=identities(user),
         email=user.email,
         wishes=await count(select(func.count(col(Wish.id))).where(Wish.author_id == user_id)),
@@ -287,15 +330,26 @@ async def _summary(session: AsyncSession, user_id: UUID) -> AccountSummary:
     )
 
 
+async def get_by_id(user_id: UUID) -> User:
+    async with new_db_session() as session:
+        user = await session.get(User, user_id)
+    if not user:
+        raise AccountError("No such user")
+    return user
+
+
 async def summary(user_id: UUID) -> AccountSummary:
     async with new_db_session() as session:
         return await _summary(session, user_id)
 
 
 async def _merge_deliveries(
-    session: AsyncSession, keep: UUID, absorb: UUID, report: MergeReport
+    session: AsyncSession, keep: UUID, absorb: UUID, prefer: Side, report: MergeReport
 ) -> None:
-    """One gift a year: of two gifts of the same year the opened one stays (ours if both are)"""
+    """
+    One gift a year: of two gifts of the same year the opened one stays; both opened: the one
+    of the chosen account (``prefer``)
+    """
     kept = {
         d.year: d
         for d in await session.scalars(select(Delivery).where(Delivery.recipient_id == keep))
@@ -304,12 +358,20 @@ async def _merge_deliveries(
         await session.scalars(select(Delivery).where(Delivery.recipient_id == absorb))
     ).all():
         ours = kept.get(delivery.year)
-        if ours and (ours.opened_at or not delivery.opened_at):
-            if delivery.opened_at:
-                report.gifts_dropped += 1
+        if ours and ours.opened_at and delivery.opened_at:
+            if "gifts" not in report.conflicts:
+                report.conflicts.append("gifts")
+            report.gifts_dropped += 1
+            loser = delivery if prefer == "mine" else ours
+        elif ours:
+            # Only one of them is opened (or none): that one stays
+            loser = delivery if (ours.opened_at or not delivery.opened_at) else ours
+        else:
+            loser = None
+        if loser is delivery:
             await session.delete(delivery)
             continue
-        if ours:
+        if loser is ours and ours:
             await session.delete(ours)
             await session.flush()
         delivery.recipient_id = keep
@@ -368,26 +430,55 @@ async def _merge_mandarins(
 
 
 async def _merge_items(
-    session: AsyncSession, keep: UUID, absorb: UUID, report: MergeReport
+    session: AsyncSession, keep: UUID, absorb: UUID, prefer: Side, report: MergeReport
 ) -> None:
     """
     Decorations move. Copies over the limit (figures: ``MAX_COPIES``, the rest: one) are paid
-    back in mandarins at the shop price; a figure standing on a place already taken is put away.
+    back in mandarins at the shop price. A courtyard place both accounts use keeps the figure of
+    the chosen account (``prefer``), the other one is put away.
     """
+    theirs = set(
+        (await session.scalars(select(UserItem.id).where(UserItem.user_id == absorb))).all()
+    )
+    pads_of = {
+        side: {
+            pad
+            for pad in (
+                await session.scalars(
+                    select(UserItem.pad)
+                    .where(UserItem.user_id == owner)
+                    .where(col(UserItem.pad).is_not(None))
+                )
+            ).all()
+        }
+        for side, owner in (("mine", keep), ("other", absorb))
+    }
+    if pads_of["mine"] & pads_of["other"]:
+        report.conflicts.append("yard")
     await session.execute(
         update(UserItem).where(col(UserItem.user_id) == absorb).values(user_id=keep)
     )
     await session.flush()
+
+    def side(item: UserItem) -> Side:
+        return "other" if item.id in theirs else "mine"
 
     rows = (
         await session.execute(
             select(UserItem, ShopItem)
             .join(ShopItem, col(ShopItem.key) == UserItem.item_key)
             .where(UserItem.user_id == keep)
-            # Placed copies first: they stay; our older copies before the moved ones
-            .order_by(col(UserItem.pad).is_(None), col(UserItem.acquired_at))
         )
     ).all()
+    # Placed copies first: they stay; then the chosen account's copies, older first
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            row[0].pad is None,
+            side(row[0]) != prefer,
+            _aware(row[0].acquired_at),
+        ),
+    )
     copies: dict[str, int] = {}
     pads: set[int] = set()
     for item, shop_item in rows:
@@ -416,7 +507,7 @@ async def _merge_items(
 
 
 async def _merge(
-    session: AsyncSession, keep_id: UUID, absorb_id: UUID, timezone_from_absorbed: bool
+    session: AsyncSession, keep_id: UUID, absorb_id: UUID, choices: MergeChoices
 ) -> MergeReport:
     if keep_id == absorb_id:
         raise AccountError("Same account")
@@ -427,12 +518,26 @@ async def _merge(
         raise AccountError("No such user")
     report = MergeReport()
 
+    # Settings both have their own of
+    if keep.timezone != absorb.timezone:
+        report.conflicts.append("timezone")
+    if _language(keep) != _language(absorb):
+        report.conflicts.append("language")
+    if channels(keep) != channels(absorb):
+        report.conflicts.append("notify")
+    if choices.timezone == "other":
+        keep.timezone = absorb.timezone
+    if choices.language == "other":
+        keep.language = absorb.language
+    if choices.notify == "other":
+        keep.notify = absorb.notify
+
     await session.execute(
         update(Wish).where(col(Wish.author_id) == absorb_id).values(author_id=keep_id)
     )
-    await _merge_deliveries(session, keep_id, absorb_id, report)
+    await _merge_deliveries(session, keep_id, absorb_id, choices.gifts, report)
     await _merge_mandarins(session, keep_id, absorb_id, report)
-    await _merge_items(session, keep_id, absorb_id, report)
+    await _merge_items(session, keep_id, absorb_id, choices.yard, report)
     await session.execute(
         update(PushSubscription)
         .where(col(PushSubscription.user_id) == absorb_id)
@@ -442,23 +547,37 @@ async def _merge(
     await session.execute(
         update(User).where(col(User.referrer_id) == absorb_id).values(referrer_id=keep_id)
     )
+    # The kept account's own fields are set above: the refresh mustn't throw them away
+    chosen = (keep.timezone, keep.language, keep.notify)
     await session.refresh(keep)
+    keep.timezone, keep.language, keep.notify = chosen
 
-    # Ways to sign in: free the unique columns first, then give them to the kept account
-    moved: dict[str, int | str] = {}
+    # Ways to sign in: free the unique columns first, then give them to the kept account.
+    # Both have one of a kind: the chosen one stays, the other goes away.
+    moved: dict[str, int | str | None] = {}
     for kind, column in COLUMNS.items():
-        theirs = getattr(absorb, column)
+        mine, theirs = getattr(keep, column), getattr(absorb, column)
         if theirs is None:
             continue
-        if getattr(keep, column) is None:
+        if mine is None:
             moved[column] = theirs
-        else:
-            report.identities_dropped.append(kind)
-            if kind == "email":
-                report.email_dropped = theirs
+            continue
+        report.conflicts.append(kind)
+        take_theirs = getattr(choices, kind) == "other"
+        report.identities_dropped.append(
+            DroppedIdentity(
+                kind=kind,
+                side="mine" if take_theirs else "other",
+                email=str(mine if take_theirs else theirs) if kind == "email" else None,
+            )
+        )
+        if take_theirs:
+            moved[column] = theirs
     for column in COLUMNS.values():
         setattr(absorb, column, None)
-    session.add(absorb)
+    for column in moved:
+        setattr(keep, column, None)
+    session.add_all([absorb, keep])
     await session.flush()
     for column, value in moved.items():
         setattr(keep, column, value)
@@ -468,31 +587,32 @@ async def _merge(
     if keep.referrer_id is None and absorb.referrer_id not in (None, keep_id, absorb_id):
         keep.referrer_id = absorb.referrer_id
     keep.name = keep.name or absorb.name
-    if timezone_from_absorbed:
-        keep.timezone, keep.language = absorb.timezone, absorb.language or keep.language
     session.add(keep)
     await session.flush()
 
     await session.delete(absorb)
     await session.flush()
+    report.conflicts = [key for key in CHOICES if key in report.conflicts]
     return report
 
 
-async def merge(keep_id: UUID, absorb_id: UUID, timezone_from_absorbed: bool = False) -> None:
+async def merge(keep_id: UUID, absorb_id: UUID, choices: MergeChoices | None = None) -> None:
     """
     Move everything of ``absorb_id`` to ``keep_id`` and delete ``absorb_id``.
-    The kept account gets the ways to sign in it doesn't have yet.
+    Where both have their own and only one can stay, ``choices`` say whose.
     """
     async with new_db_session() as session:
-        await _merge(session, keep_id, absorb_id, timezone_from_absorbed)
+        await _merge(session, keep_id, absorb_id, choices or MergeChoices())
         await session.commit()
 
 
-async def preview_merge(keep_id: UUID, absorb_id: UUID) -> MergePreview:
+async def preview_merge(
+    keep_id: UUID, absorb_id: UUID, choices: MergeChoices | None = None
+) -> MergePreview:
     """The merge done for real in a transaction that is rolled back: exactly what it will be"""
     async with new_db_session() as session:
         try:
-            report = await _merge(session, keep_id, absorb_id, False)
+            report = await _merge(session, keep_id, absorb_id, choices or MergeChoices())
             result = await _summary(session, keep_id)
         finally:
             await session.rollback()

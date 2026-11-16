@@ -199,30 +199,59 @@ async def link(body: LinkIn, user: RegisteredUser, principal: CurrentPrincipal) 
         "merge_token": token,
         "mine": (await accounts.summary(user.id)).model_dump(mode="json"),
         "other": (await accounts.summary(result.other_id)).model_dump(mode="json"),
-        # What the merged account will have and what changes besides adding up
+        # What the merged account will have, what must be chosen and what changes
         "preview": (await accounts.preview_merge(user.id, result.other_id)).model_dump(mode="json"),
+        # Ways to sign in that can't be given up here (the Mini App signs in by its Telegram)
+        "locked": ["telegram"] if principal.via_tma else [],
     }
 
 
 class MergeIn(BaseModel):
     merge_token: str
-    # Whose time zone (and language) the merged account keeps
-    timezone: Literal["mine", "other"] = "mine"
+    choices: accounts.MergeChoices = accounts.MergeChoices()
 
 
-@router.post("/api/me/merge")
-async def merge(body: MergeIn, user: RegisteredUser, principal: CurrentPrincipal) -> dict:
+def _merge_pair(body: MergeIn, user_id: UUID, principal: auth.Principal) -> UUID:
+    """The other account of a merge token made for this user; the choices allowed here"""
     try:
         payload = auth.unsign(body.merge_token, BOT_TOKEN, "merge")
     except auth.AuthError as err:
         raise HTTPException(status_code=401, detail=str(err)) from err
-    if payload.get("keep") != user.id.hex:
+    if payload.get("keep") != user_id.hex:
         raise HTTPException(status_code=403, detail="Not your merge")
+    if principal.via_tma and body.choices.telegram == "other":
+        raise HTTPException(status_code=409, detail="The Mini App keeps its Telegram")
+    return UUID(hex=payload["absorb"])
+
+
+@router.post("/api/me/merge/preview")
+async def merge_preview(body: MergeIn, user: RegisteredUser, principal: CurrentPrincipal) -> dict:
+    """The preview again, with other choices"""
+    absorb = _merge_pair(body, user.id, principal)
     try:
-        await accounts.merge(user.id, UUID(hex=payload["absorb"]), body.timezone == "other")
+        preview = await accounts.preview_merge(user.id, absorb, body.choices)
     except accounts.AccountError as err:
         raise HTTPException(status_code=409, detail=str(err)) from err
-    return await _me(principal)
+    return preview.model_dump(mode="json")
+
+
+@router.post("/api/me/merge")
+async def merge(body: MergeIn, user: RegisteredUser, principal: CurrentPrincipal) -> dict:
+    """
+    ``{"me": ...}``, plus ``token`` when the way this session signed in went away (the other
+    account's one of the same kind was chosen): the new session signs in with that one
+    """
+    absorb = _merge_pair(body, user.id, principal)
+    try:
+        await accounts.merge(user.id, absorb, body.choices)
+    except accounts.AccountError as err:
+        raise HTTPException(status_code=409, detail=str(err)) from err
+    if await accounts.get_user(principal):
+        return {"me": await _me(principal)}
+    merged = await accounts.get_by_id(user.id)
+    value = getattr(merged, accounts.COLUMNS[principal.kind])
+    fresh = auth.Principal(kind=principal.kind, key=str(value), first_name=principal.first_name)
+    return {"me": await _me(fresh), "token": auth.make_session(fresh, BOT_TOKEN)}
 
 
 @router.delete("/api/me/link/{kind}")

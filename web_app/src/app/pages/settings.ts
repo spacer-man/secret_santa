@@ -7,7 +7,9 @@ import {
   IdentityKind,
   LinkProof,
   Me,
+  MergeChoices,
   MergePreview,
+  MergeSide,
 } from '../core/api';
 import { I18n, Key } from '../core/i18n';
 import { Push } from '../core/push';
@@ -21,6 +23,10 @@ interface PendingMerge {
   mine: AccountSummary;
   other: AccountSummary;
   preview: MergePreview;
+  /** Whose to keep where both have their own (every conflict of the preview) */
+  choices: MergeChoices;
+  /** Choices that can't be "other" here */
+  locked: string[];
 }
 
 type Counted = 'wishes' | 'mandarins' | 'figures' | 'gifts' | 'friends';
@@ -103,23 +109,39 @@ const PUSH_HINT: Partial<Record<string, Key>> = {
                 <th>{{ i18n.t('mergeTzRow') }}</th>
                 <td>{{ m.mine.timezone }}</td>
                 <td>{{ m.other.timezone }}</td>
-                <td class="merge-result">{{ m[keepTz()].timezone }}</td>
+                <td class="merge-result">{{ m.preview.result.timezone }}</td>
               </tr>
             </tbody>
           </table>
-          @if (m.mine.timezone !== m.other.timezone) {
-            <p class="small">{{ i18n.t('mergeTz') }}</p>
-            <div class="row">
-              @for (side of sides; track side) {
-                <button
-                  class="choice"
-                  [class.selected]="keepTz() === side"
-                  (click)="keepTz.set(side)"
-                >
-                  {{ m[side].timezone }}
-                </button>
-              }
-            </div>
+          @if (m.preview.report.conflicts.length) {
+            <!-- Both have their own and only one can stay: the person decides, never chance -->
+            <p class="small">
+              <b>{{ i18n.t('mergeChoose') }}</b>
+            </p>
+            @for (key of m.preview.report.conflicts; track key) {
+              <div class="merge-choice">
+                <span class="small">{{ i18n.dict.mergeConflicts[key] }}</span>
+                <div class="row">
+                  @for (side of sides; track side) {
+                    <button
+                      class="choice"
+                      [class.selected]="m.choices[key] === side"
+                      [class.locked]="side === 'other' && m.locked.includes(key)"
+                      [disabled]="busy() || (side === 'other' && m.locked.includes(key))"
+                      (click)="choose(m, key, side)"
+                    >
+                      <span>{{ choiceValue(m, key, side) }}</span>
+                      <span class="muted small">{{
+                        i18n.t(side === 'mine' ? 'mergeThis' : 'mergeOther')
+                      }}</span>
+                    </button>
+                  }
+                </div>
+                @if (m.locked.includes(key)) {
+                  <span class="muted small">{{ i18n.t('mergeLockedTg') }}</span>
+                }
+              </div>
+            }
           }
           <p class="small">
             <b>{{ i18n.t('mergeRules') }}</b>
@@ -204,7 +226,6 @@ export class SettingsPage {
   protected readonly pushState = this.push.state;
   protected readonly busy = signal(false);
   protected readonly merge = signal<PendingMerge | null>(null);
-  protected readonly keepTz = signal<'mine' | 'other'>('mine');
 
   protected readonly linkedKinds = computed(() => KINDS.filter((k) => this.linked(k)));
   /** Ways that can be linked here (the server offers them, not linked yet) */
@@ -295,12 +316,14 @@ export class SettingsPage {
   protected readonly link = async (proof: LinkProof): Promise<void> => {
     const result = await this.api.link(proof);
     if (result.status === 'taken') {
-      this.keepTz.set('mine');
       this.merge.set({
         token: result.merge_token,
         mine: result.mine,
         other: result.other,
         preview: result.preview,
+        // Every choice is shown chosen ("this account") and can be changed: nothing hidden
+        choices: Object.fromEntries(result.preview.report.conflicts.map((k) => [k, 'mine'])),
+        locked: result.locked,
       });
       return;
     }
@@ -316,24 +339,62 @@ export class SettingsPage {
     );
   };
 
-  /** The rules of the merge, as they apply to these two accounts */
+  /** What each side has for a choice: shown on its button */
+  protected choiceValue(m: PendingMerge, key: string, side: MergeSide): string {
+    const acc = m[side];
+    switch (key) {
+      case 'timezone':
+        return acc.timezone;
+      case 'language':
+        return acc.language === 'ru' ? 'Русский' : 'English';
+      case 'notify':
+        return acc.notify.length
+          ? acc.notify.map((c) => this.i18n.dict.channelShort[c]).join(', ')
+          : '—';
+      case 'email':
+        return acc.email ?? '—';
+      default:
+        // Telegram, Google, the yard, the gifts: told by whose they are
+        return this.i18n.dict.mergeWhose[key];
+    }
+  }
+
+  protected async choose(m: PendingMerge, key: string, side: MergeSide): Promise<void> {
+    const choices = { ...m.choices, [key]: side };
+    this.busy.set(true);
+    try {
+      const preview = await this.api.mergePreview(m.token, choices);
+      this.merge.set({ ...m, choices, preview });
+    } catch {
+      this.store.showToast(this.i18n.t('error'));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** The rules of the merge, as they apply to these two accounts and the choices made */
   protected mergeLines(m: PendingMerge): string[] {
     const t = (key: Key, ...values: (string | number)[]) =>
       values.reduce<string>((text, v) => text.replace('%s', String(v)), this.i18n.t(key));
     const r = m.preview.report;
+    const whose = (side: MergeSide) => this.i18n.t(side === 'mine' ? 'mergeOfThis' : 'mergeOfThat');
     const ways = m.preview.result.identities.map((k) => this.i18n.t(KIND_LABEL[k])).join(', ');
     const lines = [t('mergeRuleAll'), t('mergeRuleWays', ways)];
     if (r.rewards_dropped) {
       lines.push(t('mergeRuleRewards', r.rewards_dropped, r.rewards_dropped_mandarins));
     }
     if (r.refunded) lines.push(t('mergeRuleRefund', r.refunded, r.refunded_mandarins));
-    if (r.unplaced) lines.push(t('mergeRuleUnplaced', r.unplaced));
-    if (r.gifts_dropped) lines.push(t('mergeRuleGifts', r.gifts_dropped));
-    for (const kind of r.identities_dropped) {
+    if (r.unplaced) {
+      lines.push(t('mergeRuleUnplaced', whose(m.choices.yard ?? 'mine'), r.unplaced));
+    }
+    if (r.gifts_dropped) {
+      lines.push(t('mergeRuleGifts', whose(m.choices.gifts ?? 'mine'), r.gifts_dropped));
+    }
+    for (const gone of r.identities_dropped) {
       lines.push(
-        kind === 'email'
-          ? t('mergeRuleEmail', r.email_dropped ?? '', m.mine.email ?? '')
-          : t('mergeRuleWay', this.i18n.t(KIND_LABEL[kind])),
+        gone.kind === 'email'
+          ? t('mergeRuleEmail', gone.email ?? '', m.preview.result.email ?? '')
+          : t('mergeRuleWay', this.i18n.t(KIND_LABEL[gone.kind]), whose(gone.side)),
       );
     }
     lines.push(t('mergeRuleFinal'));
@@ -341,7 +402,18 @@ export class SettingsPage {
   }
 
   protected async doMerge(m: PendingMerge): Promise<void> {
-    if (!(await this.save(() => this.api.merge(m.token, this.keepTz())))) return;
+    this.busy.set(true);
+    try {
+      const { me, token } = await this.api.merge(m.token, m.choices);
+      // The way this session signed in went away: sign in with the one that stayed
+      if (token) this.api.session = token;
+      this.me.set(me);
+    } catch {
+      this.store.showToast(this.i18n.t('error'));
+      return;
+    } finally {
+      this.busy.set(false);
+    }
     this.merge.set(null);
     this.store.showToast(this.i18n.t('mergeDone'));
     await this.store.load(true);

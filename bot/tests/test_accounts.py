@@ -243,17 +243,35 @@ def test_merge_two_accounts(mail):
     assert preview["report"]["refunded"] == 1 and preview["report"]["unplaced"] == 1
     assert preview["report"]["refunded_mandarins"] == lantern_price
     assert user_by(id=mail_user.id) is not None
+    # Asked, not decided by chance: both have their own time zone, language, yard place
+    assert preview["report"]["conflicts"] == ["timezone", "language", "yard"]
+    assert r["locked"] == ["telegram"]  # the Mini App keeps its Telegram
 
     # Somebody else can't use the token
     client.put("/api/me", headers=tg(4002), json={"timezone": "UTC+3"})
     bad = client.post("/api/me/merge", headers=tg(4002), json={"merge_token": r["merge_token"]})
     assert bad.status_code == 403
 
-    me = client.post(
+    choices = {"timezone": "other", "language": "mine", "yard": "mine"}
+    again = client.post(
+        "/api/me/merge/preview",
+        headers=tg(4001),
+        json={"merge_token": r["merge_token"], "choices": choices},
+    ).json()
+    assert again["result"]["timezone"] == "UTC-5"
+    no = client.post(
         "/api/me/merge",
         headers=tg(4001),
-        json={"merge_token": r["merge_token"], "timezone": "other"},
+        json={"merge_token": r["merge_token"], "choices": {"telegram": "other"}},
+    )
+    assert no.status_code == 409
+    done = client.post(
+        "/api/me/merge",
+        headers=tg(4001),
+        json={"merge_token": r["merge_token"], "choices": choices},
     ).json()
+    assert "token" not in done  # signed in with Telegram: it stays
+    me = done["me"]
     assert me["identities"] == {"telegram": True, "email": "merge@example.com", "google": False}
     assert me["timezone"] == "UTC-5"
     assert user_by(id=mail_user.id) is None
@@ -267,8 +285,8 @@ def test_merge_two_accounts(mail):
     # 6 lanterns + lights: one lantern over the limit is paid back
     assert merged["figures"] == 5 + 1
     assert merged["mandarins"] == balance_before + lantern_price
-    # What was promised is what happened (the time zone was chosen after the preview)
-    assert {**preview["result"], "timezone": "UTC-5"} == merged
+    # What was promised is what happened
+    assert again["result"] == merged
     shop_items = {i["key"]: i for i in client.get("/api/shop", headers=tg(4001)).json()["items"]}
     assert shop_items["lantern"]["count"] == 5
     assert shop_items["lantern"]["pads"] == [0]  # one figure on a place, the other put away
@@ -319,6 +337,63 @@ def test_merge_keeps_one_gift_a_year():
     assert run(years()) == [(2026, True), (2027, True)]
     # Telegram ids can't both stay: the kept account has its own
     assert user_by(telegram_id=5002) is None
+
+
+def test_merge_asks_whose_email_and_gift(mail):
+    """Both have an e-mail and a gift of 2027: the person chooses, the session follows"""
+    a_token = email_login(mail, "a@example.com")
+    client.put("/api/me", headers=bearer(a_token), json={"timezone": "UTC+3"})
+    b_token = email_login(mail, "b@example.com")
+    client.put("/api/me", headers=bearer(b_token), json={"timezone": "UTC+3"})
+    a, b = user_by(email="a@example.com"), user_by(email="b@example.com")
+    assert a and b
+    opened = datetime(2027, 1, 1, tzinfo=UTC)
+
+    async def gifts() -> None:
+        async with new_db_session() as session:
+            session.add(Delivery(recipient_id=a.id, year=2027, opened_at=opened, reaction="🔥"))
+            session.add(Delivery(recipient_id=b.id, year=2027, opened_at=opened, reaction="❤️"))
+            await session.commit()
+
+    run(gifts())
+    accounts_api._email_sends.clear()
+    client.post("/api/auth/email/start", json={"email": "b@example.com"})
+    r = client.post(
+        "/api/me/link",
+        headers=bearer(a_token),
+        json={"email": {"email": "b@example.com", "code": code_of(mail, "b@example.com")}},
+    ).json()
+    assert r["status"] == "taken"
+    assert r["preview"]["report"]["conflicts"] == ["email", "gifts"]
+    assert r["locked"] == []
+    dropped = r["preview"]["report"]["identities_dropped"]
+    assert dropped == [{"kind": "email", "side": "other", "email": "b@example.com"}]
+
+    choices = {"email": "other", "gifts": "other"}
+    preview = client.post(
+        "/api/me/merge/preview",
+        headers=bearer(a_token),
+        json={"merge_token": r["merge_token"], "choices": choices},
+    ).json()
+    assert preview["result"]["email"] == "b@example.com"
+    assert preview["report"]["identities_dropped"][0]["email"] == "a@example.com"
+
+    done = client.post(
+        "/api/me/merge",
+        headers=bearer(a_token),
+        json={"merge_token": r["merge_token"], "choices": choices},
+    ).json()
+    # The session signed in with a@ which went away: a new one with b@
+    assert done["me"]["identities"]["email"] == "b@example.com"
+    assert client.get("/api/me", headers=bearer(done["token"])).json()["registered"]
+    assert client.get("/api/me", headers=bearer(a_token)).json()["registered"] is False
+
+    async def reactions() -> list[str | None]:
+        async with new_db_session() as session:
+            rows = await session.scalars(select(Delivery).where(Delivery.recipient_id == a.id))
+            return [d.reaction for d in rows]
+
+    assert run(reactions()) == ["❤️"]  # the other account's gift, as chosen
 
 
 def principal(kind, key):

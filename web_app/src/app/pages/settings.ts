@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import {
   AccountSummary,
   Api,
+  ApiError,
   Channel,
   IdentityKind,
   LinkProof,
@@ -71,7 +72,7 @@ const PUSH_HINT: Partial<Record<string, Key>> = {
                 }
               </span>
             </span>
-            @if (canUnlink(kind)) {
+            @if (canUnlink(kind) && fresh()) {
               <button class="link danger" [disabled]="busy()" (click)="unlink(kind)">
                 {{ i18n.t('unlink') }}
               </button>
@@ -158,6 +159,19 @@ const PUSH_HINT: Partial<Record<string, Key>> = {
             <button class="btn btn-ghost" (click)="merge.set(null)">{{ i18n.t('cancel') }}</button>
           </div>
         </div>
+      } @else if (!fresh()) {
+        <!-- Changing the ways in needs a recent sign-in: a session left open somewhere can't -->
+        <div class="note reauth">
+          <p class="small">
+            <b>🔐 {{ i18n.t('reauthTitle') }}</b>
+          </p>
+          @if (tg.isMiniApp) {
+            <p class="small">{{ i18n.t('reauthMiniApp') }}</p>
+          } @else {
+            <p class="small">{{ i18n.t('reauthText') }}</p>
+            <sign-in mode="login" [except]="notLinkedKinds()" [handle]="reauth" />
+          }
+        </div>
       } @else if (linkable().length) {
         <h3>{{ i18n.t('linkMore') }}</h3>
         <sign-in mode="link" [except]="linkedKinds()" [handle]="link" />
@@ -228,6 +242,9 @@ export class SettingsPage {
   protected readonly merge = signal<PendingMerge | null>(null);
 
   protected readonly linkedKinds = computed(() => KINDS.filter((k) => this.linked(k)));
+  protected readonly notLinkedKinds = computed(() => KINDS.filter((k) => !this.linked(k)));
+  /** Recent sign-in: the ways in can be changed */
+  protected readonly fresh = computed(() => this.me()?.fresh !== false);
   /** Ways that can be linked here (the server offers them, not linked yet) */
   protected readonly linkable = computed(() => {
     const config = this.store.config();
@@ -284,13 +301,28 @@ export class SettingsPage {
     return devices > 1 ? `${this.i18n.t('pushOtherDevices')} ${devices - 1}` : null;
   }
 
+  /** The session got old while the page was open: ask to confirm (the block shows itself) */
+  private stale(err: unknown): boolean {
+    const detail = err instanceof ApiError && err.status === 403 ? err.message : '';
+    if (detail !== 'reauth_required' && detail !== 'reopen_required') return false;
+    const me = this.me();
+    if (me) this.me.set({ ...me, fresh: false });
+    this.merge.set(null);
+    return true;
+  }
+
+  protected readonly reauth = async (proof: LinkProof): Promise<void> => {
+    this.me.set(await this.api.reauth(proof));
+    this.store.showToast(this.i18n.t('reauthDone'));
+  };
+
   private async save(task: () => Promise<Me>): Promise<boolean> {
     this.busy.set(true);
     try {
       this.me.set(await task());
       return true;
-    } catch {
-      this.store.showToast(this.i18n.t('error'));
+    } catch (err) {
+      if (!this.stale(err)) this.store.showToast(this.i18n.t('error'));
       return false;
     } finally {
       this.busy.set(false);
@@ -314,7 +346,13 @@ export class SettingsPage {
   }
 
   protected readonly link = async (proof: LinkProof): Promise<void> => {
-    const result = await this.api.link(proof);
+    let result;
+    try {
+      result = await this.api.link(proof);
+    } catch (err) {
+      if (this.stale(err)) return;
+      throw err;
+    }
     if (result.status === 'taken') {
       this.merge.set({
         token: result.merge_token,
@@ -365,8 +403,8 @@ export class SettingsPage {
     try {
       const preview = await this.api.mergePreview(m.token, choices);
       this.merge.set({ ...m, choices, preview });
-    } catch {
-      this.store.showToast(this.i18n.t('error'));
+    } catch (err) {
+      if (!this.stale(err)) this.store.showToast(this.i18n.t('error'));
     } finally {
       this.busy.set(false);
     }
@@ -408,8 +446,8 @@ export class SettingsPage {
       // The way this session signed in went away: sign in with the one that stayed
       if (token) this.api.session = token;
       this.me.set(me);
-    } catch {
-      this.store.showToast(this.i18n.t('error'));
+    } catch (err) {
+      if (!this.stale(err)) this.store.showToast(this.i18n.t('error'));
       return;
     } finally {
       this.busy.set(false);

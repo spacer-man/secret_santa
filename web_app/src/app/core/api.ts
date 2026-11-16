@@ -27,6 +27,8 @@ export interface Me {
   notify?: Channel[];
   /** Browsers subscribed to push notifications */
   push_devices?: number;
+  /** Signed in recently enough to link, unlink and merge (else: confirm first) */
+  fresh?: boolean;
 }
 
 export type IdentityKind = 'telegram' | 'email' | 'google';
@@ -301,6 +303,16 @@ export class Api {
       merge_token: mergeToken,
       choices,
     });
+  /** Confirms it's the owner with one of the account's ways in: a fresh session */
+  reauth = async (proof: LinkProof) => {
+    const { token, me } = await this.request<{ token: string; me: Me }>(
+      'POST',
+      '/me/reauth',
+      proof,
+    );
+    this.session = token;
+    return me;
+  };
   unlink = (kind: IdentityKind) => this.request<Me>('DELETE', `/me/link/${kind}`);
   setNotify = (channels: Channel[]) => this.request<Me>('PUT', '/me/notify', { channels });
   pushSubscribe = (sub: PushSubscriptionJSON) => this.request<void>('POST', '/push', sub);

@@ -3175,3 +3175,12 @@ svg.hm.hm-free {
 .merge-choice > span {
   padding-bottom: 0.2rem;
 }
+.reauth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.8rem;
+}
+.reauth p {
+  margin: 0;
+}

@@ -63,7 +63,7 @@ const RULES: [selector: string, kind: Kind][] = [
   ['.doodle', 'doodle'],
   // Bigger tinted areas: a watercolour wash (quotes, hints, the row of the user)
   [
-    '.quote, blockquote, .idea, .designer, .wave li.mine, .shop-tabs, .mascot-bubble, .merge, .ios-push, .place-ask',
+    '.quote, blockquote, .idea, .designer, .wave li.mine, .shop-tabs, .mascot-bubble, .merge, .ios-push, .place-ask, .reauth',
     'note',
   ],
   ['.badge, .chip', 'chip'],

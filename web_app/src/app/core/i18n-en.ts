@@ -385,6 +385,12 @@ export const en: Dict = {
   notLinked: 'not linked',
   unlink: 'Unlink',
   signedInHere: 'signed in with it now',
+  reauthTitle: 'Confirm it’s you',
+  reauthText:
+    'You signed in a while ago. To link, unlink or merge accounts, sign in again with any of your ways in — so nobody can change them from a device left open.',
+  reauthMiniApp:
+    'The app has been open for a while. Close it and open it again — then the ways in can be changed.',
+  reauthDone: 'Done, the ways in can be changed now',
   linkMore: 'Link another',
   linkedOk: 'Linked ✓',
   alreadyThis: 'Already linked to this account',

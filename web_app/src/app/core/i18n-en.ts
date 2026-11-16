@@ -481,4 +481,13 @@ export const en: Dict = {
   erasedGift:
     'The author of this greeting deleted the account, and the greeting is gone. But Santa still wishes you a magical year!',
   invitedPending: '%s more — they count once their first greeting passes moderation',
+  sessionsTitle: 'Where you’re signed in',
+  sessionThis: 'this device',
+  sessionEnd: 'End',
+  sessionEnded: 'The session is ended',
+  sessionsNone: 'No sign-ins on the website',
+  sessionsMiniApp: 'The Telegram app signs in by Telegram itself, so it isn’t listed.',
+  seenNow: 'now',
+  seenMinutes: '%s min ago',
+  seenHours: '%s h ago',
 };

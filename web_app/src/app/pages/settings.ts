@@ -11,6 +11,7 @@ import {
   MergeChoices,
   MergePreview,
   MergeSide,
+  SessionInfo,
 } from '../core/api';
 import { I18n, Key } from '../core/i18n';
 import { Push } from '../core/push';
@@ -209,6 +210,37 @@ const PUSH_HINT: Partial<Record<string, Key>> = {
 
     <section class="card">
       <h2>{{ i18n.t('accountTitle') }}</h2>
+      <h3>{{ i18n.t('sessionsTitle') }}</h3>
+      <ul class="identities sessions">
+        @for (s of sessions(); track s.id) {
+          <li class="card row between">
+            <span>
+              <b>{{ s.device || i18n.t(kindLabel[s.kind]) }}</b>
+              @if (s.current) {
+                <span class="badge">{{ i18n.t('sessionThis') }}</span>
+              }
+              <br />
+              <span class="muted small">
+                {{ i18n.t(kindLabel[s.kind]) }}
+                @if (s.ip) {
+                  · {{ s.ip }}
+                }
+                · {{ seen(s.last_seen_at) }}
+              </span>
+            </span>
+            @if (!s.current) {
+              <button class="link danger" [disabled]="busy()" (click)="endSession(s.id)">
+                {{ i18n.t('sessionEnd') }}
+              </button>
+            }
+          </li>
+        } @empty {
+          <li class="muted small">{{ i18n.t('sessionsNone') }}</li>
+        }
+      </ul>
+      @if (tg.isMiniApp) {
+        <p class="muted small">{{ i18n.t('sessionsMiniApp') }}</p>
+      }
       <button class="btn btn-secondary" [disabled]="busy()" (click)="logoutAll()">
         {{ i18n.t('logoutAll') }}
       </button>
@@ -266,6 +298,7 @@ export class SettingsPage {
   protected readonly busy = signal(false);
   protected readonly merge = signal<PendingMerge | null>(null);
   protected readonly confirmDelete = signal(false);
+  protected readonly sessions = signal<SessionInfo[]>([]);
 
   protected readonly linkedKinds = computed(() => KINDS.filter((k) => this.linked(k)));
   protected readonly notLinkedKinds = computed(() => KINDS.filter((k) => !this.linked(k)));
@@ -284,6 +317,7 @@ export class SettingsPage {
 
   constructor() {
     this.push.refresh(this.store.config()?.vapid_public_key);
+    void this.loadSessions();
   }
 
   protected linked(kind: IdentityKind): boolean {
@@ -487,9 +521,41 @@ export class SettingsPage {
     await this.save(() => this.api.unlink(kind));
   }
 
+  private async loadSessions(): Promise<void> {
+    try {
+      this.sessions.set((await this.api.sessions()).sessions);
+    } catch {
+      // The list is a convenience: the rest of the page works without it
+    }
+  }
+
+  /** "just now" / "5 min ago" / "3 h ago" / a date */
+  protected seen(at: string): string {
+    const minutes = Math.round((this.store.now() - new Date(at).getTime()) / 60_000);
+    if (minutes < 10) return this.i18n.t('seenNow');
+    if (minutes < 60) return this.i18n.t('seenMinutes').replace('%s', String(minutes));
+    if (minutes < 24 * 60) {
+      return this.i18n.t('seenHours').replace('%s', String(Math.round(minutes / 60)));
+    }
+    return new Date(at).toLocaleDateString(this.i18n.lang());
+  }
+
+  protected async endSession(id: string): Promise<void> {
+    this.busy.set(true);
+    try {
+      this.sessions.set((await this.api.endSession(id)).sessions);
+      this.store.showToast(this.i18n.t('sessionEnded'));
+    } catch {
+      this.store.showToast(this.i18n.t('error'));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
   protected async logoutAll(): Promise<void> {
     if (await this.save(() => this.api.logoutAll())) {
       this.store.showToast(this.i18n.t('loggedOutAll'));
+      await this.loadSessions();
     }
   }
 
@@ -501,7 +567,7 @@ export class SettingsPage {
 
   protected async logout(): Promise<void> {
     await this.push.disable().catch(() => {});
-    this.api.logout();
+    await this.api.logout();
     this.store.me.set(null);
     this.store.gift.set(null);
     this.router.navigateByUrl('/login');

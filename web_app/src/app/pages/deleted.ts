@@ -91,7 +91,7 @@ export class DeletedPage {
     this.busy.set(true);
     try {
       await this.api.eraseAccount();
-      this.api.logout();
+      this.api.session = null;
       this.store.me.set(null);
       this.store.gift.set(null);
       this.store.showToast(this.i18n.t('erased'));
@@ -103,8 +103,8 @@ export class DeletedPage {
     }
   }
 
-  protected logout(): void {
-    this.api.logout();
+  protected async logout(): Promise<void> {
+    await this.api.logout();
     this.store.me.set(null);
     this.router.navigateByUrl('/login');
   }

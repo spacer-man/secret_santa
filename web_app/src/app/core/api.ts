@@ -36,6 +36,19 @@ export interface Me {
   purge_at?: string;
 }
 
+/** A sign-in on a device (website / PWA) */
+export interface SessionInfo {
+  id: string;
+  current: boolean;
+  kind: IdentityKind;
+  /** "Chrome · Android" */
+  device: string;
+  /** Only the network part: "95.31.*.*" */
+  ip: string;
+  created_at: string;
+  last_seen_at: string;
+}
+
 export type IdentityKind = 'telegram' | 'email' | 'google';
 export type Channel = 'telegram' | 'push' | 'email';
 
@@ -299,7 +312,15 @@ export class Api {
       language,
     });
   loginEmail = (email: string, code: string) => this.signIn('/auth/email/verify', { email, code });
-  logout = () => (this.session = null);
+  /** Signs out here: the session ends on the server too (offline: just forgotten here) */
+  logout = async () => {
+    if (this.session) await this.request<void>('POST', '/me/logout').catch(() => {});
+    this.session = null;
+  };
+  sessions = () =>
+    this.request<{ sessions: SessionInfo[]; current_listed: boolean }>('GET', '/me/sessions');
+  endSession = (id: string) =>
+    this.request<{ sessions: SessionInfo[] }>('DELETE', `/me/sessions/${id}`);
 
   link = (proof: LinkProof) => this.request<LinkResult>('POST', '/me/link', proof);
   mergePreview = (mergeToken: string, choices: MergeChoices) =>

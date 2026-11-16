@@ -483,6 +483,15 @@ export const ru = {
   erasedGift:
     'Автор этого поздравления удалил аккаунт, и поздравление стёрлось. Но Санта всё равно желает тебе волшебного года!',
   invitedPending: 'Ещё %s — засчитаются, когда их первое поздравление пройдёт проверку',
+  sessionsTitle: 'Где выполнен вход',
+  sessionThis: 'это устройство',
+  sessionEnd: 'Завершить',
+  sessionEnded: 'Сеанс завершён',
+  sessionsNone: 'Входов на сайте нет',
+  sessionsMiniApp: 'Telegram-приложение входит само через Telegram, поэтому его в списке нет.',
+  seenNow: 'сейчас',
+  seenMinutes: '%s мин назад',
+  seenHours: '%s ч назад',
 };
 
 export type Dict = typeof ru;

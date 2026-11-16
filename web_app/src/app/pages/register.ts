@@ -1,7 +1,8 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Api } from '../core/api';
+import { Daytime } from '../core/daytime';
 import { I18n } from '../core/i18n';
 import { Store } from '../core/store';
 import { Telegram } from '../core/telegram';
@@ -26,6 +27,9 @@ import { detectTimezone, localTime } from '../core/time';
       <p class="clock">
         {{ i18n.t('yourTime') }}: <b>{{ time() }}</b>
       </p>
+      @if (cities().length) {
+        <p class="muted small">📍 {{ i18n.t('tzCities') }} {{ cities().join(', ') }}</p>
+      }
       <button class="btn btn-primary" [disabled]="saving()" (click)="save()">
         {{ i18n.t('join') }}
       </button>
@@ -49,6 +53,19 @@ export class RegisterPage {
   protected readonly time = computed(() => localTime(this.timezone(), this.store.now()));
   protected readonly title = computed(() => this.i18n.t('registerTitle'));
   protected readonly saving = signal(false);
+  /** Cities of the chosen timezone: what it is, and the sun of the scene will be counted there */
+  protected readonly cities = signal<string[]>([]);
+  private readonly daytime = inject(Daytime);
+
+  constructor() {
+    effect(async () => {
+      const tz = this.timezone();
+      const found = await this.daytime.citiesOf(tz);
+      if (tz === this.timezone()) {
+        this.cities.set(found.map((c) => (this.i18n.lang() === 'ru' ? c.ru : c.en)));
+      }
+    });
+  }
   protected readonly error = signal('');
 
   async save(): Promise<void> {

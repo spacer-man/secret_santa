@@ -321,7 +321,7 @@ function readSeen(): Record<string, string> | null {
               <!-- Where the sun is counted for: the timezone's city, or a place picked here -->
               <div class="place-row">
                 <span>
-                  📍 <b>{{ placeName() }}</b>
+                  📍 <b>{{ placeName() }}</b> · {{ daytime.placeTimezone() }}
                   <small class="muted">{{ i18n.dict.placeSources[daytime.place().source] }}</small>
                 </span>
                 @if (!placeOpen()) {
@@ -508,18 +508,34 @@ export class TreePanel {
     if (this.cityQuery() === query) this.cityHits.set(hits);
   }
 
-  protected pickCity(city: City): void {
-    this.daytime.pickCity(city);
+  protected async pickCity(city: City): Promise<void> {
     this.closePlace();
+    try {
+      this.timezoneMoved(await this.daytime.pickCity(city));
+    } catch {
+      this.store.showToast(this.i18n.t('error'));
+    }
   }
 
   protected async geolocate(): Promise<void> {
     this.locating.set(true);
     this.geoError.set(null);
-    const result = await this.daytime.locate();
-    this.locating.set(false);
-    if (result === 'ok') this.closePlace();
-    else this.geoError.set(result);
+    try {
+      const { result, timezone } = await this.daytime.locate();
+      if (result === 'ok') {
+        this.closePlace();
+        this.timezoneMoved(timezone);
+      } else this.geoError.set(result);
+    } catch {
+      this.store.showToast(this.i18n.t('error'));
+    } finally {
+      this.locating.set(false);
+    }
+  }
+
+  /** The place is in another timezone: the account's one followed it, the gift time too */
+  private timezoneMoved(timezone: string | null | undefined): void {
+    if (timezone) this.store.showToast(this.i18n.t('placeTzChanged').replace('%s', timezone));
   }
 
   protected resetPlace(): void {

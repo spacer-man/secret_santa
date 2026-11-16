@@ -12,7 +12,7 @@ import { Tree3d } from '../tree3d/tree-3d';
 import { LIGHT_SKINS } from '../tree3d/skins';
 import { ShopSheet } from './shop-sheet';
 import { DebugPanel } from './debug-panel';
-import { City, DAYTIME_MODES, Daytime, DaytimeMode, PHASE_ICONS } from '../../core/daytime';
+import { City, DAYTIME_MODES, Daytime, DaytimeMode, PHASE_ICONS, Place } from '../../core/daytime';
 
 const SEEN_KEY = 'santa.tree.seen';
 const SNOW_KEY = 'santa.snowfall.v2';
@@ -321,7 +321,7 @@ function readSeen(): Record<string, string> | null {
               <!-- Where the sun is counted for: the timezone's city, or a place picked here -->
               <div class="place-row">
                 <span>
-                  📍 <b>{{ placeName() }}</b>
+                  📍 <b>{{ placeName() }}</b> · {{ daytime.placeTimezone() }}
                   <small class="muted">{{ i18n.dict.placeSources[daytime.place().source] }}</small>
                 </span>
                 @if (!placeOpen()) {
@@ -330,7 +330,25 @@ function readSeen(): Record<string, string> | null {
                   </button>
                 }
               </div>
-              @if (placeOpen()) {
+              @if (pendingPlace(); as p) {
+                <div class="place-pick note place-ask">
+                  <p class="small">
+                    {{
+                      i18n
+                        .t('placeAsk')
+                        .replace('%c', placeTitle(p.place))
+                        .replace('%n', p.timezone)
+                        .replace('%o', store.me()?.timezone ?? '')
+                    }}
+                  </p>
+                  <button class="btn btn-primary wide" (click)="answerPlace(true)">
+                    {{ i18n.t('placeAskYes').replace('%n', p.timezone) }}
+                  </button>
+                  <button class="btn btn-ghost wide" (click)="answerPlace(false)">
+                    {{ i18n.t('placeAskNo').replace('%o', store.me()?.timezone ?? '') }}
+                  </button>
+                </div>
+              } @else if (placeOpen()) {
                 <div class="place-pick">
                   <input
                     class="textarea place-input"
@@ -459,7 +477,7 @@ export class TreePanel {
   protected readonly i18n = inject(I18n);
   protected readonly router = inject(Router);
   private readonly api = inject(Api);
-  private readonly store = inject(Store);
+  protected readonly store = inject(Store);
   private readonly tg = inject(Telegram);
 
   protected readonly tree = signal<TreeData | null>(null);
@@ -495,6 +513,8 @@ export class TreePanel {
   protected readonly cityHits = signal<City[]>([]);
   protected readonly locating = signal(false);
   protected readonly geoError = signal<'denied' | 'unavailable' | null>(null);
+  /** A place in another timezone waiting for "move the timezone too?" */
+  protected readonly pendingPlace = signal<{ place: Place; timezone: string } | null>(null);
   protected readonly placeName = computed(() => {
     const p = this.daytime.place();
     const name = this.lang === 'ru' ? p.ru : p.en;
@@ -508,18 +528,55 @@ export class TreePanel {
     if (this.cityQuery() === query) this.cityHits.set(hits);
   }
 
-  protected pickCity(city: City): void {
-    this.daytime.pickCity(city);
-    this.closePlace();
+  protected pickCity(city: City): Promise<void> {
+    return this.offerPlace(this.daytime.placeOfCity(city));
   }
 
   protected async geolocate(): Promise<void> {
     this.locating.set(true);
     this.geoError.set(null);
-    const result = await this.daytime.locate();
-    this.locating.set(false);
-    if (result === 'ok') this.closePlace();
-    else this.geoError.set(result);
+    try {
+      const { result, place } = await this.daytime.locate();
+      if (place) await this.offerPlace(place);
+      else if (result !== 'ok') this.geoError.set(result);
+    } catch {
+      this.store.showToast(this.i18n.t('error'));
+    } finally {
+      this.locating.set(false);
+    }
+  }
+
+  /** A place in another timezone: asked first (the gift time moves with it) */
+  private async offerPlace(place: Place): Promise<void> {
+    const timezone = this.daytime.timezoneFor(place);
+    if (timezone) {
+      this.pendingPlace.set({ place, timezone });
+      return;
+    }
+    await this.applyPlace(place);
+  }
+
+  /** Yes: the city and its timezone. No: nothing changes (they must agree) */
+  protected async answerPlace(yes: boolean): Promise<void> {
+    const pending = this.pendingPlace();
+    this.pendingPlace.set(null);
+    if (!pending || !yes) return;
+    await this.applyPlace(pending.place);
+    this.store.showToast(this.i18n.t('placeTzChanged').replace('%s', pending.timezone));
+  }
+
+  private async applyPlace(place: Place): Promise<void> {
+    try {
+      await this.daytime.setPlace(place);
+      this.closePlace();
+    } catch {
+      this.store.showToast(this.i18n.t('error'));
+    }
+  }
+
+  protected placeTitle(place: Place): string {
+    const name = this.lang === 'ru' ? place.ru : place.en;
+    return name ?? `${place.lat.toFixed(1)}°, ${place.lon.toFixed(1)}°`;
   }
 
   protected resetPlace(): void {
@@ -529,6 +586,7 @@ export class TreePanel {
 
   private closePlace(): void {
     this.placeOpen.set(false);
+    this.pendingPlace.set(null);
     this.cityQuery.set('');
     this.cityHits.set([]);
     this.geoError.set(null);

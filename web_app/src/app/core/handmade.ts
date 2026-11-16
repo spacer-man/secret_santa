@@ -45,13 +45,13 @@ const RULES: [selector: string, kind: Kind][] = [
   ['.card-btn.quiet', 'chip'],
   // Framed things: buttons, options to choose from, cards
   [
-    '.btn-secondary, .shop-card, .card-btn, .snow-mode, .reaction, .pattern-btn, .shop-set, .theme-toggle, .mascot-opt',
+    '.btn-secondary, .shop-card, .card-btn, .snow-mode, .reaction, .pattern-btn, .shop-set, .theme-toggle, .mascot-opt, .choice',
     'card',
   ],
   ['.page', 'sheet-frame'],
   ['.card > h2, .label, .page-title', 'title'],
   ['.number, .stats b, .tabs a.active, .step-no', 'underline'],
-  ['.sheet h3, .earn li, .card.row, .steps li, .facts li', 'rule'],
+  ['.sheet h3, .earn li, .card.row, li.session, .steps li, .facts li', 'rule'],
   ['.tabs, .sheet', 'top-rule'],
   ['.tree-card', 'picture'],
   ['.seal', 'seal'],
@@ -62,10 +62,13 @@ const RULES: [selector: string, kind: Kind][] = [
   // Little pictures drawn in pencil (the loading screen): data-doodle = snowflake | star | fir
   ['.doodle', 'doodle'],
   // Bigger tinted areas: a watercolour wash (quotes, hints, the row of the user)
-  ['.quote, blockquote, .idea, .designer, .wave li.mine, .shop-tabs, .mascot-bubble', 'note'],
+  [
+    '.quote, blockquote, .idea, .designer, .wave li.mine, .shop-tabs, .mascot-bubble, .merge, .ios-push, .place-ask, .reauth',
+    'note',
+  ],
   ['.badge, .chip', 'chip'],
   // Form fields cannot hold a drawing inside: it is laid over them
-  ['.select, .textarea', 'field'],
+  ['.select, .textarea, .input', 'field'],
   // Buttons over the scene: paper tags stuck onto the illustration
   ['.mandarin-chip, .decor-btn', 'tag'],
   ['.snow-btn, .zoom button', 'tag-round'],

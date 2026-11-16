@@ -3,7 +3,6 @@ from uuid import UUID
 
 from db import new_db_session
 from repos.user.abc import UserDTO, UserRepository
-from services import mandarins
 
 from .exceptions import UserAlreadyRegisteredError, UserIsNotRegisteredError
 
@@ -61,11 +60,8 @@ class UserService:
             if referrer_id and not await repo.get_one(filter_by={"id": referrer_id}):
                 kwargs.pop("referrer_id")
 
+            # The friend who invited them is rewarded for their first approved wish
             user_id = await repo.create(**kwargs)
-            if referrer_id := kwargs.get("referrer_id"):
-                await mandarins.award(
-                    db_session, referrer_id, mandarins.Reason.FRIEND_JOINED, user_id
-                )
 
             await db_session.commit()
         return user_id
@@ -79,6 +75,11 @@ class UserService:
         async with new_db_session() as db_session:
             repo = self.repo_type(session=db_session)
             return await repo.get_one(filter_by={"id": user_id})
+
+    async def edit_timezone(self, user_id: UUID, timezone: str) -> None:
+        async with new_db_session() as db_session:
+            await self.repo_type(session=db_session).edit(id=user_id, timezone=timezone)
+            await db_session.commit()
 
     async def edit_user(
         self,

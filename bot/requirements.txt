@@ -5,7 +5,9 @@ aiogram==3.22.0
 aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.12.15
-    # via aiogram
+    # via
+    #   aiogram
+    #   pywebpush
 aiosignal==1.4.0
     # via aiohttp
 annotated-doc==0.0.4
@@ -21,9 +23,21 @@ asyncpg==0.31.0
 attrs==25.4.0
     # via aiohttp
 certifi==2025.11.12
-    # via aiogram
+    # via
+    #   aiogram
+    #   requests
+cffi==2.1.1 ; platform_python_implementation != 'PyPy'
+    # via cryptography
+charset-normalizer==3.5.2
+    # via requests
 click==8.5.1
     # via uvicorn
+cryptography==50.0.2
+    # via
+    #   http-ece
+    #   py-vapid
+    #   pyjwt
+    #   pywebpush
 fastapi==0.123.4
     # via secret-santa
 frozenlist==1.8.0
@@ -34,9 +48,12 @@ greenlet==3.2.4 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or 
     # via sqlalchemy
 h11==0.16.0
     # via uvicorn
+http-ece==1.2.1
+    # via pywebpush
 idna==3.11
     # via
     #   anyio
+    #   requests
     #   yarl
 magic-filter==1.0.12
     # via aiogram
@@ -48,6 +65,10 @@ propcache==0.4.1
     # via
     #   aiohttp
     #   yarl
+py-vapid==1.9.6
+    # via pywebpush
+pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+    # via cffi
 pydantic==2.11.10
     # via
     #   aiogram
@@ -59,16 +80,22 @@ pydantic-core==2.33.2
     # via pydantic
 pydantic-settings==2.12.0
     # via secret-santa
+pyjwt==2.15.1
+    # via secret-santa
 python-dotenv==1.2.1
     # via pydantic-settings
 python-multipart==0.0.33
     # via secret-santa
 pytz==2025.2
     # via secret-santa
+pywebpush==2.5.0
+    # via secret-santa
 pyyaml==6.0.3
     # via secret-santa
 redis==7.1.0
     # via secret-santa
+requests==2.34.2
+    # via pywebpush
 sqlalchemy==2.0.44
     # via
     #   secret-santa
@@ -93,6 +120,8 @@ tzdata==2025.3 ; sys_platform == 'win32'
     # via tzlocal
 tzlocal==5.3.1
     # via apscheduler
+urllib3==2.8.0
+    # via requests
 uuid7==0.1.0
     # via secret-santa
 uvicorn==0.54.0

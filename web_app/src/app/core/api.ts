@@ -19,7 +19,100 @@ export interface Me {
   invited?: number;
   /** The debug panel on the tree: DEBUG_TOOLS=1 on the server and an admin */
   debug?: boolean;
+  /** How this session signed in */
+  signed_in_with?: IdentityKind;
+  /** Ways to sign in linked to the account (email: the address) */
+  identities?: { telegram: boolean; email: string | null; google: boolean };
+  /** Chosen notification channels */
+  notify?: Channel[];
+  /** Browsers subscribed to push notifications */
+  push_devices?: number;
+  /** Signed in recently enough to link, unlink and merge (else: confirm first) */
+  fresh?: boolean;
+  /** Friends who came by the link but don't count yet (no approved wish) */
+  invited_pending?: number;
+  /** The account is deleted: it can be restored until `purge_at`, then it's erased */
+  deleted?: boolean;
+  purge_at?: string;
 }
+
+/** A sign-in on a device (website / PWA) */
+export interface SessionInfo {
+  id: string;
+  current: boolean;
+  kind: IdentityKind;
+  /** "Chrome · Android" */
+  device: string;
+  /** Only the network part: "95.31.*.*" */
+  ip: string;
+  created_at: string;
+  last_seen_at: string;
+}
+
+export type IdentityKind = 'telegram' | 'email' | 'google';
+export type Channel = 'telegram' | 'push' | 'email';
+
+/** What an account has: shown before merging two accounts */
+export interface AccountSummary {
+  registered_at: string;
+  timezone: string;
+  language: string;
+  notify: Channel[];
+  identities: IdentityKind[];
+  email: string | null;
+  wishes: number;
+  mandarins: number;
+  figures: number;
+  gifts: number;
+  friends: number;
+}
+
+/** What a merge does besides adding up (bot/src/services/accounts.py) */
+export interface MergeReport {
+  /** What must be chosen (keys of MergeChoices): both accounts have their own */
+  conflicts: (keyof MergeChoices)[];
+  refunded: number;
+  refunded_mandarins: number;
+  unplaced: number;
+  rewards_dropped: number;
+  rewards_dropped_mandarins: number;
+  gifts_dropped: number;
+  /** Ways to sign in that go away, and whose (the other one of the kind was chosen) */
+  identities_dropped: { kind: IdentityKind; side: MergeSide; email: string | null }[];
+}
+
+export type MergeSide = 'mine' | 'other';
+/** Whose to keep where both accounts have their own (absent: "mine") */
+export type MergeChoices = Partial<
+  Record<
+    'timezone' | 'language' | 'notify' | 'telegram' | 'email' | 'google' | 'yard' | 'gifts',
+    MergeSide
+  >
+>;
+
+/** The merge done on the server and rolled back: what the merged account will have */
+export interface MergePreview {
+  result: AccountSummary;
+  report: MergeReport;
+}
+
+/** A proof of another way to sign in, to link it to the account */
+export type LinkProof =
+  | { telegram: Record<string, unknown> }
+  | { email: { email: string; code: string } }
+  | { google: { credential: string } };
+
+export type LinkResult =
+  | { status: 'linked' | 'same' | 'replace'; me: Me }
+  | {
+      status: 'taken';
+      merge_token: string;
+      mine: AccountSummary;
+      other: AccountSummary;
+      preview: MergePreview;
+      /** Choices that can't be "other" here (the Mini App keeps its Telegram) */
+      locked: string[];
+    };
 
 export interface Config {
   bot_username: string;
@@ -28,6 +121,11 @@ export interface Config {
   ball_colors: string[];
   ball_patterns: string[];
   rewards: Record<string, number>;
+  /** Ways to sign in besides Telegram: absent / false = hidden */
+  google_client_id?: string | null;
+  email_login?: boolean;
+  /** Web Push key (absent: push notifications are off on the server) */
+  vapid_public_key?: string | null;
 }
 
 export type BallState = 'box' | 'hung' | 'lit';
@@ -124,6 +222,8 @@ export interface Delivery {
   reaction: string | null;
   reply: string | null;
   wish: { text: string; media: MediaItem[] } | null;
+  /** The wish was erased with its author's account */
+  erased?: boolean;
 }
 
 export type Gift =
@@ -196,14 +296,70 @@ export class Api {
   config = () => this.request<Config>('GET', '/config');
   stats = () => this.request<Stats>('GET', '/stats');
   me = () => this.request<Me>('GET', '/me');
-  saveProfile = (timezone: string, ref?: string | null) =>
-    this.request<Me>('PUT', '/me', { timezone, ref: ref ?? null });
+  saveProfile = (timezone: string, ref?: string | null, language?: string) =>
+    this.request<Me>('PUT', '/me', { timezone, ref: ref ?? null, language: language ?? null });
 
-  login = async (widgetData: Record<string, unknown>) => {
-    const { token } = await this.request<{ token: string }>('POST', '/auth/telegram', widgetData);
+  private signIn = async (path: string, body: unknown) => {
+    const { token } = await this.request<{ token: string }>('POST', path, body);
     this.session = token;
   };
-  logout = () => (this.session = null);
+  login = (widgetData: Record<string, unknown>) => this.signIn('/auth/telegram', widgetData);
+  loginGoogle = (credential: string) => this.signIn('/auth/google', { credential });
+  /** Sends a 6-digit code to the e-mail (to sign in or to link it) */
+  emailStart = (email: string, language: string) =>
+    this.request<{ sent: boolean; resend_after: number }>('POST', '/auth/email/start', {
+      email,
+      language,
+    });
+  loginEmail = (email: string, code: string) => this.signIn('/auth/email/verify', { email, code });
+  /** Signs out here: the session ends on the server too (offline: just forgotten here) */
+  logout = async () => {
+    if (this.session) await this.request<void>('POST', '/me/logout').catch(() => {});
+    this.session = null;
+  };
+  sessions = () =>
+    this.request<{ sessions: SessionInfo[]; current_listed: boolean }>('GET', '/me/sessions');
+  endSession = (id: string) =>
+    this.request<{ sessions: SessionInfo[] }>('DELETE', `/me/sessions/${id}`);
+
+  link = (proof: LinkProof) => this.request<LinkResult>('POST', '/me/link', proof);
+  mergePreview = (mergeToken: string, choices: MergeChoices) =>
+    this.request<MergePreview>('POST', '/me/merge/preview', { merge_token: mergeToken, choices });
+  /** `token`: a new session when the way this one signed in went away in the merge */
+  merge = (mergeToken: string, choices: MergeChoices) =>
+    this.request<{ me: Me; token?: string }>('POST', '/me/merge', {
+      merge_token: mergeToken,
+      choices,
+    });
+  /** Signs out every other device; this one gets a new token */
+  logoutAll = async () => {
+    const r = await this.request<{ token?: string; me: Me }>('POST', '/me/logout-all');
+    if (r.token) this.session = r.token;
+    return r.me;
+  };
+  /** Deletes the account (restorable for 30 days); other devices are signed out */
+  deleteAccount = async () => {
+    const r = await this.request<{ token?: string; me: Me }>('DELETE', '/me');
+    if (r.token) this.session = r.token;
+    return r.me;
+  };
+  restoreAccount = () => this.request<Me>('POST', '/me/restore');
+  /** Erases a deleted account now, for good */
+  eraseAccount = () => this.request<void>('POST', '/me/erase');
+  /** Confirms it's the owner with one of the account's ways in: a fresh session */
+  reauth = async (proof: LinkProof) => {
+    const { token, me } = await this.request<{ token: string; me: Me }>(
+      'POST',
+      '/me/reauth',
+      proof,
+    );
+    this.session = token;
+    return me;
+  };
+  unlink = (kind: IdentityKind) => this.request<Me>('DELETE', `/me/link/${kind}`);
+  setNotify = (channels: Channel[]) => this.request<Me>('PUT', '/me/notify', { channels });
+  pushSubscribe = (sub: PushSubscriptionJSON) => this.request<void>('POST', '/push', sub);
+  pushRemove = (endpoint: string) => this.request<void>('POST', '/push/remove', { endpoint });
 
   wishes = () => this.request<MyWish[]>('GET', '/wishes');
   newWish = (text: string, files: File[], look?: { color: string; pattern: string }) => {

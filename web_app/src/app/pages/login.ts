@@ -1,26 +1,14 @@
-import {
-  Component,
-  ElementRef,
-  afterNextRender,
-  computed,
-  inject,
-  signal,
-  viewChild,
-} from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { Api } from '../core/api';
+import { Api, LinkProof } from '../core/api';
 import { I18n } from '../core/i18n';
 import { Store } from '../core/store';
+import { SignIn } from '../components/sign-in';
 
-declare global {
-  interface Window {
-    onTelegramAuth?: (user: Record<string, unknown>) => void;
-  }
-}
-
-/** Website login with the Telegram Login Widget (https://core.telegram.org/widgets/login) */
+/** Website / PWA login: Google, Telegram Login Widget or a code sent to an e-mail */
 @Component({
   selector: 'login-page',
+  imports: [SignIn],
   template: `
     <section class="hero">
       <div class="hero-emoji">🎅</div>
@@ -29,10 +17,7 @@ declare global {
     </section>
     <section class="card center">
       <p class="muted">{{ i18n.t('loginHint') }}</p>
-      <div #widget class="widget"></div>
-      @if (error()) {
-        <p class="error">{{ error() }}</p>
-      }
+      <sign-in mode="login" [handle]="signIn" />
       @if (botLink()) {
         <a class="link" [href]="botLink()" target="_blank" rel="noopener"
           >{{ i18n.t('loginOrBot') }} →</a
@@ -46,9 +31,7 @@ export class LoginPage {
   private readonly api = inject(Api);
   private readonly store = inject(Store);
   private readonly router = inject(Router);
-  private readonly widget = viewChild.required<ElementRef<HTMLElement>>('widget');
 
-  protected readonly error = signal('');
   protected readonly botLink = computed(() => {
     const bot = this.store.config()?.bot_username;
     if (!bot) return '';
@@ -56,32 +39,11 @@ export class LoginPage {
     return `https://t.me/${bot}` + (ref ? `?start=${ref}` : '');
   });
 
-  constructor() {
-    afterNextRender(() => this.mountWidget());
-  }
-
-  private async mountWidget(): Promise<void> {
-    await this.store.load().catch(() => {});
-    const bot = this.store.config()?.bot_username;
-    if (!bot) return;
-
-    window.onTelegramAuth = async (user) => {
-      try {
-        await this.api.login(user);
-        await this.store.load(true);
-        this.router.navigateByUrl(this.store.registered() ? '/' : '/register');
-      } catch {
-        this.error.set(this.i18n.t('error'));
-      }
-    };
-    const script = document.createElement('script');
-    script.async = true;
-    script.src = 'https://telegram.org/js/telegram-widget.js?22';
-    script.dataset['telegramLogin'] = bot;
-    script.dataset['size'] = 'large';
-    script.dataset['radius'] = '14';
-    script.dataset['onauth'] = 'onTelegramAuth(user)';
-    script.dataset['requestAccess'] = 'write';
-    this.widget().nativeElement.appendChild(script);
-  }
+  protected readonly signIn = async (proof: LinkProof): Promise<void> => {
+    if ('telegram' in proof) await this.api.login(proof.telegram);
+    else if ('google' in proof) await this.api.loginGoogle(proof.google.credential);
+    else await this.api.loginEmail(proof.email.email, proof.email.code);
+    await this.store.load(true);
+    this.router.navigateByUrl(this.store.registered() ? '/' : '/register');
+  };
 }

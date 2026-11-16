@@ -30,9 +30,17 @@ export class Install {
   /** How to offer the install now (null: nothing to offer) */
   readonly way = signal<InstallWay | null>(null);
 
+  /**
+   * Safari on iPhone / iPad, not from the Home Screen: no push notifications here
+   * (iOS gives them only to a site added to the Home Screen)
+   */
+  readonly iosBrowser = !this.tg.isMiniApp && this.ios() && !this.standalone();
+
   init(): void {
     const visits = this.countVisit();
-    if (this.standalone() || this.dismissedRecently() || visits < FROM_VISIT) return;
+    // On iPhone right away: without the Home Screen the gift can't be announced by a notification
+    const from = this.iosBrowser ? 1 : FROM_VISIT;
+    if (this.standalone() || this.dismissedRecently() || visits < from) return;
 
     if (this.tg.isMiniApp) {
       this.tg.homeScreenStatus().then((status) => {

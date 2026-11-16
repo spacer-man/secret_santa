@@ -298,7 +298,8 @@ p {
 
 /* ===== Forms ===== */
 .select,
-.textarea {
+.textarea,
+.input {
   width: 100%;
   font: inherit;
   color: var(--light-color);
@@ -309,7 +310,8 @@ p {
   outline: none;
 }
 .select:focus,
-.textarea:focus {
+.textarea:focus,
+.input:focus {
   border-color: var(--primary-color);
 }
 .select {
@@ -1376,18 +1378,21 @@ h2 {
 }
 
 .select,
-.textarea {
+.textarea,
+.input {
   color: var(--ink);
   background: color-mix(in srgb, var(--paper) 70%, #fff 30%);
   border: 1px solid var(--rule);
   border-radius: 2px;
 }
 :root[data-theme='dark'] .select,
-:root[data-theme='dark'] .textarea {
+:root[data-theme='dark'] .textarea,
+:root[data-theme='dark'] .input {
   background: var(--paper-2);
 }
 .select:focus,
-.textarea:focus {
+.textarea:focus,
+.input:focus {
   border-color: var(--stamp);
   box-shadow: 0 0 0 2px var(--stamp-soft);
 }
@@ -2079,11 +2084,13 @@ blockquote,
 
 /* Form fields: the frame is laid over them */
 .select,
-.textarea {
+.textarea,
+.input {
   border-color: transparent;
 }
 .select:focus,
-.textarea:focus {
+.textarea:focus,
+.input:focus {
   border-color: transparent;
   box-shadow: none;
 }
@@ -2091,7 +2098,8 @@ svg.hm-field {
   z-index: 1;
 }
 .select:focus + svg.hm-field,
-.textarea:focus + svg.hm-field {
+.textarea:focus + svg.hm-field,
+.input:focus + svg.hm-field {
   --hm: var(--stamp);
 }
 
@@ -2978,4 +2986,214 @@ svg.hm.hm-free {
 .place-input {
   min-height: 0;
   resize: none;
+}
+
+/* ===== Sign in & settings (components/sign-in.ts, pages/settings.ts) ===== */
+.sign-in {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.7rem;
+  width: 100%;
+  max-width: 22rem;
+  margin: 0 auto;
+}
+.sign-in-google,
+.sign-in-telegram {
+  display: flex;
+  justify-content: center;
+}
+/* Google / Telegram didn't load (blocked for some people): no empty gap */
+.sign-in-google:empty,
+.sign-in-telegram:not(:has(iframe)) {
+  display: none;
+}
+.sign-in-or {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+}
+.sign-in-or::before,
+.sign-in-or::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--rule-soft);
+}
+.sign-in-email {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: left;
+}
+.sign-in-email p {
+  margin: 0;
+}
+.input {
+  font-size: 1.05rem;
+}
+.input.code {
+  font-family: var(--slab);
+  font-size: 1.4rem;
+  letter-spacing: 0.3em;
+  text-align: center;
+}
+.input.code:placeholder-shown {
+  font-family: inherit;
+  font-size: 1.05rem;
+  letter-spacing: normal;
+}
+/* No Google / Telegram button: no "or" either */
+.sign-in:not(:has(.sign-in-google:not(:empty), .sign-in-telegram iframe)) .sign-in-or {
+  display: none;
+}
+/* Theme and settings: square icon buttons as tall as the old text button */
+.imprint-tools {
+  display: flex;
+  gap: 0.5rem;
+}
+.theme-toggle.icon-btn {
+  --icon-btn: 1.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-btn);
+  height: var(--icon-btn);
+  padding: 0;
+  font-size: 1.15rem;
+  line-height: 1;
+  text-decoration: none;
+}
+.identities {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.identities > li {
+  padding: 0.6rem 0.8rem;
+  align-items: center;
+}
+.choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.choice.wide {
+  width: 100%;
+}
+.choice.locked {
+  cursor: default;
+  opacity: 0.7;
+}
+.merge {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.8rem;
+}
+.merge h3,
+.merge p {
+  margin: 0;
+}
+.merge-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.merge-table th,
+.merge-table td {
+  padding: 0.3rem 0.25rem;
+  border-bottom: 1px solid var(--rule-soft);
+  text-align: center;
+}
+.merge-table tbody th {
+  text-align: left;
+  font-weight: 400;
+}
+.merge-table thead th {
+  font-family: var(--slab);
+  font-weight: 700;
+}
+.merge-table .merge-result {
+  font-weight: 700;
+  color: var(--stamp);
+}
+.merge-rules {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.ios-push {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.8rem;
+}
+.ios-push p {
+  margin: 0;
+}
+.place-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.8rem;
+}
+.place-ask p {
+  margin: 0;
+}
+.merge-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.merge-choice .row > .choice {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.choice > span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.merge-choice + .merge-choice {
+  margin-top: 0.5rem;
+}
+.merge-choice > span {
+  padding-bottom: 0.2rem;
+}
+.reauth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.8rem;
+}
+.reauth p {
+  margin: 0;
+}
+.identities > li.session {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0.15rem 0.6rem;
+}
+.session-meta {
+  grid-column: 1 / -1;
+}
+/* Parts of the details move to the next line whole, never split inside */
+.session-meta > span {
+  white-space: nowrap;
 }

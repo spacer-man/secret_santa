@@ -53,7 +53,7 @@ import { MediaList } from '../components/media';
               </div>
             }
           } @else {
-            <p class="wish-text">🎅 {{ i18n.t('emptyGift') }}</p>
+            <p class="wish-text">🎅 {{ i18n.t(g.erased ? 'erasedGift' : 'emptyGift') }}</p>
           }
         </article>
       } @empty {

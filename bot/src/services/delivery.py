@@ -16,7 +16,7 @@ import timezones
 from db import new_db_session
 from db.models import Delivery, User, ValidStatus, Wish
 from repos.wish.abc import WishRepository
-from services import mandarins
+from services import mandarins, shop
 from services.wish import WishDTO, WishService
 
 REACTIONS = ("❤️", "😂", "🥹", "🔥", "🎉", "👏")
@@ -34,6 +34,8 @@ class DeliveryDTO(BaseModel):
     reaction: str | None
     reply: str | None
     wish: WishDTO | None = None
+    # The wish was erased with its author's account
+    erased: bool = False
 
 
 class FeedbackDTO(BaseModel):
@@ -46,10 +48,14 @@ class FeedbackDTO(BaseModel):
 
 class Recipient(BaseModel):
     user_id: UUID
-    telegram_id: int
+    telegram_id: int | None = None
+    email: str | None = None
+    language: str | None = None
+    notify: str | None = None
 
 
 class ReactionResult(BaseModel):
+    author_id: UUID | None = None
     author_telegram_id: int | None
     reaction: str | None
     reply: str | None
@@ -86,13 +92,18 @@ class DeliveryService:
         """Users from the timezone who haven't got a gift for the ``year`` yet"""
         async with new_db_session() as session:
             delivered = select(Delivery.recipient_id).where(Delivery.year == year)
-            stmt = (
-                select(User.id, User.telegram_id)
-                .where(User.timezone == tz)
-                .where(col(User.id).not_in(delivered))
+            stmt = select(User).where(User.timezone == tz).where(col(User.id).not_in(delivered))
+            users = (await session.scalars(stmt)).all()
+        return [
+            Recipient(
+                user_id=u.id,
+                telegram_id=u.telegram_id,
+                email=u.email,
+                language=u.language,
+                notify=u.notify,
             )
-            rows = (await session.execute(stmt)).all()
-        return [Recipient(user_id=r[0], telegram_id=r[1]) for r in rows]
+            for u in users
+        ]
 
     async def mark_notified(self, user_id: UUID, year: int) -> None:
         async with new_db_session() as session:
@@ -107,16 +118,19 @@ class DeliveryService:
             await session.commit()
 
     # ====== Recipient side ====== #
-    async def _user(self, session, telegram_id: int) -> User | None:
-        return await session.scalar(select(User).where(User.telegram_id == telegram_id))
+    async def _user(self, session, who: int | UUID) -> User | None:
+        """``who``: Telegram id (the bot) or account id (the app)"""
+        if isinstance(who, UUID):
+            return await session.get(User, who)
+        return await session.scalar(select(User).where(User.telegram_id == who))
 
-    async def current(self, telegram_id: int) -> DeliveryDTO | None:
+    async def current(self, who: int | UUID) -> DeliveryDTO | None:
         """
         The gift of the current New Year for the user.
         ``None`` if the New Year hasn't come for the user yet.
         """
         async with new_db_session() as session:
-            user = await self._user(session, telegram_id)
+            user = await self._user(session, who)
             if not user:
                 return None
             delivery = await self._current_delivery(session, user)
@@ -146,13 +160,13 @@ class DeliveryService:
             await session.flush()
         return delivery
 
-    async def open(self, telegram_id: int) -> DeliveryDTO | None:
+    async def open(self, who: int | UUID) -> DeliveryDTO | None:
         """
         Open the gift: assign a wish to it (once).
         ``None`` if the New Year hasn't come for the user yet.
         """
         async with new_db_session() as session:
-            user = await self._user(session, telegram_id)
+            user = await self._user(session, who)
             if not user:
                 return None
             delivery = await self._current_delivery(session, user)
@@ -183,10 +197,10 @@ class DeliveryService:
             await session.commit()
             return await self._to_dto(delivery)
 
-    async def inbox(self, telegram_id: int) -> list[DeliveryDTO]:
+    async def inbox(self, who: int | UUID) -> list[DeliveryDTO]:
         """All opened gifts of the user, newest first"""
         async with new_db_session() as session:
-            user = await self._user(session, telegram_id)
+            user = await self._user(session, who)
             if not user:
                 return []
             deliveries = (
@@ -201,7 +215,7 @@ class DeliveryService:
 
     async def react(
         self,
-        telegram_id: int,
+        who: int | UUID,
         delivery_id: UUID,
         reaction: str | None = None,
         reply: str | None = None,
@@ -216,7 +230,7 @@ class DeliveryService:
             reply = reply.strip()[:MAX_REPLY_LENGTH] or None
 
         async with new_db_session() as session:
-            user = await self._user(session, telegram_id)
+            user = await self._user(session, who)
             delivery = await session.get(Delivery, delivery_id)
             if not (user and delivery and delivery.recipient_id == user.id):
                 raise DeliveryError("Gift not found")
@@ -246,6 +260,7 @@ class DeliveryService:
             await session.commit()
 
         return ReactionResult(
+            author_id=author[0] if author else None,
             author_telegram_id=author_tg_id,
             reaction=delivery.reaction,
             reply=delivery.reply,
@@ -264,6 +279,7 @@ class DeliveryService:
             reaction=delivery.reaction,
             reply=delivery.reply,
             wish=wish,
+            erased=delivery.wish_erased,
         )
 
     # ====== Author side ====== #
@@ -299,10 +315,13 @@ class DeliveryService:
         year = current_season_year()
 
         async with new_db_session() as session:
-            users = await session.scalar(select(func.count(col(User.id))))
+            alive = col(User.deleted_at).is_(None)
+            users = await session.scalar(select(func.count(col(User.id))).where(alive))
             by_tz = (
                 await session.execute(
-                    select(User.timezone, func.count(col(User.id))).group_by(User.timezone)
+                    select(User.timezone, func.count(col(User.id)))
+                    .where(alive)
+                    .group_by(User.timezone)
                 )
             ).all()
             wishes = await session.scalar(
@@ -330,14 +349,9 @@ class DeliveryService:
             "timezones": {tz: count for tz, count in by_tz},
         }
 
-    async def invited_count(self, telegram_id: int) -> int:
+    async def invited_count(self, who: int | UUID) -> int:
         async with new_db_session() as session:
-            user = await self._user(session, telegram_id)
+            user = await self._user(session, who)
             if not user:
                 return 0
-            return (
-                await session.scalar(
-                    select(func.count(col(User.id))).where(User.referrer_id == user.id)
-                )
-                or 0
-            )
+            return await shop.friends_count(session, user.id)

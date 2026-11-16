@@ -98,6 +98,7 @@ export const needsUser: CanActivateFn = async () => {
     return true; // Offline / server error: show the page with its own error state
   }
   if (!api.canAuth || !store.me()) return router.parseUrl('/login');
+  if (store.me()?.deleted) return router.parseUrl('/deleted');
   if (!store.registered()) return router.parseUrl('/register');
   return true;
 };

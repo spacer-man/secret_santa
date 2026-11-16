@@ -49,7 +49,7 @@ async def open_wish(call: CallbackQuery) -> None:
         return None
     chat_id = message.chat.id
 
-    delivery = await delivery_service.open(telegram_id=chat_id)
+    delivery = await delivery_service.open(chat_id)
     if not delivery:
         await call.answer(text=messages.NOT_YET, show_alert=True)
         return None
@@ -83,7 +83,7 @@ async def react(call: CallbackQuery) -> None:
         delivery_id = UUID(raw_id)
         reaction = REACTIONS[int(raw_index)]
         result = await delivery_service.react(
-            telegram_id=message.chat.id, delivery_id=delivery_id, reaction=reaction
+            message.chat.id, delivery_id=delivery_id, reaction=reaction
         )
     except (ValueError, IndexError, DeliveryError):
         await call.answer()

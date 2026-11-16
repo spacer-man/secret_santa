@@ -8,9 +8,9 @@ from typing import (
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import delete, select, update
+from sqlmodel import col, delete, select, update
 
-from db.models import ValidStatus, Wish
+from db.models import User, ValidStatus, Wish
 
 from .abc import EditWishArgs, NewWishArgs, WishDTO, WishRepository
 
@@ -35,7 +35,13 @@ class SQLModelWishRepository(WishRepository):
             :type since: `datetime`
         :returns: :class:`Generator[WishDTO]`
         """
-        stmt = select(Wish).filter_by(valid_status=ValidStatus.APPROVED)
+        # Authors who deleted their account: their wishes wait (and are erased with it)
+        stmt = (
+            select(Wish)
+            .join(User, col(User.id) == Wish.author_id)
+            .where(col(User.deleted_at).is_(None))
+            .where(Wish.valid_status == ValidStatus.APPROVED)
+        )
         if recipient:
             stmt = stmt.where(Wish.author_id != recipient)
         if since:

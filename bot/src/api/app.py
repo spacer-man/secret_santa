@@ -5,28 +5,27 @@ HTTP API for the Telegram Mini App and the website.
 import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
 from uuid import UUID
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlmodel import col, select
 
 import db
 import timezones
-from configs.bot import BotConfig
 from configs.notify import NotifyConfig
+from configs.webapp import WebAppConfig
 from db import new_db_session
-from db.models import Delivery, Media, MediaType, Wish
+from db.models import Delivery, Media, MediaType, User, Wish
 from handlers.referral import parse_ref_code, ref_code
 from repos.media.sqlmodel import SQLModelMediaRepository
 from repos.user.sqlmodel import SQLModelUserRepository
 from repos.wish.sqlmodel import SQLModelWishRepository
-from services import debug, mandarins, shop
+from services import accounts, debug, email, google, mandarins, push, shop
 from services.delivery import (
     REACTIONS,
     DeliveryDTO,
@@ -41,7 +40,9 @@ from services.tree import BALL_COLORS, BALL_PATTERNS, build_tree
 from services.user import UserService
 from services.wish import WishMediaData, WishService
 
+from . import accounts as accounts_api
 from . import auth
+from .deps import BOT_TOKEN, CurrentPrincipal, RegisteredUser
 from .media import (
     check_media_token,
     media_type_by_mime,
@@ -51,8 +52,6 @@ from .media import (
 )
 
 log = logging.getLogger(__name__)
-
-BOT_TOKEN = BotConfig().token.get_secret_value()
 
 MAX_MEDIA_SIZE = 10 * 2**20
 MAX_MEDIA_PER_WISH = 5
@@ -92,43 +91,8 @@ app = FastAPI(
 )
 
 
-# ====== Auth ====== #
-async def current_user(
-    authorization: Annotated[str | None, Header()] = None,
-) -> auth.TgUser:
-    try:
-        return auth.parse_authorization(authorization, BOT_TOKEN)
-    except auth.AuthError as err:
-        raise HTTPException(status_code=401, detail=str(err)) from err
-
-
-CurrentUser = Annotated[auth.TgUser, Depends(current_user)]
-
-
-async def registered_user(tg_user: CurrentUser):
-    user = await user_service.get(telegram_id=tg_user.id)
-    if not user:
-        raise HTTPException(status_code=403, detail="Not registered")
-    return user
-
-
-class LoginWidgetData(BaseModel):
-    id: int
-    first_name: str | None = None
-    last_name: str | None = None
-    username: str | None = None
-    photo_url: str | None = None
-    auth_date: int
-    hash: str
-
-
-@app.post("/api/auth/telegram")
-async def login_by_widget(data: LoginWidgetData) -> dict:
-    try:
-        user = auth.check_login_widget(data.model_dump(), BOT_TOKEN)
-    except auth.AuthError as err:
-        raise HTTPException(status_code=401, detail=str(err)) from err
-    return {"token": auth.make_session(user, BOT_TOKEN)}
+# ====== Auth: see api/accounts.py ====== #
+app.include_router(accounts_api.router)
 
 
 # ====== Public ====== #
@@ -141,6 +105,10 @@ async def config() -> dict:
         "ball_colors": BALL_COLORS,
         "ball_patterns": BALL_PATTERNS,
         "rewards": mandarins.REWARDS,
+        # Ways to sign in besides Telegram (empty / false: hidden)
+        "google_client_id": google.client_id(),
+        "email_login": email.enabled(),
+        "vapid_public_key": push.public_key(),
     }
 
 
@@ -158,47 +126,87 @@ def new_year_moment(tz: str, now: datetime | None = None) -> datetime:
     return datetime(year, 1, 1, tzinfo=UTC) - offset
 
 
-@app.get("/api/me")
-async def me(tg_user: CurrentUser) -> dict:
-    user = await user_service.get(telegram_id=tg_user.id)
-    if not user:
-        return {"registered": False, "first_name": tg_user.first_name}
+def invite_link(user_id: UUID) -> str | None:
+    if username := state.get("bot_username"):
+        return f"https://t.me/{username}?start={ref_code(user_id)}"
+    if url := WebAppConfig().url_for():
+        return f"{url}?ref={ref_code(user_id)}"
+    return None
 
-    username = state.get("bot_username")
+
+async def me_payload(principal: auth.Principal, user: User | None) -> dict:
+    if not user:
+        return {"registered": False, "first_name": principal.first_name}
+    if user.deleted_at:
+        # Only what the restore page needs
+        return {
+            "registered": True,
+            "deleted": True,
+            "purge_at": accounts.aware(user.deleted_at) + accounts.PURGE_AFTER,
+            "first_name": principal.first_name or user.name,
+            "signed_in_with": principal.kind,
+            "fresh": principal.is_fresh(),
+        }
+    friends = await delivery_service.invited_count(user.id)
+    async with new_db_session() as session:
+        came = await shop.invited_count(session, user.id)
     return {
         "registered": True,
-        "first_name": tg_user.first_name,
+        "first_name": principal.first_name or user.name,
         "timezone": user.timezone,
         "new_year_at": new_year_moment(user.timezone)
         if timezones.is_valid(user.timezone)
         else None,
-        "invite_link": f"https://t.me/{username}?start={ref_code(user.id)}" if username else None,
-        "invited": await delivery_service.invited_count(tg_user.id),
+        "invite_link": invite_link(user.id),
+        # Friends who count (wrote an approved wish) and those who came but haven't yet
+        "invited": friends,
+        "invited_pending": max(0, came - friends),
         # The debug panel on the tree: DEBUG_TOOLS=1 and an admin only
-        "debug": debug.allowed(tg_user.id),
+        "debug": bool(user.telegram_id and debug.allowed(user.telegram_id)),
+        # Settings: ways to sign in and notification channels
+        "signed_in_with": principal.kind,
+        "identities": {
+            "telegram": user.telegram_id is not None,
+            "email": user.email,
+            "google": user.google_id is not None,
+        },
+        "notify": accounts.channels(user),
+        # Signed in recently enough to change the ways into the account (api/deps.py FreshUser)
+        "fresh": principal.is_fresh(),
+        "push_devices": await push.count(user.id),
     }
+
+
+@app.get("/api/me")
+async def me(principal: CurrentPrincipal) -> dict:
+    return await me_payload(principal, await accounts.get_user(principal))
 
 
 class ProfileIn(BaseModel):
     timezone: str
     ref: str | None = None
+    # Language of the interface (for letters and pushes of those who came not from Telegram)
+    language: str | None = Field(default=None, max_length=8)
 
 
 @app.put("/api/me")
-async def save_profile(tg_user: CurrentUser, body: ProfileIn) -> dict:
+async def save_profile(principal: CurrentPrincipal, body: ProfileIn) -> dict:
     if not timezones.is_valid(body.timezone):
         raise HTTPException(status_code=422, detail="Unknown timezone")
 
-    if await user_service.is_registered(telegram_id=tg_user.id):
-        await user_service.edit_user(telegram_id=tg_user.id, timezone=body.timezone)
+    user = await accounts.get_user(principal)
+    if user and user.deleted_at:
+        raise HTTPException(status_code=403, detail="account_deleted")
+    if user:
+        await user_service.edit_timezone(user.id, body.timezone)
     else:
-        await user_service.register(
-            telegram_id=tg_user.id,
+        await accounts.register(
+            principal,
             timezone=body.timezone,
-            language=(tg_user.language_code or "")[:8] or None,
-            referrer_id=parse_ref_code(body.ref or tg_user.start_param),
+            language=(principal.language_code or body.language or "")[:8] or None,
+            referrer_id=parse_ref_code(body.ref or principal.start_param),
         )
-    return await me(tg_user)
+    return await me(principal)
 
 
 # ====== Wishes ====== #
@@ -223,7 +231,7 @@ async def media_of(wish_ids: list[UUID]) -> dict[UUID, list[dict]]:
 
 
 @app.get("/api/wishes")
-async def my_wishes(user=Depends(registered_user)) -> list[dict]:
+async def my_wishes(user: RegisteredUser) -> list[dict]:
     async with new_db_session() as session:
         wishes = (
             await session.scalars(
@@ -249,7 +257,7 @@ async def my_wishes(user=Depends(registered_user)) -> list[dict]:
 
 @app.post("/api/wishes", status_code=201)
 async def new_wish(
-    user=Depends(registered_user),
+    user: RegisteredUser,
     text: str = Form(min_length=8, max_length=4096),
     files: list[UploadFile] = File(default=[]),
     ball_color: str | None = Form(default=None),
@@ -282,7 +290,7 @@ async def new_wish(
         media.append({"data": data, "type": media_type})
 
     wish_id = await wish_service.new_wish(
-        author_telegram_id=user.telegram_id,
+        author_id=user.id,
         text=text.strip(),
         media=media,
         ball_color=ball_color,
@@ -298,7 +306,7 @@ async def new_wish(
 
 
 @app.delete("/api/wishes/{wish_id}", status_code=204)
-async def delete_wish(wish_id: UUID, user=Depends(registered_user)) -> None:
+async def delete_wish(wish_id: UUID, user: RegisteredUser) -> None:
     async with new_db_session() as session:
         wish = await session.get(Wish, wish_id)
         delivered = await session.scalar(
@@ -313,12 +321,12 @@ async def delete_wish(wish_id: UUID, user=Depends(registered_user)) -> None:
 
 # ====== Tree & mandarins ====== #
 @app.get("/api/tree")
-async def tree(user=Depends(registered_user)) -> dict:
+async def tree(user: RegisteredUser) -> dict:
     return (await build_tree(user.id, delivery_service)).model_dump(mode="json")
 
 
 @app.get("/api/mandarins")
-async def mandarins_history(user=Depends(registered_user)) -> dict:
+async def mandarins_history(user: RegisteredUser) -> dict:
     async with new_db_session() as session:
         return {
             "balance": await mandarins.balance(session, user.id),
@@ -356,12 +364,12 @@ class PlaceIn(BaseModel):
 
 
 @app.get("/api/shop")
-async def shop_items(user=Depends(registered_user)) -> dict:
+async def shop_items(user: RegisteredUser) -> dict:
     return (await shop.shop_payload(user.id)).model_dump(mode="json")
 
 
 @app.post("/api/shop/buy")
-async def shop_buy(body: BuyIn, user=Depends(registered_user)) -> dict:
+async def shop_buy(body: BuyIn, user: RegisteredUser) -> dict:
     try:
         bonus = await shop.buy(user.id, body.item)
     except shop.ShopError as err:
@@ -370,7 +378,7 @@ async def shop_buy(body: BuyIn, user=Depends(registered_user)) -> dict:
 
 
 @app.put("/api/shop/place")
-async def shop_place(body: PlaceIn, user=Depends(registered_user)) -> dict:
+async def shop_place(body: PlaceIn, user: RegisteredUser) -> dict:
     try:
         await shop.place(user.id, body.item, body.pad, body.from_pad)
     except shop.ShopError as err:
@@ -386,9 +394,9 @@ class DebugIn(BaseModel):
 
 
 @app.put("/api/debug")
-async def debug_state(body: DebugIn, user=Depends(registered_user)) -> dict:
+async def debug_state(body: DebugIn, user: RegisteredUser) -> dict:
     """Development only: set the level and the balance without touching anything else"""
-    if not debug.allowed(user.telegram_id):
+    if not (user.telegram_id and debug.allowed(user.telegram_id)):
         raise HTTPException(status_code=404)
     if body.level != -1:
         if body.level == 0:
@@ -414,13 +422,14 @@ async def delivery_out(delivery: DeliveryDTO) -> dict:
         "reaction": delivery.reaction,
         "reply": delivery.reply,
         "wish": wish,
+        "erased": delivery.erased,
     }
 
 
 @app.get("/api/gift")
-async def gift(user=Depends(registered_user)) -> dict:
+async def gift(user: RegisteredUser) -> dict:
     """Current gift: ``waiting`` (New Year hasn't come), ``ready`` or ``opened``"""
-    delivery = await delivery_service.current(user.telegram_id)
+    delivery = await delivery_service.current(user.id)
     if not delivery:
         return {"status": "waiting", "new_year_at": new_year_moment(user.timezone)}
     if not delivery.opened_at:
@@ -429,16 +438,16 @@ async def gift(user=Depends(registered_user)) -> dict:
 
 
 @app.post("/api/gift/open")
-async def open_gift(user=Depends(registered_user)) -> dict:
-    delivery = await delivery_service.open(user.telegram_id)
+async def open_gift(user: RegisteredUser) -> dict:
+    delivery = await delivery_service.open(user.id)
     if not delivery:
         raise HTTPException(status_code=409, detail="New Year hasn't come yet")
     return {"status": "opened", "delivery": await delivery_out(delivery)}
 
 
 @app.get("/api/inbox")
-async def inbox(user=Depends(registered_user)) -> list[dict]:
-    return [await delivery_out(d) for d in await delivery_service.inbox(user.telegram_id)]
+async def inbox(user: RegisteredUser) -> list[dict]:
+    return [await delivery_out(d) for d in await delivery_service.inbox(user.id)]
 
 
 class ReactionIn(BaseModel):
@@ -447,10 +456,10 @@ class ReactionIn(BaseModel):
 
 
 @app.post("/api/inbox/{delivery_id}/react")
-async def react(delivery_id: UUID, body: ReactionIn, user=Depends(registered_user)) -> dict:
+async def react(delivery_id: UUID, body: ReactionIn, user: RegisteredUser) -> dict:
     try:
         result = await delivery_service.react(
-            telegram_id=user.telegram_id,
+            user.id,
             delivery_id=delivery_id,
             reaction=body.reaction,
             reply=body.reply,

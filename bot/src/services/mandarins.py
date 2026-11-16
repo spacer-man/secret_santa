@@ -23,6 +23,7 @@ class Reason(enum.StrEnum):
     # Not rewards for actions (not listed in REWARDS): the amount is passed explicitly
     PURCHASE = "purchase"  # ref: item key, negative amount
     SET_BONUS = "set_bonus"  # ref: set key
+    MERGE_REFUND = "merge_refund"  # ref: user item id; a copy over the limit after a merge
     DEBUG = "debug"  # ref: random; balance set by hand with DEBUG_TOOLS (services/debug.py)
 
 

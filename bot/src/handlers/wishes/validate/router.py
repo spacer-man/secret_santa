@@ -8,6 +8,7 @@ from db.models import ValidStatus
 from handlers import buttons
 from handlers import keyboards as common_keyboards
 from handlers.depends import wish_service
+from services import notifier
 from services.mandarins import REWARDS, Reason
 from services.notify.aiogram.keyboards import OptionPrefix
 
@@ -64,6 +65,9 @@ async def notify_wish_author(
     bot = call.bot
     wish = await wish_service.get_one(wish_id)
     if not (bot and wish):
+        return None
+    await notifier.moderation(wish.author_id, status)
+    if not (wish.author_telegram_id and await notifier.telegram_wanted(wish.author_id)):
         return None
     if status == ValidStatus.APPROVED:
         text = messages.AUTHOR_APPROVED % {"mandarins": REWARDS[Reason.WISH_APPROVED]}

@@ -3,15 +3,21 @@ import contextlib
 from aiogram import F
 from aiogram.filters import CommandObject, CommandStart
 from aiogram.fsm.scene import Scene, on
-from aiogram.types import CallbackQuery, FSInputFile, Message
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, Message
 
 from configs.labels import LabelsConfig
 from handlers import buttons
+from handlers import keyboards as common_keyboards
 from handlers.consts import Scenes
 from handlers.depends import user_service
 from handlers.referral import invite_link, parse_ref_code
 
 from . import keyboards
+
+ACCOUNT_DELETED = (
+    "🗑 Твой аккаунт удалён. В течение 30 дней после удаления его можно восстановить "
+    "в приложении, потом он сотрётся навсегда."
+)
 
 
 class MainScene(
@@ -47,6 +53,15 @@ class MainScene(
 
         link = None
         user = await user_service.get(telegram_id=message.chat.id)
+        if user and user.deleted_at:
+            # Deleted: no menu, only the way back (the app shows the restore page)
+            app_row = common_keyboards.open_app(text=buttons.OPEN_APP)
+            await message.answer(
+                text=ACCOUNT_DELETED,
+                parse_mode=None,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[app_row]) if app_row else None,
+            )
+            return None
         if user and message.bot:
             link = await invite_link(bot=message.bot, user_id=user.id)
 

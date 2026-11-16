@@ -26,6 +26,15 @@ export const routes: Routes = [
     canActivate: [needsUser],
   },
   {
+    path: 'settings',
+    loadComponent: () => import('./pages/settings').then((m) => m.SettingsPage),
+    canActivate: [needsUser],
+  },
+  {
+    path: 'deleted',
+    loadComponent: () => import('./pages/deleted').then((m) => m.DeletedPage),
+  },
+  {
     path: 'rules',
     loadComponent: () => import('./pages/how-to').then((m) => m.HowToPage),
   },

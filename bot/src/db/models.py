@@ -25,8 +25,29 @@ class ValidStatus(enum.StrEnum):
 
 
 class User(SQLModel, table=True):
+    """
+    A participant. Ways to sign in (at least one is set): Telegram, e-mail, Google.
+    Any of them can be linked later; two accounts of one person can be merged
+    (``services/accounts.py``).
+    """
+
     id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
-    telegram_id: int = Field(unique=True, sa_type=BigInteger)
+    telegram_id: int | None = Field(default=None, unique=True, sa_type=BigInteger)
+    email: str | None = Field(default=None, unique=True, index=True, max_length=254)
+    google_id: str | None = Field(default=None, unique=True, index=True, max_length=64)
+    # Name to greet a user who signed in without Telegram (Telegram gives it on every request)
+    name: str | None = Field(default=None, max_length=64)
+    # Channels of notifications, comma separated (telegram,push,email); None: all available
+    notify: str | None = Field(default=None, max_length=32)
+    # Session tokens made before this moment don't work ("sign out everywhere")
+    sessions_after: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), nullable=True)
+    )
+    # Deleted by the owner: hidden from everything, can be restored for 30 days, then erased
+    # (services/accounts.py: delete_account, restore_account, purge_deleted)
+    deleted_at: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), nullable=True)
+    )
     timezone: str = Field(max_length=16)
     language: str | None = Field(default=None, max_length=8)
     referrer_id: UUID | None = Field(default=None, foreign_key="user.id", sa_type=Uuid)
@@ -76,6 +97,8 @@ class Delivery(SQLModel, table=True):
     opened_at: datetime | None = Field(default=None, sa_column=Column(TIMESTAMP(timezone=True)))
     reaction: str | None = Field(default=None, max_length=16)
     reply: str | None = Field(default=None, max_length=1024)
+    # The wish was erased with its author's account (``wish_id`` is gone then)
+    wish_erased: bool = Field(default=False)
 
 
 class MandarinTx(SQLModel, table=True):
@@ -127,5 +150,67 @@ class UserItem(SQLModel, table=True):
     # Courtyard place of a figure (None: owned but not placed)
     pad: int | None = Field(default=None)
     acquired_at: datetime = Field(
+        default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True))
+    )
+
+
+class EmailCode(SQLModel, table=True):
+    """
+    One-time code sent to an e-mail to sign in or to link it (``services/accounts.py``), and
+    the day's counters of the address: letters sent and wrong codes (no guessing, no spamming)
+    """
+
+    email: str = Field(primary_key=True, max_length=254)
+    code_hash: str = Field(max_length=64)
+    attempts: int = Field(default=0)
+    sent_at: datetime = Field(default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True)))
+    day_start: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), nullable=True)
+    )
+    day_sends: int = Field(default=0)
+    day_fails: int = Field(default=0)
+
+
+class UsedProof(SQLModel, table=True):
+    """
+    A proof of identity already used (Telegram Login Widget data, a Google token): each works
+    once, so one that leaked (a log, a shared screen) can't sign in or link again
+    """
+
+    digest: str = Field(primary_key=True, max_length=64)
+    expires_at: datetime = Field(sa_column=Column(TIMESTAMP(timezone=True)))
+
+
+class PushSubscription(SQLModel, table=True):
+    """Web Push subscription of a browser (``services/push.py``)"""
+
+    id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
+    user_id: UUID = Field(foreign_key="user.id", index=True)
+    endpoint: str = Field(unique=True, max_length=1024)
+    p256dh: str = Field(max_length=256)
+    auth: str = Field(max_length=64)
+    created_at: datetime = Field(
+        default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True))
+    )
+
+
+class Session(SQLModel, table=True):
+    """
+    A sign-in on a device (website / PWA): the session token carries its id, ending it here
+    ends the token. Tied to the way of signing in (kind + key), not the account: after a merge
+    it follows the identity into the kept account. The Mini App signs in by Telegram itself
+    and has none. (``services/sessions.py``)
+    """
+
+    id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
+    kind: str = Field(max_length=16, index=True)
+    key: str = Field(max_length=254, index=True)
+    # What the person sees in the list: browser and system, a part of the IP address
+    device: str = Field(default="", max_length=64)
+    ip: str = Field(default="", max_length=64)
+    created_at: datetime = Field(
+        default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True))
+    )
+    last_seen_at: datetime = Field(
         default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True))
     )

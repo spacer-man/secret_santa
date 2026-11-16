@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 class UserDTO(BaseModel):
     id: UUID
-    telegram_id: int
+    telegram_id: int | None = None
+    email: str | None = None
+    google_id: str | None = None
+    name: str | None = None
+    notify: str | None = None
+    deleted_at: datetime | None = None
     timezone: str = Field(max_length=32)
     language: str | None = None
     referrer_id: UUID | None = None

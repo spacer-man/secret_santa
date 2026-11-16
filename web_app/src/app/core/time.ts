@@ -14,17 +14,25 @@ export function formatOffset(minutes: number): string {
   return `UTC${sign}${h}${m ? ':' + String(m).padStart(2, '0') : ''}`;
 }
 
-/** The device offset on New Year's night (DST-aware) */
-export function detectTimezone(known: string[]): string {
+/** Minutes from UTC of this device on the coming New Year's night (DST-aware) */
+export function deviceNewYearOffset(): number {
   const year =
     new Date().getMonth() === 0 ? new Date().getFullYear() : new Date().getFullYear() + 1;
-  const offset = -new Date(year, 0, 1).getTimezoneOffset();
+  return -new Date(year, 0, 1).getTimezoneOffset();
+}
+
+/** The known timezone of this offset, or the closest one */
+export function closestTimezone(known: string[], offset: number): string {
   const tz = formatOffset(offset);
-  if (known.includes(tz)) return tz;
-  // Closest known one
+  if (known.includes(tz) || !known.length) return tz;
   return known.reduce((a, b) =>
     Math.abs(offsetMinutes(a) - offset) <= Math.abs(offsetMinutes(b) - offset) ? a : b,
   );
+}
+
+/** The device offset on New Year's night (DST-aware) */
+export function detectTimezone(known: string[]): string {
+  return closestTimezone(known, deviceNewYearOffset());
 }
 
 /** New Year midnight of the timezone, as a UTC timestamp (current one during 1 January) */

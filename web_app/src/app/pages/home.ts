@@ -79,6 +79,9 @@ import { rulesSeen } from '../core/onboarding';
             {{ i18n.t('invited') }}: <b>{{ store.me()?.invited }}</b> 🎉
           </p>
         }
+        @if (store.me()?.invited_pending; as pending) {
+          <p class="small muted">{{ i18n.t('invitedPending').replace('%s', '' + pending) }}</p>
+        }
       </section>
     }
 

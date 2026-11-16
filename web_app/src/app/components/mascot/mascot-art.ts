@@ -66,12 +66,22 @@ const STROKES = (
     [20.3, 2.1, 0.6, -1, '9 3 34 2'],
     [24.4, 2.9, 0.9, 0.7, '38 3.5 4.5 2'],
   ] as const
-).map(([y, w, o, wave, dash]) => ({
-  w,
-  o,
-  dash,
-  d: `M0 ${y}q12 ${wave} 24 0t24 0`,
-}));
+).flatMap(([y, w, o, wave, dash]) =>
+  // As in the interface, a stroke has a soft and uneven edge: under its body lie two wider and
+  // fainter copies, each with its own wave, so the soft rim is wider here and narrower there
+  (
+    [
+      [w + 0.5, 0.2, wave * 1.9 + 0.5, 0.25],
+      [w - 0.3, 0.42, wave * 0.3 - 0.5, -0.2],
+      [w - 1.1, 1, wave, 0],
+    ] as const
+  ).map(([width, tone, sway, shift]) => ({
+    w: Math.max(0.8, width).toFixed(1),
+    o: (o * tone).toFixed(2),
+    dash,
+    d: `M0 ${(y + shift).toFixed(2)}q12 ${sway.toFixed(2)} 24 0t24 0`,
+  })),
+);
 
 /** Numbers of every path command; an arc keeps its radii, rotation and flags */
 const ARITY: Record<string, number> = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7 };
@@ -484,11 +494,19 @@ export class MascotArt {
    * after the outline, so the fills that hide the inner seams hide them as well.
    */
   private morePasses(el: SVGElement, amp: number): Pass[] {
-    return [2, 3].map((n) => {
+    // And two wide faint copies of the main line, each a bit off as well: its edge is soft
+    // and uneven, as the edge of every pencil line of the interface
+    const passes: [name: string, wander: number][] = [
+      ['soft1', 1.3],
+      ['soft2', 0.9],
+      ['pass2', 1.5],
+      ['pass3', 2.1],
+    ];
+    return passes.map(([name, wander], n) => {
       const pass = el.cloneNode(false) as SVGElement;
-      pass.setAttribute('class', `m-pass m-pass${n}`);
+      pass.setAttribute('class', `m-pass m-${name}`);
       el.after(pass);
-      return { el: pass, list: variantsOf(el, n * 101, amp * (n === 2 ? 1.5 : 2.1)) };
+      return { el: pass, list: variantsOf(el, (n + 2) * 101, amp * wander) };
     });
   }
 

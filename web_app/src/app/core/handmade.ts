@@ -164,9 +164,9 @@ const PIECE = 6;
  * How much the edge of a line wanders (a share of its half-width, and a bit in px on top) and
  * how slowly: the edge is a gentle wave, not teeth — a pencil line is soft, not torn
  */
-const EDGE = 0.2;
-const EDGE_PX = 0.12;
-const EDGE_WAVE = 0.55;
+const EDGE = 0.3;
+const EDGE_PX = 0.42;
+const EDGE_WAVE = 0.4;
 
 function pencilPass(raw: Pt[], pen: Pen, offset: number, alpha: number): string {
   const { w, seed, jit = 1.2, taper = 0.7 } = pen;
@@ -421,16 +421,42 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
   // The line is cut into pieces of a few strokes, each with its own pressure (tone and width);
   // they are also what the drawing animation shows one after another.
   let out = '';
-  let d = '';
+  // A piece is drawn as three copies of the line: two wide faint ones and the body over them
+  // (see below). Each copy goes its own slightly wavy way, so the soft edge of a stroke is
+  // uneven too: wider here, narrower there, as the hand and the paper make it.
+  const ds = ['', '', ''];
+  const sway = [1.05, 0.8, 0.4];
   const p = (pt: Pt) => `${r1(pt[0])} ${r1(pt[1])}`;
+  /** A stroke from `a0` to `a1` bent through `bend`, as points every ~13 px that sway aside */
+  const wavy = (a0: Pt, bend: Pt, a1: Pt, copy: number, i: number): string => {
+    const len = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]) || 1;
+    const [nx, ny] = [-(a1[1] - a0[1]) / len, (a1[0] - a0[0]) / len];
+    const n = Math.max(2, Math.round(len / 13));
+    let path = '';
+    for (let k = 1; k <= n; k++) {
+      const t = k / n;
+      const u = 1 - t;
+      // No sway at the ends: there the copies meet in the turn to the next stroke
+      const off =
+        noise1(k * 0.8 + i * 7.3 + copy * 31.7 + o.seed * 2.9) *
+        sway[copy] *
+        Math.min(1, t * 4, u * 4);
+      path += `L${p([
+        u * u * a0[0] + 2 * u * t * bend[0] + t * t * a1[0] + nx * off,
+        u * u * a0[1] + 2 * u * t * bend[1] + t * t * a1[1] + ny * off,
+      ])}`;
+    }
+    return path;
+  };
   const ends = (i: number): [Pt, Pt] => {
     const [from, , to] = strokes[i];
     return i % 2 ? [to, from] : [from, to];
   };
   strokes.forEach(([, bend], i) => {
     const [a0, a1] = ends(i);
-    if (!d) d = `M${p(a0)}`;
-    d += `Q${p(bend)} ${p(a1)}`;
+    ds.forEach((d, copy) => {
+      ds[copy] = (d || `M${p(a0)}`) + wavy(a0, bend, a1, copy, i);
+    });
     const last = i === strokes.length - 1;
     let next = a1;
     if (!last) {
@@ -439,7 +465,8 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
       const len = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]) || 1;
       const reach = Math.min(o.gap * 0.9, 7);
       const [ux, uy] = [((a1[0] - a0[0]) / len) * reach, ((a1[1] - a0[1]) / len) * reach];
-      d += `C${p([a1[0] + ux, a1[1] + uy])} ${p([next[0] + ux, next[1] + uy])} ${p(next)}`;
+      const turn = `C${p([a1[0] + ux, a1[1] + uy])} ${p([next[0] + ux, next[1] + uy])} ${p(next)}`;
+      ds.forEach((_, copy) => (ds[copy] += turn));
     }
     if ((i + 1) % HATCH_PIECE && !last) return;
     const piece = Math.floor(i / HATCH_PIECE);
@@ -465,20 +492,20 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
     if (piece === 0) cap(ends(0)[0], strokes[0][1], 1);
     if (last) cap(a1, [2 * a1[0] - bend[0], 2 * a1[1] - bend[1]], 0);
     // The tone of a pencil stroke weakens towards its edge: around the body lie two wider
-    // and fainter copies of the same line. One group, so that pieces do not darken each other.
-    const layer = (w: number, tone: number): string =>
+    // and fainter copies of the line. One group, so that pieces do not darken each other.
+    const layer = (copy: number, w: number, tone: number): string =>
       `<path class="hm-stroke hm-seq" pathLength="1" style="--i:${seq}" ` +
-      `opacity="${tone}" stroke-width="${r1(w)}" d="${d}"/>`;
+      `opacity="${tone}" stroke-width="${r1(w)}" d="${ds[copy]}"/>`;
     out +=
       `<g opacity="${opacity.toFixed(2)}">` +
-      layer(width + 0.4, 0.2) +
-      layer(width - 0.5, 0.42) +
-      layer(body, 1) +
+      layer(0, width + 0.4, 0.2) +
+      layer(1, width - 0.5, 0.42) +
+      layer(2, body, 1) +
       caps +
       `</g>`;
     seq++;
     // The next piece starts where this one ended: at the beginning of a stroke, heading along it
-    d = `M${p(next)}`;
+    ds.fill(`M${p(next)}`);
   });
   return grow ? `<g transform="translate(${-grow} ${-grow})">${out}</g>` : out;
 }

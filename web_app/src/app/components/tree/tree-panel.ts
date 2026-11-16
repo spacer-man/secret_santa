@@ -12,7 +12,7 @@ import { Tree3d } from '../tree3d/tree-3d';
 import { LIGHT_SKINS } from '../tree3d/skins';
 import { ShopSheet } from './shop-sheet';
 import { DebugPanel } from './debug-panel';
-import { DAYTIME_MODES, Daytime, DaytimeMode, PHASE_ICONS } from '../../core/daytime';
+import { City, DAYTIME_MODES, Daytime, DaytimeMode, PHASE_ICONS } from '../../core/daytime';
 
 const SEEN_KEY = 'santa.tree.seen';
 const SNOW_KEY = 'santa.snowfall.v2';
@@ -317,6 +317,55 @@ function readSeen(): Record<string, string> | null {
                 {{ i18n.t('daytimeFixed') }}
               }
             </p>
+            @if (daytime.mode() === 'auto') {
+              <!-- Where the sun is counted for: the timezone's city, or a place picked here -->
+              <div class="place-row">
+                <span>
+                  📍 <b>{{ placeName() }}</b>
+                  <small class="muted">{{ i18n.dict.placeSources[daytime.place().source] }}</small>
+                </span>
+                @if (!placeOpen()) {
+                  <button class="btn btn-ghost" (click)="placeOpen.set(true)">
+                    {{ i18n.t('placeChange') }}
+                  </button>
+                }
+              </div>
+              @if (placeOpen()) {
+                <div class="place-pick">
+                  <input
+                    class="textarea place-input"
+                    type="search"
+                    autocomplete="off"
+                    [placeholder]="i18n.t('placeSearch')"
+                    (input)="searchCity($any($event.target).value)"
+                  />
+                  @for (c of cityHits(); track c.en) {
+                    <button class="btn btn-secondary wide" (click)="pickCity(c)">
+                      {{ lang === 'ru' ? c.ru : c.en }}
+                    </button>
+                  }
+                  @if (cityQuery() && !cityHits().length) {
+                    <p class="small muted">{{ i18n.t('placeNotFound') }}</p>
+                  }
+                  <button
+                    class="btn btn-secondary wide"
+                    [disabled]="locating()"
+                    (click)="geolocate()"
+                  >
+                    🛰 {{ i18n.t(locating() ? 'placeLocating' : 'placeGeo') }}
+                  </button>
+                  @if (geoError(); as err) {
+                    <p class="small lack">{{ i18n.dict.placeGeoErrors[err] }}</p>
+                  }
+                  @if (daytime.place().source === 'city' || daytime.place().source === 'geo') {
+                    <button class="btn btn-ghost wide" (click)="resetPlace()">
+                      {{ i18n.t('placeReset') }}
+                    </button>
+                  }
+                  <p class="small muted">🔒 {{ i18n.t('placePrivate') }}</p>
+                </div>
+              }
+            }
           }
           @case ('lights') {
             <h3 class="compact-title">🏠 {{ i18n.t('cabinLights') }}</h3>
@@ -439,6 +488,52 @@ export class TreePanel {
   protected readonly daytime = inject(Daytime);
   protected readonly daytimeModes: DaytimeMode[] = DAYTIME_MODES;
   protected readonly phaseIcons = PHASE_ICONS;
+  // Where the sun is counted for (stays in this browser)
+  protected readonly lang = this.i18n.lang();
+  protected readonly placeOpen = signal(false);
+  protected readonly cityQuery = signal('');
+  protected readonly cityHits = signal<City[]>([]);
+  protected readonly locating = signal(false);
+  protected readonly geoError = signal<'denied' | 'unavailable' | null>(null);
+  protected readonly placeName = computed(() => {
+    const p = this.daytime.place();
+    const name = this.lang === 'ru' ? p.ru : p.en;
+    return name ?? `${p.lat.toFixed(1)}°, ${p.lon.toFixed(1)}°`;
+  });
+
+  protected async searchCity(query: string): Promise<void> {
+    this.cityQuery.set(query);
+    const hits = await this.daytime.search(query);
+    // An answer to an older query must not replace a newer one
+    if (this.cityQuery() === query) this.cityHits.set(hits);
+  }
+
+  protected pickCity(city: City): void {
+    this.daytime.pickCity(city);
+    this.closePlace();
+  }
+
+  protected async geolocate(): Promise<void> {
+    this.locating.set(true);
+    this.geoError.set(null);
+    const result = await this.daytime.locate();
+    this.locating.set(false);
+    if (result === 'ok') this.closePlace();
+    else this.geoError.set(result);
+  }
+
+  protected resetPlace(): void {
+    this.daytime.resetPlace();
+    this.closePlace();
+  }
+
+  private closePlace(): void {
+    this.placeOpen.set(false);
+    this.cityQuery.set('');
+    this.cityHits.set([]);
+    this.geoError.set(null);
+  }
+
   /** Today's sunrise and sunset here, or the polar night / day */
   protected readonly sunText = computed(() => {
     const { rise, set, up } = this.daytime.today();

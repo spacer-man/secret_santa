@@ -115,7 +115,7 @@ export function lanternFactory(kit: LanternKit): Lanterns {
       const group = new THREE.Group();
       const frame = withOutline(new THREE.Mesh(frameGeo, frameMat));
       const glass = new THREE.Mesh(glassGeo, glassMat);
-      const snow = new THREE.Mesh(snowGeo, snowMat);
+      const snow = withOutline(new THREE.Mesh(snowGeo, snowMat));
       snow.rotation.y = all.length * 1.3;
       group.add(frame, glass, snow);
       group.scale.setScalar(scale);

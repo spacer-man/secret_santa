@@ -43,7 +43,7 @@
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "4kB",
+                  "maximumWarning": "6kB",
                   "maximumError": "8kB"
                 }
               ],
@@ -60,8 +60,8 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "options": {
-            "proxyConfig": "proxy.conf.json",
-            "allowedHosts": [".trycloudflare.com", ".ngrok-free.app", ".ngrok.app", ".lhr.life"]
+            "proxyConfig": "proxy.conf.mjs",
+            "allowedHosts": [".trycloudflare.com", ".ngrok-free.app", ".ngrok-free.dev", ".ngrok.app", ".ngrok.dev", ".ngrok.io", ".lhr.life"]
           },
           "configurations": {
             "production": {

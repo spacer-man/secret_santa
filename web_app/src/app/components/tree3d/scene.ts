@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three';
 import type { TreeBall, TreeData } from '../../core/api';
+import { TUNING } from '../../core/tuning';
 import { buildCabin } from './cabin';
 import { CabinLights, LightSkin } from './cabin-lights';
 import { instancedOutline, withOutline } from './outline';
@@ -32,6 +33,21 @@ import {
 } from './life';
 
 /** A ball place: where the thread is tied and where the ball centre hangs */
+/** Snowfall and sky at one moment (see TreeWorld.SNOWFALL) */
+interface Weather {
+  count: number;
+  size: number;
+  speed: number;
+  wind: number;
+  stars: number;
+  glitter: number;
+}
+
+const lerp = THREE.MathUtils.lerp;
+
+/** Size of the small arrows over the free places (the big one over a heap is 1.8) */
+const SMALL_ARROW = 1.4;
+
 interface BallSlot {
   top: THREE.Vector3;
   ball: THREE.Vector3;
@@ -389,21 +405,67 @@ export class TreeWorld {
     }
 
     this.scene.fog = new THREE.Fog(0x0b0c22, 22, 70);
-    this.buildSky();
-    this.buildLights();
-    this.buildGround();
-    this.buildPodium();
-    this.buildFence();
-    this.buildCabin();
-    this.buildForest();
-    this.buildTree();
-    this.buildSnowfall();
-    this.scene.add(this.dynamic, this.levelGroup);
+  }
 
+  private disposed = false;
+
+  /**
+   * Builds the world step by step, giving the page a frame between the steps:
+   * the interface (and the loading screen) stays alive while the scene is made.
+   * @param progress 0..1 as the work goes
+   */
+  async build(progress: (k: number) => void = () => {}): Promise<void> {
+    const steps: (() => void)[] = [
+      () => this.buildSky(),
+      () => this.buildLights(),
+      () => this.buildGround(),
+      () => this.buildPodium(),
+      () => this.buildFence(),
+      () => this.buildCabin(),
+      () => this.buildForest(),
+      () => this.buildTree(),
+      () => this.buildSnowfall(),
+    ];
+    // Building is ~60% of the wait, the models and the shaders the rest
+    for (let i = 0; i < steps.length; i++) {
+      steps[i]();
+      progress(((i + 1) / steps.length) * 0.6);
+      await nextFrame();
+      if (this.disposed) return;
+    }
+    this.scene.add(this.dynamic, this.levelGroup);
+    this.started();
+  }
+
+  /**
+   * The last of the loading: waits for the models of the courtyard (not for ever) and
+   * compiles the shaders in the background, so the first frame does not freeze the page
+   */
+  async finish(progress: (k: number) => void = () => {}): Promise<void> {
+    await Promise.race([this.heapsReady, new Promise((r) => setTimeout(r, 6000))]);
+    progress(0.8);
+    await nextFrame();
+    if (this.disposed) return;
+    try {
+      await this.renderer.compileAsync(this.scene, this.camera);
+    } catch {
+      // Older drivers: the shaders compile with the first frame
+    }
+    progress(1);
+    this.live = true;
+    this.renderOnce();
+    this.start();
+  }
+
+  /** Nothing is drawn until the shaders are ready (a draw would compile them at once, freezing the page) */
+  private live = false;
+
+  /** Input, size and the loop: once the world is there */
+  private started(): void {
     this.bindInput();
     this.resize();
     const ro = new ResizeObserver(() => this.resize());
-    ro.observe(canvas);
+    ro.observe(this.canvas);
     this.cleanup.push(() => ro.disconnect());
 
     // Pause when not visible: saves battery
@@ -412,7 +474,7 @@ export class TreeWorld {
       if (this.visible) this.start();
       else this.stop();
     });
-    this.observer.observe(canvas);
+    this.observer.observe(this.canvas);
     const onVis = () => (document.hidden ? this.stop() : this.visible && this.start());
     document.addEventListener('visibilitychange', onVis);
     this.cleanup.push(() => document.removeEventListener('visibilitychange', onVis));
@@ -476,6 +538,7 @@ export class TreeWorld {
   }
 
   private draw(): void {
+    if (!this.live) return;
     if (this.composer) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
   }
@@ -845,7 +908,7 @@ export class TreeWorld {
         lantern.group.rotation.y = -a;
         this.scene.add(lantern.group);
       } else {
-        const cap = new THREE.Mesh(capGeo, snow);
+        const cap = this.outline(new THREE.Mesh(capGeo, snow));
         cap.position.set(p.x, 1.0, p.z);
         cap.rotation.y = a * 3;
         cap.scale.set(1 + rand(i) * 0.12, 0.85 + rand(i + 5) * 0.35, 1 + rand(i + 9) * 0.12);
@@ -959,7 +1022,7 @@ export class TreeWorld {
       new THREE.MeshBasicMaterial({ visible: false }),
     );
     hit.position.y = 2.4;
-    hit.userData = { kind: 'cabin' };
+    hit.userData = { kind: 'cabin', react: cabin.group, amount: 0.02 };
     cabin.group.add(hit);
     this.staticClickables.push(hit);
 
@@ -1288,26 +1351,72 @@ export class TreeWorld {
     { count: 1800, size: 0.2, speed: 1.25, wind: 0.25, stars: 0.15 },
     { count: 3600, size: 0.24, speed: 1.7, wind: 0.9, stars: 0.04 },
   ];
-  private snowLevel = 1;
+  /** Glints on the snow per level: dimmer when the sky is grey */
+  private static readonly GLITTER = [1, 0.9, 0.6, 0.35];
+  /** Flakes over which the count fades in or out (no sudden flakes in mid-air) */
+  private static readonly FLAKE_FADE = 250;
+  /** The weather as it is now: on a change it goes smoothly from `weatherFrom` to the new level */
+  private weather = TreeWorld.weatherOf(1);
+  private weatherFrom = this.weather;
+  private weatherTo = this.weather;
+  private weatherStart = 0;
   /** 1 = clear sky, 0 = overcast: fades stars and northern lights */
   private skyClear = 0.4;
 
-  setSnowfall(level: number): void {
-    this.snowLevel = THREE.MathUtils.clamp(level, 0, TreeWorld.SNOWFALL.length - 1);
-    const cfg = TreeWorld.SNOWFALL[this.snowLevel];
-    this.snow.geometry.setDrawRange(0, cfg.count);
-    this.snowMatUniforms['size'].value = cfg.size;
-    this.glitter?.setStrength([1, 0.9, 0.6, 0.35][this.snowLevel]);
-    // Clouds come with the snow: fewer stars
-    if (this.starMat) this.starMat.uniforms['opacity'].value = cfg.stars;
-    // Northern lights need a clear sky too
-    this.skyClear = cfg.stars;
+  private static weatherOf(level: number): Weather {
+    return { ...TreeWorld.SNOWFALL[level], glitter: TreeWorld.GLITTER[level] };
+  }
+
+  /** @param instant no transition (the first setting, when the scene appears) */
+  setSnowfall(level: number, instant = false): void {
+    const to = TreeWorld.weatherOf(THREE.MathUtils.clamp(level, 0, TreeWorld.SNOWFALL.length - 1));
+    this.weatherFrom = instant ? to : { ...this.weather };
+    this.weatherTo = to;
+    this.weatherStart = performance.now();
+    this.updateWeather();
     this.renderOnce();
+    this.start();
+  }
+
+  /** One step of the weather change: snow thickens or thins out, clouds come or go */
+  private updateWeather(): void {
+    const k = Math.min(1, (performance.now() - this.weatherStart) / Math.max(1, TUNING.weatherMs));
+    const e = k * k * (3 - 2 * k);
+    const [a, b] = [this.weatherFrom, this.weatherTo];
+    const w = this.weather;
+    if (k >= 1 && w === b) return;
+    this.weather =
+      k >= 1
+        ? b
+        : {
+            count: lerp(a.count, b.count, e),
+            size: lerp(a.size, b.size, e),
+            speed: lerp(a.speed, b.speed, e),
+            wind: lerp(a.wind, b.wind, e),
+            stars: lerp(a.stars, b.stars, e),
+            glitter: lerp(a.glitter, b.glitter, e),
+          };
+    const now = this.weather;
+    const max = TreeWorld.SNOWFALL[TreeWorld.SNOWFALL.length - 1].count;
+    // The tail of FLAKE_FADE flakes is half-seen on average: shift it by half, so the
+    // count stays what it was, but not below zero for the clear sky
+    const fade = TreeWorld.FLAKE_FADE;
+    const shown = now.count + (fade / 2) * Math.min(1, now.count / fade);
+    this.snow.geometry.setDrawRange(0, Math.min(max, Math.ceil(shown)));
+    this.snowMatUniforms['shown'].value = shown;
+    this.snowMatUniforms['size'].value = now.size;
+    this.glitter?.setStrength(now.glitter);
+    // Clouds come with the snow: fewer stars
+    if (this.starMat) this.starMat.uniforms['opacity'].value = now.stars;
+    // Northern lights need a clear sky too
+    this.skyClear = now.stars;
   }
 
   private readonly snowMatUniforms: Record<string, THREE.IUniform> = {
     map: { value: null },
     size: { value: 0.16 },
+    /** How many flakes are falling (fractional while the weather changes) */
+    shown: { value: 700 },
     scale: { value: 400 },
     time: { value: 0 },
   };
@@ -1401,16 +1510,19 @@ export class TreeWorld {
     const n = TreeWorld.SNOWFALL[TreeWorld.SNOWFALL.length - 1].count;
     const pos = new Float32Array(n * 3);
     const flake = new Float32Array(n * 3);
+    const order = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       pos.set([(rand(i) - 0.5) * 26, rand(i + 0.3) * 14, (rand(i + 0.6) - 0.5) * 26], i * 3);
       // Mostly small soft flakes; every third one is a bigger crystal
       const crystal = i % 3 === 0 ? 1 + Math.floor(rand(i * 5.7) * 3) : 0;
       const size = crystal ? 1.5 + rand(i * 1.9) * 1.3 : 0.55 + Math.pow(rand(i * 1.9), 3) * 1.1;
       flake.set([size, rand(i * 2.3) * 6.283, crystal], i * 3);
+      order[i] = i;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('flake', new THREE.BufferAttribute(flake, 3));
+    geo.setAttribute('order', new THREE.BufferAttribute(order, 1));
     this.snowMatUniforms['map'].value = this.flakeAtlas();
     this.snow = new THREE.Points(
       geo,
@@ -1419,8 +1531,8 @@ export class TreeWorld {
         depthWrite: false,
         uniforms: this.snowMatUniforms,
         vertexShader: `
-          attribute vec3 flake;
-          uniform float size; uniform float scale; uniform float time;
+          attribute vec3 flake; attribute float order;
+          uniform float size; uniform float scale; uniform float time; uniform float shown;
           varying float vAlpha; varying float vKind; varying vec2 vSpin;
           void main() {
             vec4 mv = modelViewMatrix * vec4(position, 1.0);
@@ -1434,6 +1546,8 @@ export class TreeWorld {
             vAlpha = 0.7 + 0.25 * sin(time * (1.5 + flake.x) + flake.y);
             // Tiny on screen: the crystal would be a noisy dot, fade it a little
             if (flake.z > 0.5) vAlpha *= 0.55 + 0.45 * smoothstep(5.0, 16.0, gl_PointSize);
+            // The weather changes: the last flakes of the count fade in / out
+            vAlpha *= clamp((shown - order) / ${TreeWorld.FLAKE_FADE.toFixed(1)}, 0.0, 1.0);
           }`,
         fragmentShader: `
           uniform sampler2D map;
@@ -1575,7 +1689,9 @@ export class TreeWorld {
     const onTree = tree.balls.filter((b) => b.state !== 'box');
     const lit = onTree.filter((b) => b.state === 'lit').length;
 
-    this.treeLight.intensity = Math.min(lit, 6) * 1.5 + (tree.star ? 2.5 : 0);
+    // The tree glows brighter with every festive level: full power at level 10
+    const glow = THREE.MathUtils.clamp(tree.level / 10, 0.1, 1);
+    this.treeLight.intensity = Math.min(lit, 6) * 1.5 + glow * 3;
 
     onTree.slice(0, this.slots.length).forEach((ball, i) => {
       this.addBall(ball, this.slots[i], i, newHung.includes(ball.id), newLit.includes(ball.id));
@@ -1584,8 +1700,8 @@ export class TreeWorld {
     // Next free places pulse softly: tap to write a new greeting
     this.slots.slice(onTree.length, onTree.length + 2).forEach((p, i) => this.addGhost(p.ball, i));
 
-    this.addGarland(tree.garland);
-    this.addStar(tree.star);
+    this.addGarland(tree.garland, glow);
+    this.addStar(glow);
     const version = ++this.version;
     tree.balls
       .filter((b) => b.state === 'box')
@@ -1667,7 +1783,7 @@ export class TreeWorld {
       new THREE.MeshBasicMaterial({ visible: false }),
     );
     hit.position.y = -L;
-    hit.userData = { kind: 'ball', ball };
+    hit.userData = { kind: 'ball', ball, react: sphere, amount: 0.16 };
     hang.add(hit);
     this.clickables.push(hit);
     this.dynamic.add(pivot);
@@ -1728,7 +1844,7 @@ export class TreeWorld {
       new THREE.SphereGeometry(0.42, 8, 6),
       new THREE.MeshBasicMaterial({ visible: false }),
     );
-    hit.userData = { kind: 'add' };
+    hit.userData = { kind: 'add', react: ghost, amount: 0.2 };
     ghost.add(hit);
     this.clickables.push(hit);
     this.dynamic.add(ghost);
@@ -1744,8 +1860,9 @@ export class TreeWorld {
     });
   }
 
-  private addGarland(friends: number): void {
-    // Spiral around the tree; every friend lights up a part of it
+  /** @param glow 0..1 by the festive level: that share of the bulbs is lit (friends light more early on) */
+  private addGarland(friends: number, glow: number): void {
+    // Spiral around the tree; the level (and every friend) lights up a part of it
     const points: THREE.Vector3[] = [];
     const turns = 3.2;
     for (let k = 0; k <= 120; k++) {
@@ -1763,7 +1880,7 @@ export class TreeWorld {
     this.dynamic.add(wire);
 
     const count = 64;
-    const litCount = Math.min(count, friends * 7);
+    const litCount = Math.min(count, Math.max(Math.round(count * glow), friends * 7));
     const colors = [0xffd36b, 0xff4d6d, 0x4dd2ff, 0x7dff9a, 0xff9ef0];
     for (let k = 0; k < count; k++) {
       const p = curve.getPointAt(k / count);
@@ -1786,7 +1903,8 @@ export class TreeWorld {
     }
   }
 
-  private addStar(on: boolean): void {
+  /** @param power 0..1 by the festive level: from a soft warm light to the full blaze at level 10 */
+  private addStar(power: number): void {
     const shape = new THREE.Shape();
     for (let i = 0; i < 10; i++) {
       const r = i % 2 ? 0.18 : 0.42;
@@ -1802,30 +1920,36 @@ export class TreeWorld {
       bevelSegments: 1,
     });
     geo.center();
+    // Pale gold at the start, deep gold at the end; the light grows with the level
+    // Low levels: a pale, barely glowing star; it warms up level by level
+    const heat = power * power;
+    const color = new THREE.Color(0xd9d6cc).lerp(new THREE.Color(0xffd36b), power);
+    const fire = new THREE.Color(0xffb020);
     const star = this.outline(
       new THREE.Mesh(
         geo,
-        this.toon(on ? 0xffd36b : 0xc9d2ec, {
-          emissive: on ? (this.realLights ? emit(0xffb020, this.bloom) : 0xffb020) : 0x5a6ab0,
-          emissiveIntensity: on ? (this.realLights ? 1 : 0.8) : 0.35,
+        this.toon(color.getHex(), {
+          // With the bloom only the high levels are bright enough to shine
+          emissive: this.realLights ? emit(fire, this.bloom) : fire,
+          emissiveIntensity: this.realLights ? 0.06 + 0.94 * heat : 0.06 + 0.74 * heat,
         }),
       ),
       1.06,
     );
     star.position.y = TREE_TOP + 0.35;
-    star.userData = { kind: 'star' };
+    star.userData = { kind: 'star', react: star, amount: 0.12 };
     this.clickables.push(star);
     this.dynamic.add(star);
-    // Lit: warm big glow. Not lit yet: a faint cold shimmer, so the star is still noticeable
-    const glow = on ? this.halo(0xffe08a, 2.6, 0.9) : this.glow(0x9fb4ff, 1.5, 0.35);
+    // A warm glow, bigger and brighter with every level
+    const size = 1.1 + 1.5 * power;
+    const glow = this.halo(0xffe08a, size, 0.12 + 0.78 * heat);
     glow.position.copy(star.position);
     this.dynamic.add(glow);
     this.animated.push({
       update: (t) => {
         star.quaternion.copy(this.camera.quaternion);
         star.rotateZ(Math.sin(t * 1.2) * 0.08);
-        if (on) glow.scale.setScalar(2.4 + Math.sin(t * 2) * 0.3);
-        else glow.material.opacity = 0.2 + 0.2 * Math.abs(Math.sin(t * 0.9));
+        glow.scale.setScalar(size * (0.92 + Math.sin(t * 2) * 0.12));
       },
     });
   }
@@ -1856,7 +1980,7 @@ export class TreeWorld {
       new THREE.MeshBasicMaterial({ visible: false }),
     );
     hit.position.y = 0.35;
-    hit.userData = { kind: 'ball', ball };
+    hit.userData = { kind: 'ball', ball, react: holder, amount: 0.1 };
     holder.add(hit);
     this.clickables.push(hit);
     this.dynamic.add(holder);
@@ -2011,7 +2135,7 @@ export class TreeWorld {
           new THREE.MeshBasicMaterial({ visible: false }),
         );
         hit.position.set(c.x, 0.7, c.z);
-        hit.userData = { kind: 'pad', pad, item: d.item };
+        hit.userData = { kind: 'pad', pad, item: d.item, react: obj, amount: 0.07 };
         this.clickables.push(hit);
         this.dynamic.add(hit);
       }
@@ -2027,14 +2151,15 @@ export class TreeWorld {
         if (placedPads.has(i)) return;
         const b = makeBody(home.pos.x, home.pos.z, [{ dx: 0, dz: 0, r: 0.45 }]);
         resolve([b], obstacles, COURTYARD_RING);
-        const marker = this.arrowMarker(i);
+        // Big enough to be tapped with a finger from the corner view
+        const marker = this.arrowMarker(i, SMALL_ARROW);
         marker.position.set(b.x, terrainHeight(b.x, b.z), b.z);
         const hit = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.6, 0.6, 2.2, 8),
+          new THREE.CylinderGeometry(0.85, 0.85, 3, 8),
           new THREE.MeshBasicMaterial({ visible: false }),
         );
-        hit.position.y = 1.1;
-        hit.userData = { kind: 'pad', pad: i, item: null };
+        hit.position.y = 1.5;
+        hit.userData = { kind: 'pad', pad: i, item: null, react: marker, amount: 0.15 };
         this.clickables.push(hit);
         marker.add(hit);
         marker.visible = this.decorMode;
@@ -2055,19 +2180,21 @@ export class TreeWorld {
           new THREE.MeshBasicMaterial({ visible: false }),
         );
         hit.position.y = 1.8;
-        hit.userData = { kind: 'corner', corner: ci };
+        hit.userData = { kind: 'corner', corner: ci, react: big, amount: 0.1 };
         this.clickables.push(hit);
         big.add(hit);
         big.visible = this.decorMode;
         this.previews.push(big);
         this.dynamic.add(big);
 
-        // Crossfade by the distance of the camera to the corner
+        // Crossfade: flying to this corner hides its big arrow and shows the small ones;
+        // otherwise by the distance of the camera to the corner
         const group = small[ci];
         this.animated.push({
           update: () => {
             const d = this.camera.position.distanceTo(c);
-            const near = THREE.MathUtils.smoothstep(d, 7, 9.5); // 0 near, 1 far
+            const focused = this.focusTo === 1 && this.focusedCorner === ci ? this.focusBlend : 0;
+            const near = Math.min(THREE.MathUtils.smoothstep(d, 5.5, 7.5), 1 - focused); // 0 near, 1 far
             const k = this.decorMode ? near : 0;
             big.scale.setScalar(Math.max(k, 0.001));
             big.visible = this.decorMode && k > 0.02;
@@ -2095,7 +2222,7 @@ export class TreeWorld {
             new THREE.MeshBasicMaterial({ visible: false }),
           );
           hit.position.set(c.x, 0.7, c.z);
-          hit.userData = { kind: 'pad', pad: i, item: null };
+          hit.userData = { kind: 'pad', pad: i, item: null, react: ghost, amount: 0.06 };
           this.clickables.push(hit);
           marker.add(hit);
         }
@@ -2412,8 +2539,11 @@ export class TreeWorld {
 
   private focusDist = 6.0;
   private focusElev = 0.42;
+  /** The corner the camera flies to / looks at (-1: none, e.g. the cabin) */
+  private focusedCorner = -1;
 
   focusCorner(corner: number): void {
+    this.focusedCorner = corner;
     // High enough to look over the figure on the nearest place
     this.focusDist = 8.2;
     this.focusElev = 0.85;
@@ -2430,6 +2560,7 @@ export class TreeWorld {
 
   /** Fly to the cabin (to see its lights) */
   focusCabin(): void {
+    this.focusedCorner = -1;
     const c = new THREE.Vector3(Math.cos(CABIN_ANGLE) * 12.5, 0, Math.sin(CABIN_ANGLE) * 12.5);
     // From the courtyard, a bit to the side: the whole front with the roof
     this.focusTarget.set(c.x * 0.97, 2.3, c.z * 0.97);
@@ -2568,7 +2699,10 @@ export class TreeWorld {
             vec3 violet = vec3(0.45, 0.28, 1.0);
             vec3 col = mix(green, pink, smoothstep(0.12, 0.55, vv));
             col = mix(col, violet, smoothstep(0.5, 1.3, vv));
-            float a = ray * glow * vFade * opacity * 2.6;
+            float a = ray * glow * vFade * 2.6;
+            // Soft limit: ribbons add up where they cross, and their sum must stay under the bloom
+            // threshold, or the whole frame flares
+            a = 0.7 * (1.0 - exp(-a)) * opacity;
             gl_FragColor = vec4(col * a, a);
           // The colours above are display (sRGB) values
  gl_FragColor = sRGBTransferEOTF( gl_FragColor );
@@ -2645,6 +2779,7 @@ export class TreeWorld {
       this.lastInteraction = this.clock.getElapsedTime();
       this.start();
       if (pointers.size === 2) {
+        this.pressed = null;
         // Second finger: pinch zoom instead of rotation
         pinchDist = pinchDistance();
         moved = true;
@@ -2652,12 +2787,19 @@ export class TreeWorld {
       }
       this.dragging = true;
       moved = false;
+      this.pressed = this.reactTarget(this.pick(e.clientX, e.clientY));
       startX = lastX = e.clientX;
       startY = e.clientY;
       lastT = performance.now();
       this.velocity = 0;
     };
     const move = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse') {
+        const inside = e.target === this.canvas;
+        this.mouse = inside ? { x: e.clientX, y: e.clientY } : null;
+        if (inside) this.start();
+        else if (this.canvas.style.cursor) this.canvas.style.cursor = '';
+      }
       if (!pointers.has(e.pointerId)) return;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       this.lastInteraction = this.clock.getElapsedTime();
@@ -2670,6 +2812,8 @@ export class TreeWorld {
       if (!this.dragging) return;
       const dx = e.clientX - lastX;
       if (Math.abs(e.clientX - startX) > 6 || Math.abs(e.clientY - startY) > 6) moved = true;
+      // Turning the scene, not tapping: the pressed thing lets go
+      if (moved) this.pressed = null;
       const now = performance.now();
       const rot = (dx / this.canvas.clientWidth) * Math.PI * 1.3;
       if (moved && this.focusTo === 1) {
@@ -2683,6 +2827,7 @@ export class TreeWorld {
     };
     const up = (e: PointerEvent) => {
       if (!pointers.delete(e.pointerId)) return;
+      this.pressed = null;
       this.lastInteraction = this.clock.getElapsedTime();
       if (pointers.size > 0) {
         this.dragging = false; // after a pinch, don't rotate with the remaining finger
@@ -2696,13 +2841,19 @@ export class TreeWorld {
       this.zoomBy(e.deltaY * 0.0015);
     };
 
+    const leave = () => {
+      this.mouse = null;
+      this.canvas.style.cursor = '';
+    };
     this.canvas.addEventListener('pointerdown', down);
+    this.canvas.addEventListener('pointerleave', leave);
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
     this.canvas.addEventListener('wheel', wheel, { passive: false });
     this.cleanup.push(() => {
       this.canvas.removeEventListener('pointerdown', down);
+      this.canvas.removeEventListener('pointerleave', leave);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
@@ -2710,27 +2861,101 @@ export class TreeWorld {
     });
   }
 
-  private tap(e: PointerEvent): void {
+  private readonly ray = new THREE.Raycaster();
+
+  /** What can be tapped under the point of the screen (the same rules as a tap) */
+  private pick(x: number, y: number): THREE.Object3D | null {
     const rect = this.canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2(
-      ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      ((x - rect.left) / rect.width) * 2 - 1,
+      -((y - rect.top) / rect.height) * 2 + 1,
     );
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera(ndc, this.camera);
+    this.ray.setFromCamera(ndc, this.camera);
     const shown = (o: THREE.Object3D | null): boolean => !o || (o.visible && shown(o.parent));
-    const hit =
-      ray
-        .intersectObjects([...this.clickables, ...this.staticClickables], false)
-        .find((h) => shown(h.object.parent)) ?? null;
-    if (!hit) return;
-    const data = hit.object.userData;
+    const hit = this.ray
+      .intersectObjects([...this.clickables, ...this.staticClickables], false)
+      .find((h) => shown(h.object.parent));
+    const data = hit?.object.userData;
+    // Places in the courtyard answer only in the "decorate" mode (or when a figure stands there)
+    if (!data || (data['kind'] === 'pad' && !(this.decorMode || data['item']))) return null;
+    return hit.object;
+  }
+
+  // ====== Answer to the pointer: tappable things grow under the mouse, give under the finger ====== //
+  /** The mouse over the canvas (client px), null when it is elsewhere or not a mouse */
+  private mouse: { x: number; y: number } | null = null;
+  private hovered: THREE.Object3D | null = null;
+  private pressed: THREE.Object3D | null = null;
+  /** Spring per reacting object: k = current extra scale, v = its speed */
+  private readonly springs = new Map<THREE.Object3D, { k: number; v: number; amount: number }>();
+  private readonly savedScales: [THREE.Object3D, THREE.Vector3][] = [];
+
+  private reactTarget(hit: THREE.Object3D | null): THREE.Object3D | null {
+    return (hit?.userData['react'] as THREE.Object3D | undefined) ?? null;
+  }
+
+  private updateReactions(dt: number): void {
+    // Hover: what is under the mouse now (the camera turns by itself, so every frame)
+    const hit = this.mouse && !this.dragging ? this.pick(this.mouse.x, this.mouse.y) : null;
+    const hovered = this.reactTarget(hit);
+    if (this.mouse) this.canvas.style.cursor = hit ? 'pointer' : '';
+    this.hovered = hovered;
+    for (const target of [this.hovered, this.pressed]) {
+      if (target && !this.springs.has(target)) {
+        const owner = this.reactOwner(target);
+        this.springs.set(target, { k: 0, v: 0, amount: owner?.userData['amount'] ?? 0.1 });
+      }
+    }
+    this.springs.forEach((s, target) => {
+      const goal =
+        target === this.pressed
+          ? -s.amount * 0.6 * TUNING.scenePress
+          : target === this.hovered
+            ? s.amount * TUNING.sceneHover
+            : 0;
+      // A soft spring: it overshoots a little when let go, as a squashed toy does
+      const acc = (goal - s.k) * 260 - s.v * 17;
+      s.v += acc * dt;
+      s.k += s.v * dt;
+      if (goal === 0 && Math.abs(s.k) < 1e-4 && Math.abs(s.v) < 1e-3) this.springs.delete(target);
+    });
+  }
+
+  /** The hit object that names this target (for its strength) */
+  private reactOwner(target: THREE.Object3D): THREE.Object3D | undefined {
+    return [...this.clickables, ...this.staticClickables].find(
+      (h) => h.userData['react'] === target,
+    );
+  }
+
+  /** Scales the reacting objects for this frame only: their own animations keep their scale */
+  private applyReactions(): void {
+    this.springs.forEach((s, target) => {
+      if (!target.parent) return;
+      this.savedScales.push([target, target.scale.clone()]);
+      // Pressed: squashed down and a bit wider; hovered: simply bigger
+      const squash = s.k < 0 ? -s.k : 0;
+      target.scale.multiply(
+        new THREE.Vector3(1 + s.k + squash * 1.4, 1 + s.k, 1 + s.k + squash * 1.4),
+      );
+    });
+  }
+
+  private restoreReactions(): void {
+    for (const [target, scale] of this.savedScales) target.scale.copy(scale);
+    this.savedScales.length = 0;
+  }
+
+  private tap(e: PointerEvent): void {
+    const hitObject = this.pick(e.clientX, e.clientY);
+    if (!hitObject) return;
+    const data = hitObject.userData;
     if (data['kind'] === 'ball') this.callbacks.ball(data['ball']);
     else if (data['kind'] === 'star') this.callbacks.star();
     else if (data['kind'] === 'add') this.callbacks.addBall();
     else if (data['kind'] === 'corner') this.focusCorner(data['corner']);
     else if (data['kind'] === 'cabin') this.callbacks.cabin?.();
-    else if (data['kind'] === 'pad' && (this.decorMode || data['item'])) {
+    else if (data['kind'] === 'pad') {
       const pad = data['pad'] as number;
       const corner = DECOR_PADS[pad].corner;
       this.focusCorner(corner);
@@ -2764,7 +2989,6 @@ export class TreeWorld {
 
   private placeCamera(): void {
     const z = this.zoom;
-    const lerp = THREE.MathUtils.lerp;
     const b = THREE.MathUtils.smoothstep(this.focusBlend, 0, 1);
     // Normal view around the tree, blended with the close view of a corner
     // Close to the corner, from the tree side and a bit above
@@ -2790,7 +3014,7 @@ export class TreeWorld {
   }
 
   private start(): void {
-    if (this.running || !this.visible || document.hidden) return;
+    if (!this.live || this.running || !this.visible || document.hidden) return;
     this.running = true;
     this.clock.getDelta();
     const loop = () => {
@@ -2828,10 +3052,12 @@ export class TreeWorld {
     }
 
     const pos = this.snow.geometry.attributes['position'] as THREE.BufferAttribute;
-    const fall = TreeWorld.SNOWFALL[this.snowLevel];
+    this.updateWeather();
+    const fall = this.weather;
+    const count = this.snow.geometry.drawRange.count;
     // Gusts: in a blizzard the wind comes in waves
     const gust = fall.wind * (0.6 + 0.4 * Math.sin(t * 0.7));
-    for (let i = 0; i < fall.count; i++) {
+    for (let i = 0; i < count; i++) {
       let y = pos.getY(i) - dt * (0.5 + (i % 5) * 0.08) * fall.speed;
       let x = pos.getX(i) + Math.sin(t + i) * dt * 0.08 + gust * dt * (0.7 + (i % 3) * 0.3);
       if (y < 0) y += 14;
@@ -2846,7 +3072,10 @@ export class TreeWorld {
     for (const a of this.staticAnimated) a.update(t, dt);
     for (const a of this.animated) a.update(t, dt);
     this.placeCamera();
+    this.updateReactions(dt);
+    this.applyReactions();
     this.draw();
+    this.restoreReactions();
   }
 
   private renderOnce(): void {
@@ -2855,6 +3084,7 @@ export class TreeWorld {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.version++;
     this.models.dispose();
     this.composer?.dispose();
@@ -2890,6 +3120,18 @@ function realLightsWanted(): boolean {
   const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
   return (navigator.hardwareConcurrency ?? 4) >= 6 && memory >= 4;
 }
+
+/** Lets the browser draw a frame (the loading screen moves on) */
+const nextFrame = (): Promise<void> =>
+  new Promise((resolve) => {
+    // A hidden tab has no frames: a timer then
+    const timer = setTimeout(resolve, 100);
+    requestAnimationFrame(() => {
+      clearTimeout(timer);
+      // After the frame, not before it: the frame shows what has been done so far
+      setTimeout(resolve, 0);
+    });
+  });
 
 export function webglSupported(): boolean {
   try {

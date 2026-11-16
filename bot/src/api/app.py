@@ -26,7 +26,7 @@ from handlers.referral import parse_ref_code, ref_code
 from repos.media.sqlmodel import SQLModelMediaRepository
 from repos.user.sqlmodel import SQLModelUserRepository
 from repos.wish.sqlmodel import SQLModelWishRepository
-from services import mandarins, shop
+from services import debug, mandarins, shop
 from services.delivery import (
     REACTIONS,
     DeliveryDTO,
@@ -174,6 +174,8 @@ async def me(tg_user: CurrentUser) -> dict:
         else None,
         "invite_link": f"https://t.me/{username}?start={ref_code(user.id)}" if username else None,
         "invited": await delivery_service.invited_count(tg_user.id),
+        # The debug panel on the tree: DEBUG_TOOLS=1 and an admin only
+        "debug": debug.allowed(tg_user.id),
     }
 
 
@@ -372,6 +374,29 @@ async def shop_place(body: PlaceIn, user=Depends(registered_user)) -> dict:
     except shop.ShopError as err:
         raise shop_http_error(err) from err
     return (await shop.shop_payload(user.id)).model_dump(mode="json")
+
+
+# ====== Debug (DEBUG_TOOLS=1) ====== #
+class DebugIn(BaseModel):
+    # Festive level to show (1..10); null gives the real one back; absent: unchanged
+    level: int | None = Field(default=-1, ge=-1, le=10)
+    mandarins: int | None = Field(default=None, ge=0, le=1_000_000)
+
+
+@app.put("/api/debug")
+async def debug_state(body: DebugIn, user=Depends(registered_user)) -> dict:
+    """Development only: set the level and the balance without touching anything else"""
+    if not debug.allowed(user.telegram_id):
+        raise HTTPException(status_code=404)
+    if body.level != -1:
+        if body.level == 0:
+            raise HTTPException(status_code=422, detail="level is 1..10 or null")
+        debug.force_level(user.id, body.level)
+    if body.mandarins is not None:
+        async with new_db_session() as session:
+            await debug.set_balance(session, user.id, body.mandarins)
+            await session.commit()
+    return (await build_tree(user.id, delivery_service)).model_dump(mode="json")
 
 
 # ====== Gifts ====== #

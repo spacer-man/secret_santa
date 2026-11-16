@@ -18,7 +18,7 @@ from sqlmodel import col, select
 
 from db import new_db_session
 from db.models import Delivery, ValidStatus, Wish
-from services import mandarins, shop
+from services import debug, mandarins, shop
 from services.delivery import DeliveryService, current_season_year, season_start
 
 BALL_COLORS = ("red", "gold", "silver", "blue", "green", "purple", "pink", "orange")
@@ -132,6 +132,11 @@ async def build_tree(
         + shop.decor_points(owned)
     )
     level, level_from, level_to = festive_level(points)
+    forced = debug.forced_level(user_id)
+    if forced is not None:
+        # Debug: the level is shown as if its points were just reached
+        level, level_from, level_to = festive_level(LEVELS[forced - 1])
+        points = level_from
 
     return Tree(
         year=year,

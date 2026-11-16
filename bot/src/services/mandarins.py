@@ -23,6 +23,7 @@ class Reason(enum.StrEnum):
     # Not rewards for actions (not listed in REWARDS): the amount is passed explicitly
     PURCHASE = "purchase"  # ref: item key, negative amount
     SET_BONUS = "set_bonus"  # ref: set key
+    DEBUG = "debug"  # ref: random; balance set by hand with DEBUG_TOOLS (services/debug.py)
 
 
 REWARDS: dict[Reason, int] = {

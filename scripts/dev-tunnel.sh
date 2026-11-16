@@ -28,11 +28,18 @@ set +a
 [ -n "${BOT_TOKEN:-}" ] || die "В $ENV_FILE не задан BOT_TOKEN"
 [ -n "${WISH_VALIDATE_TG_IDS:-}" ] || die "В $ENV_FILE не задан WISH_VALIDATE_TG_IDS (ваш Telegram ID)"
 
-WEB_PORT="${WEB_PORT:-4200}"
+export WEB_PORT="${WEB_PORT:-4200}" API_PORT="${API_PORT:-8000}" WEBHOOK_PORT="${WEBHOOK_PORT:-8080}"
+# Порт занят (например, бот от прошлого запуска) — сразу говорим, а не падаем после туннеля
+for port in "$WEB_PORT" "$API_PORT" "$WEBHOOK_PORT"; do
+  if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+    die "Порт $port занят. Освободите его или задайте другой в $ENV_FILE (WEB_PORT / API_PORT / WEBHOOK_PORT)"
+  fi
+done
 export DB_URL="${DB_URL:-sqlite+aiosqlite:///$DEV/santa.db}"
 export STATE_STORAGE_REDIS_URL="${STATE_STORAGE_REDIS_URL:-}"   # пусто = состояния в памяти
 export WEBHOOK_SECRET="${WEBHOOK_SECRET:-$(head -c 18 /dev/urandom | od -An -tx1 | tr -d ' \n')}"
 export AUTHOR_SUPPORT_LINK="${AUTHOR_SUPPORT_LINK:-https://t.me/}"
+export DEBUG_TOOLS="${DEBUG_TOOLS:-1}"                    # отладочная панель (уровень, мандаринки); 0 — выключить
 export ROOT_DIR="$ROOT/bot/labels"                         # картинки бота (в Docker это /labels)
 export LOGS_CONFIGURATION_PATH="$ROOT/bot/logging.yaml"
 
@@ -54,6 +61,7 @@ fi
 
 # --- Процессы и уборка -------------------------------------------------------
 PIDS=()
+NAMES=()   # имя процесса для каждого PID — чтобы сказать, кто упал
 TG="https://api.telegram.org/bot$BOT_TOKEN"
 
 cleanup() {
@@ -81,6 +89,7 @@ run() {
   local name="$1"; shift
   ( "$@" 2>&1 | tee "$DEV/logs/$name.log" | sed -u "s/^/[$name] /" ) &
   PIDS+=($!)
+  NAMES+=("$name")
 }
 
 # --- Туннель -----------------------------------------------------------------
@@ -99,10 +108,11 @@ say "Поднимаю туннель ($TUNNEL) → localhost:$WEB_PORT"
 case "$TUNNEL" in
   cloudflared)
     cloudflared tunnel --no-autoupdate --url "http://localhost:$WEB_PORT" >"$TUNNEL_LOG" 2>&1 &
-    PATTERN='https://[a-z0-9-]+\.trycloudflare\.com' ;;
+    PATTERN='https://[a-z0-9]+(-[a-z0-9]+)+\.trycloudflare\.com' ;;  # не api.trycloudflare.com из лога
   ngrok)
     ngrok http "$WEB_PORT" --log stdout --log-format logfmt >"$TUNNEL_LOG" 2>&1 &
-    PATTERN='https://[a-z0-9.-]+\.ngrok(-free)?\.app' ;;
+    # бесплатные адреса: *.ngrok-free.app, с 2025 — *.ngrok-free.dev; свой домен берём из API ngrok ниже
+    PATTERN='https://[a-z0-9.-]+\.ngrok(-free)?\.(app|dev|io)' ;;
   ssh)
     ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes \
       -R "80:localhost:$WEB_PORT" nokey@localhost.run >"$TUNNEL_LOG" 2>&1 &
@@ -110,11 +120,20 @@ case "$TUNNEL" in
   *) die "Неизвестный TUNNEL=$TUNNEL (cloudflared | ngrok | ssh)" ;;
 esac
 PIDS+=($!)
+NAMES+=(tunnel)
 TUNNEL_PID=$!
 
 PUBLIC_URL=""
 for _ in $(seq 60); do
   PUBLIC_URL="$(grep -oE "$PATTERN" "$TUNNEL_LOG" | head -1 || true)"
+  # ngrok: адрес надёжнее спросить у его локального API (порт 4040, если занят — 4041…)
+  if [ -z "$PUBLIC_URL" ] && [ "$TUNNEL" = ngrok ]; then
+    for api in 4040 4041 4042; do
+      PUBLIC_URL="$(curl -fsS "http://127.0.0.1:$api/api/tunnels" 2>/dev/null \
+        | grep -oE '"public_url":"https://[^"]+' | head -1 | cut -d'"' -f4 || true)"
+      [ -n "$PUBLIC_URL" ] && break
+    done
+  fi
   [ -n "$PUBLIC_URL" ] && break
   kill -0 "$TUNNEL_PID" 2>/dev/null || { cat "$TUNNEL_LOG" >&2; die "Туннель не запустился"; }
   sleep 1
@@ -144,8 +163,12 @@ cat <<EOF
 EOF
 
 # Ждём, пока все живы (без wait -n — его нет в bash 3 на macOS)
-while :; do
-  for pid in "${PIDS[@]}"; do kill -0 "$pid" 2>/dev/null || break 2; done
-  sleep 2
+DEAD=""
+while [ -z "$DEAD" ]; do
+  for i in "${!PIDS[@]}"; do
+    kill -0 "${PIDS[$i]}" 2>/dev/null || { DEAD="${NAMES[$i]}"; break; }
+  done
+  [ -n "$DEAD" ] || sleep 2
 done
-warn "Один из процессов завершился — останавливаю остальные"
+warn "Завершился процесс «$DEAD» — останавливаю остальные. Конец его лога (.dev/logs/$DEAD.log):"
+tail -n 15 "$DEV/logs/$DEAD.log" >&2 || true

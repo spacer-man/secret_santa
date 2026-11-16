@@ -4,6 +4,7 @@ import { I18n, Key } from '../../core/i18n';
 import { ShopState } from '../../core/shop';
 import { Store } from '../../core/store';
 import { Telegram } from '../../core/telegram';
+import { TUNING } from '../../core/tuning';
 
 const TABS: { key: ShopCategory; label: Key }[] = [
   { key: 'figure', label: 'tabFigure' },
@@ -22,13 +23,26 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     <h2>{{ i18n.t('shopTitle') }}</h2>
     <p class="shop-balance">{{ f('shopBalance', shop.data()?.balance ?? 0) }}</p>
 
-    <div class="shop-tabs" role="tablist">
-      @for (tab of tabs; track tab.key) {
+    <div
+      class="shop-tabs"
+      role="tablist"
+      [style.--tab-ms.ms]="tabMs"
+      (pointerleave)="hoverTab.set(null)"
+    >
+      <!-- The hatched mark of the active tab: it crawls from tab to tab like a snake -->
+      <span
+        class="shop-tab-mark"
+        [class.to-right]="markRight()"
+        [style.left]="markEdge(mark().lo)"
+        [style.right]="markEdge(2 - mark().hi)"
+      ></span>
+      @for (tab of tabs; track tab.key; let i = $index) {
         <button
           role="tab"
           class="shop-tab"
-          [class.active]="category() === tab.key"
+          [class.on]="category() === tab.key"
           [attr.aria-selected]="category() === tab.key"
+          (pointerenter)="hover($event, i)"
           (click)="selectTab(tab.key)"
         >
           {{ i18n.t(tab.label) }}
@@ -37,89 +51,102 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     </div>
 
     @if (shop.data()) {
-      @if (category() === 'figure' && !canPlace()) {
-        <p class="small muted">{{ i18n.t('no3dPlace') }}</p>
-      }
-      <div class="shop-grid">
-        @for (it of list(); track it.key) {
-          <div class="shop-card" [attr.data-rarity]="it.rarity" [class.owned]="it.owned">
-            <div class="card-icon">
-              @if (shop.image(it.key); as src) {
-                <img [src]="src" alt="" loading="lazy" />
-              } @else {
-                {{ shop.icon(it.key) }}
+      <!-- Pages of the shop: a new tab turns the page over -->
+      <div class="shop-pages" [class.back]="pageBack()" [style.--page-ms.ms]="pageMs">
+        @for (cat of [category()]; track cat) {
+          <div class="shop-page" animate.enter="page-in" animate.leave="page-out">
+            @if (cat === 'figure' && !canPlace()) {
+              <p class="small muted">{{ i18n.t('no3dPlace') }}</p>
+            }
+            <div class="shop-grid">
+              @for (it of list(); track it.key) {
+                <div class="shop-card" [attr.data-rarity]="it.rarity" [class.owned]="it.owned">
+                  <div class="card-icon">
+                    @if (shop.image(it.key); as src) {
+                      <img [src]="src" alt="" loading="lazy" />
+                    } @else {
+                      {{ shop.icon(it.key) }}
+                    }
+                  </div>
+                  <b class="card-name">{{ shop.name(it.key) }}</b>
+                  <span class="rarity">{{ rarityText(it.rarity) }}</span>
+                  <div class="card-action">
+                    @if (it.owned) {
+                      <span class="mark">{{
+                        i18n.t(it.friends ? 'receivedMark' : 'ownedMark')
+                      }}</span>
+                      @if (it.category === 'figure' && canPlace()) {
+                        @if (it.pad !== null) {
+                          <span class="small muted">{{ i18n.t('inYard') }}</span>
+                        }
+                        <button class="card-btn" (click)="placeFigure.emit(it.key)">
+                          {{ i18n.t(it.pad === null ? 'placeFigure' : 'moveFigure') }}
+                        </button>
+                        @if (it.pad !== null) {
+                          <button
+                            class="card-btn quiet"
+                            [disabled]="shop.busy()"
+                            (click)="remove(it)"
+                          >
+                            {{ i18n.t('removeFigure') }}
+                          </button>
+                        }
+                      }
+                    } @else if (it.friends > 0) {
+                      <span class="gift">{{ giftText(it.friends) }}</span>
+                      <div class="friends-bar">
+                        <span [style.width.%]="friendsPercent(it)"></span>
+                      </div>
+                      <span class="small muted">👥 {{ friends() }}/{{ it.friends }}</span>
+                    } @else if (confirming() === it.key) {
+                      <span class="confirm-q">{{ f('buyConfirm', it.price) }}</span>
+                      <div class="confirm-row">
+                        <button class="card-btn primary" [disabled]="shop.busy()" (click)="buy(it)">
+                          {{ i18n.t('buyYes') }}
+                        </button>
+                        <button class="card-btn quiet" (click)="confirming.set(null)">
+                          {{ i18n.t('buyNo') }}
+                        </button>
+                      </div>
+                    } @else {
+                      <button class="card-btn price" [disabled]="lack(it) > 0" (click)="ask(it)">
+                        {{ f('buyBtn', it.price) }}
+                      </button>
+                      @if (lack(it) > 0) {
+                        <span class="small lack">{{ f('notEnough', lack(it)) }}</span>
+                      }
+                    }
+                  </div>
+                </div>
               }
             </div>
-            <b class="card-name">{{ shop.name(it.key) }}</b>
-            <span class="rarity">{{ rarityText(it.rarity) }}</span>
-            <div class="card-action">
-              @if (it.owned) {
-                <span class="mark">{{ i18n.t(it.friends ? 'receivedMark' : 'ownedMark') }}</span>
-                @if (it.category === 'figure' && canPlace()) {
-                  @if (it.pad !== null) {
-                    <span class="small muted">{{ i18n.t('inYard') }}</span>
-                  }
-                  <button class="card-btn" (click)="placeFigure.emit(it.key)">
-                    {{ i18n.t(it.pad === null ? 'placeFigure' : 'moveFigure') }}
-                  </button>
-                  @if (it.pad !== null) {
-                    <button class="card-btn quiet" [disabled]="shop.busy()" (click)="remove(it)">
-                      {{ i18n.t('removeFigure') }}
-                    </button>
-                  }
-                }
-              } @else if (it.friends > 0) {
-                <span class="gift">{{ giftText(it.friends) }}</span>
-                <div class="friends-bar">
-                  <span [style.width.%]="friendsPercent(it)"></span>
+
+            @for (set of sets(); track set.key) {
+              <div class="shop-set" [class.done]="set.done">
+                <div class="set-head">
+                  <b>{{ setName(set.key) }}</b>
+                  <span class="set-count">{{ ownedInSet(set.items) }}/{{ set.items.length }}</span>
                 </div>
-                <span class="small muted">👥 {{ friends() }}/{{ it.friends }}</span>
-              } @else if (confirming() === it.key) {
-                <span class="confirm-q">{{ f('buyConfirm', it.price) }}</span>
-                <div class="confirm-row">
-                  <button class="card-btn primary" [disabled]="shop.busy()" (click)="buy(it)">
-                    {{ i18n.t('buyYes') }}
-                  </button>
-                  <button class="card-btn quiet" (click)="confirming.set(null)">
-                    {{ i18n.t('buyNo') }}
-                  </button>
+                <div class="set-icons">
+                  @for (key of set.items; track key) {
+                    <span [class.have]="shop.item(key)?.owned" [title]="shop.name(key)">
+                      @if (shop.image(key); as src) {
+                        <img [src]="src" alt="" loading="lazy" />
+                      } @else {
+                        {{ shop.icon(key) }}
+                      }
+                    </span>
+                  }
                 </div>
-              } @else {
-                <button class="card-btn price" [disabled]="lack(it) > 0" (click)="ask(it)">
-                  {{ f('buyBtn', it.price) }}
-                </button>
-                @if (lack(it) > 0) {
-                  <span class="small lack">{{ f('notEnough', lack(it)) }}</span>
-                }
-              }
-            </div>
+                <span class="set-bonus">{{
+                  set.done ? i18n.t('setDone') : f('setBonus', set.bonus)
+                }}</span>
+              </div>
+            }
+            <p class="small muted">{{ i18n.t('shopHint') }}</p>
           </div>
         }
       </div>
-
-      @for (set of sets(); track set.key) {
-        <div class="shop-set" [class.done]="set.done">
-          <div class="set-head">
-            <b>{{ setName(set.key) }}</b>
-            <span class="set-count">{{ ownedInSet(set.items) }}/{{ set.items.length }}</span>
-          </div>
-          <div class="set-icons">
-            @for (key of set.items; track key) {
-              <span [class.have]="shop.item(key)?.owned" [title]="shop.name(key)">
-                @if (shop.image(key); as src) {
-                  <img [src]="src" alt="" loading="lazy" />
-                } @else {
-                  {{ shop.icon(key) }}
-                }
-              </span>
-            }
-          </div>
-          <span class="set-bonus">{{
-            set.done ? i18n.t('setDone') : f('setBonus', set.bonus)
-          }}</span>
-        </div>
-      }
-      <p class="small muted">{{ i18n.t('shopHint') }}</p>
     } @else {
       <p class="muted">{{ i18n.t('loading') }}</p>
     }
@@ -143,6 +170,7 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       color: var(--orange);
     }
     .shop-tabs {
+      position: relative;
       display: flex;
       gap: 0.4rem;
       background: var(--paper-3);
@@ -162,9 +190,95 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       font-family: var(--slab);
       cursor: pointer;
     }
-    .shop-tab.active {
+    .shop-tab {
+      position: relative;
+      z-index: 1;
+      transition: color calc(var(--tab-ms) * 0.5) ease calc(var(--tab-ms) * 0.3);
+    }
+    .shop-tab.on {
       color: var(--paper);
-      background: var(--ink);
+    }
+    @media (hover: hover) {
+      .shop-tab:not(.on):hover {
+        color: var(--ink);
+        transition-delay: 0s;
+      }
+    }
+    /* Edges of the mark move one after another: the leading one first, the other catches up */
+    .shop-tab-mark {
+      position: absolute;
+      z-index: 0;
+      top: 0.25rem;
+      bottom: 0.25rem;
+    }
+    .shop-tab-mark.to-right {
+      transition:
+        right calc(var(--tab-ms) * 0.55) cubic-bezier(0.3, 0, 0.2, 1),
+        left calc(var(--tab-ms) * 0.55) cubic-bezier(0.5, 0, 0.3, 1) calc(var(--tab-ms) * 0.45);
+    }
+    .shop-tab-mark:not(.to-right) {
+      transition:
+        left calc(var(--tab-ms) * 0.55) cubic-bezier(0.3, 0, 0.2, 1),
+        right calc(var(--tab-ms) * 0.55) cubic-bezier(0.5, 0, 0.3, 1) calc(var(--tab-ms) * 0.45);
+    }
+    .shop-pages {
+      display: grid;
+      perspective: 1400px;
+    }
+    .shop-page {
+      grid-area: 1 / 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      min-width: 0;
+      transform-origin: 0 50%;
+    }
+    .page-in {
+      animation: page-in var(--page-ms) cubic-bezier(0.2, 0.7, 0.3, 1) both;
+    }
+    .page-out {
+      animation: page-out var(--page-ms) cubic-bezier(0.5, 0, 0.8, 0.4) both;
+      pointer-events: none;
+    }
+    .back .page-in {
+      animation-name: page-in-back;
+    }
+    .back .page-out {
+      animation-name: page-out-back;
+    }
+    /* Forward: the old page is turned over to the left, the new one lies down from the right */
+    @keyframes page-in {
+      from {
+        transform: translateX(35%) rotateY(-28deg);
+        opacity: 0;
+      }
+    }
+    @keyframes page-out {
+      to {
+        transform: translateX(-35%) rotateY(28deg);
+        opacity: 0;
+      }
+    }
+    @keyframes page-in-back {
+      from {
+        transform: translateX(-35%) rotateY(28deg);
+        opacity: 0;
+      }
+    }
+    @keyframes page-out-back {
+      to {
+        transform: translateX(35%) rotateY(-28deg);
+        opacity: 0;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .page-in,
+      .page-out {
+        animation: none;
+      }
+      .shop-tab-mark {
+        transition: none;
+      }
     }
     .shop-grid {
       display: grid;
@@ -359,7 +473,24 @@ export class ShopSheet {
   readonly placeFigure = output<string>();
 
   protected readonly tabs = TABS;
+  protected readonly tabMs = TUNING.shopTabMs;
+  protected readonly pageMs = TUNING.shopPageMs;
   protected readonly category = signal<ShopCategory>('figure');
+  /** The tab under the mouse: the mark leans towards it */
+  protected readonly hoverTab = signal<number | null>(null);
+  /** The page turned back (to a tab on the left) */
+  protected readonly pageBack = signal(false);
+  private readonly activeIndex = computed(() => TABS.findIndex((t) => t.key === this.category()));
+  /** The mark spans tabs lo..hi (fractions: leaning towards the hovered tab) */
+  protected readonly mark = computed(() => {
+    const at = this.activeIndex();
+    const hover = this.hoverTab();
+    const lean = 0.16;
+    if (hover === null || hover === at) return { lo: at, hi: at };
+    return hover > at ? { lo: at, hi: at + lean } : { lo: at - lean, hi: at };
+  });
+  /** Which edge leads: the mark goes (or leans) to the right */
+  protected readonly markRight = signal(true);
   protected readonly confirming = signal<string | null>(null);
 
   protected readonly friends = computed(() => this.shop.data()?.friends ?? 0);
@@ -409,8 +540,24 @@ export class ShopSheet {
     return keys.filter((k) => this.shop.item(k)?.owned).length;
   }
 
+  /** Left / right inset of the mark for `n` tabs from that edge (3 equal tabs, see the CSS) */
+  protected markEdge(n: number): string {
+    return `calc(0.25rem + ${n.toFixed(3)} * (100% - 0.1rem) / 3)`;
+  }
+
+  protected hover(e: PointerEvent, i: number): void {
+    if (e.pointerType !== 'mouse') return;
+    this.markRight.set(i > this.activeIndex());
+    this.hoverTab.set(i);
+  }
+
   protected selectTab(tab: ShopCategory): void {
+    const from = this.activeIndex();
+    const to = TABS.findIndex((t) => t.key === tab);
+    if (to === from) return;
     this.tg.haptic('light');
+    this.markRight.set(to > from);
+    this.pageBack.set(to < from);
     this.category.set(tab);
     this.confirming.set(null);
   }

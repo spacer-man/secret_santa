@@ -4,6 +4,7 @@ import { Telegram } from './telegram';
 const ru = {
   appName: 'Тайный Санта',
   loading: 'Загрузка…',
+  sceneLoading: 'Наряжаем двор…',
   error: 'Что-то пошло не так. Попробуй ещё раз',
   untilNewYear: 'До Нового года',
   days: 'дней',
@@ -55,8 +56,9 @@ const ru = {
     'Лежит в коробке под ёлкой: поздравление на проверке. После одобрения шар повесится на ёлку.',
   ballHung: 'Висит на ёлке. Загорится в новогоднюю ночь, когда поздравление дойдёт до получателя.',
   ballLit: 'Горит! Поздравление дошло до получателя ✨',
-  starOff: 'Звезда загорится, когда ты откроешь свой подарок в новогоднюю ночь.',
-  starOn: 'Звезда горит: ты получил подарок от Тайного Санты!',
+  starOff:
+    'Звезда и гирлянда разгораются с каждым уровнем праздника — на 10-м ёлка засияет в полную силу.',
+  starOn: 'Праздник на максимуме: ёлка сияет в полную силу!',
   emptyTree:
     'Твоя ёлка ждёт первый шар. Каждое поздравление станет шаром, а в Новый год он загорится!',
   newHung: 'Новый шар на ёлке! 🎄',
@@ -170,8 +172,8 @@ const ru = {
     ballHungHint: 'одобрено',
     ballLit: 'горит',
     ballLitHint: 'дошло в НГ',
-    star: 'Звезда загорится, когда ты откроешь свой подарок.',
-    garland: 'Огоньки гирлянды — за каждого приглашённого друга.',
+    star: 'Звезда и гирлянда разгораются с каждым уровнем праздника, в полную силу — на 10-м.',
+    garland: 'Каждый приглашённый друг зажигает на гирлянде ещё один огонёк.',
     level:
       'Шары, огоньки и украшения поднимают уровень праздника (1–10): во дворе зажигаются фонари, появляются гирлянды, паровозик и северное сияние.',
     mandarinsTitle: 'Мандаринки 🍊',
@@ -308,6 +310,7 @@ type Dict = typeof ru;
 const en: Dict = {
   appName: 'Secret Santa',
   loading: 'Loading…',
+  sceneLoading: 'Decorating the yard…',
   error: 'Something went wrong. Please try again',
   untilNewYear: 'Until the New Year',
   days: 'days',
@@ -361,8 +364,9 @@ const en: Dict = {
   ballHung:
     'On the tree. It lights up on New Year’s night when the greeting reaches its recipient.',
   ballLit: 'It’s glowing! The greeting reached its recipient ✨',
-  starOff: 'The star lights up when you open your gift on New Year’s night.',
-  starOn: 'The star is glowing: you got a gift from Secret Santa!',
+  starOff:
+    'The star and the garland glow brighter with every festive level — at level 10 the tree shines at full power.',
+  starOn: 'The festive level is at its peak: the tree shines at full power!',
   emptyTree:
     'Your tree is waiting for its first ball. Each greeting becomes a ball that lights up at New Year!',
   newHung: 'A new ball on the tree! 🎄',
@@ -477,8 +481,8 @@ const en: Dict = {
     ballHungHint: 'approved',
     ballLit: 'glowing',
     ballLitHint: 'delivered',
-    star: 'The star lights up when you open your own gift.',
-    garland: 'Garland lights: one for every friend you invite.',
+    star: 'The star and the garland glow brighter with every festive level, at full power at level 10.',
+    garland: 'Every friend you invite lights one more bulb on the garland.',
     level:
       'Baubles, lights and decorations raise the festive level (1–10): lanterns light up in the yard, garlands, a little train and the northern lights appear.',
     mandarinsTitle: 'Mandarins 🍊',

@@ -77,7 +77,8 @@ cp .env.dev.example .env.dev    # впишите BOT_TOKEN тестового б
 - Логи: `.dev/logs/` (и в терминале с префиксами `[web]`, `[api]`, `[bot]`).
 - Адрес туннеля меняется при каждом запуске, поэтому вход на **сайте** через Telegram Login Widget не заработает
   (нужен `/setdomain`). Mini App внутри Telegram работает и без него.
-- Схема: туннель → `ng serve :4200` → `/api` на `:8000`, `/telegram/webhook` на `:8080` (`web_app/proxy.conf.json`).
+- Схема: туннель → `ng serve :4200` → `/api` на `:8000`, `/telegram/webhook` на `:8080` (`web_app/proxy.conf.mjs`).
+  Если порт занят, поменяйте `WEB_PORT` / `API_PORT` / `WEBHOOK_PORT` в `.env.dev`.
 
 ## Локальная разработка без туннеля
 
@@ -88,7 +89,7 @@ cd bot/src && python main.py
 # API
 cd bot/src && python api_main.py        # слушает :8000
 
-# Веб-приложение (запросы /api проксируются на localhost:8000 через web_app/proxy.conf.json)
+# Веб-приложение (запросы /api проксируются на localhost:8000 через web_app/proxy.conf.mjs)
 cd web_app && bun install && npx ng serve
 ```
 

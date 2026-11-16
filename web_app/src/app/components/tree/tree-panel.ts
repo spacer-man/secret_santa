@@ -11,6 +11,7 @@ import { ShopState } from '../../core/shop';
 import { Tree3d } from '../tree3d/tree-3d';
 import { LIGHT_SKINS } from '../tree3d/skins';
 import { ShopSheet } from './shop-sheet';
+import { DebugPanel } from './debug-panel';
 
 const SEEN_KEY = 'santa.tree.seen';
 const SNOW_KEY = 'santa.snowfall.v2';
@@ -56,10 +57,13 @@ function readSeen(): Record<string, string> | null {
 /** The tree with its HUD: mandarins, festive level, ball/star/wallet sheets */
 @Component({
   selector: 'tree-panel',
-  imports: [Tree3d, BallArt, BallDefs, KeyValuePipe, ShopSheet],
+  imports: [Tree3d, BallArt, BallDefs, KeyValuePipe, ShopSheet, DebugPanel],
   template: `
     @if (tree(); as t) {
       <section class="tree-card">
+        @if (debugTools()) {
+          <debug-panel [tree]="t" (changed)="debugChanged($event)" />
+        }
         <div class="hud">
           <span class="hud-title">🎄 {{ i18n.t('myTree') }}</span>
           <div class="hud-actions">
@@ -168,8 +172,8 @@ function readSeen(): Record<string, string> | null {
             }
           }
           @case ('star') {
-            <div class="sheet-emoji">{{ tree()?.star ? '🌟' : '⭐' }}</div>
-            <p>{{ tree()?.star ? i18n.t('starOn') : i18n.t('starOff') }}</p>
+            <div class="sheet-emoji">{{ tree()?.level === 10 ? '🌟' : '⭐' }}</div>
+            <p>{{ tree()?.level === 10 ? i18n.t('starOn') : i18n.t('starOff') }}</p>
           }
           @case ('pad') {
             @if (s.kind === 'pad') {
@@ -353,6 +357,8 @@ export class TreePanel {
   protected readonly newHung = signal<string[]>([]);
   protected readonly newLit = signal<string[]>([]);
   protected readonly sheet = signal<Sheet>(null);
+  /** Development only: the server allows the debug panel (admins with DEBUG_TOOLS=1) */
+  protected readonly debugTools = computed(() => !!this.store.me()?.debug);
   protected readonly decorMode = signal(false);
   protected readonly cornerFocused = signal(false);
 
@@ -427,7 +433,12 @@ export class TreePanel {
     const t = this.tree();
     if (!t) return 0;
     if (!t.level_to) return 100;
-    return ((t.points - t.level_from) / (t.level_to - t.level_from)) * 100;
+    // The whole way from level 1 to 10: every new level fills a part of the bar
+    const inside = Math.min(
+      1,
+      Math.max(0, (t.points - t.level_from) / (t.level_to - t.level_from)),
+    );
+    return ((t.level - 1 + inside) / 9) * 100;
   });
 
   protected readonly rewards = computed(() =>
@@ -448,6 +459,12 @@ export class TreePanel {
       this.animateChanges(tree);
       this.tree.set(tree);
     } catch {}
+  }
+
+  /** The debug panel changed the level or the balance: show it, refresh the shop */
+  protected debugChanged(tree: TreeData): void {
+    this.tree.set(tree);
+    this.shop.load();
   }
 
   /** Balls that were hung / lit since the last visit get an animation */

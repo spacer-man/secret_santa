@@ -1,9 +1,11 @@
 /**
- * Time of day: the sky, the light and the mood of the courtyard at a given
- * hour (0..24). A few hand-made key moments (night, dawn, morning, day,
- * sunset, blue hour) are blended smoothly, so any hour has its own look and
- * the auto mode drifts with the clock. Winter: the sun is up from ~8 to ~17,
- * low over the mountains.
+ * Time of day: the sky, the light and the mood of the courtyard by where the
+ * sun really is. The look depends on the height of the sun (night below -12°,
+ * blue hour at -6°, dawn or sunset at the horizon, day from 15°) and on the half
+ * of the day (pink dawn in the morning, orange sunset in the evening), so it
+ * matches the window: early dark in a northern winter, a polar night with blue
+ * twilight at noon, long light evenings of a southern summer.
+ * No three.js here: the interface uses it too.
  */
 
 /** An sRGB colour, 0..1 per channel (display values, as picked by eye) */
@@ -160,26 +162,35 @@ const DUSK: Daylight = {
   bloom: 0.6,
 };
 
-/** Key moments of the day: [hour, look]; between them the look is blended */
-const KEYS: [number, Daylight][] = [
-  [0, NIGHT],
-  [6.6, NIGHT],
-  [8, DAWN],
-  [9.6, MORNING],
-  [13, DAY],
-  [15.2, AFTERNOON],
-  [16.6, SUNSET],
-  [17.8, DUSK],
-  [20.2, NIGHT],
-  [24, NIGHT],
+/** Where the sun is: elevation over the horizon and hour angle (0 at noon, <0 morning), degrees */
+export interface SunPlace {
+  elevation: number;
+  hourAngle: number;
+}
+
+/** Key heights of the sun, degrees: before noon and after it */
+const MORNING_KEYS: [number, Daylight][] = [
+  [-12, NIGHT],
+  [-6, DUSK],
+  [0, DAWN],
+  [6, MORNING],
+  [15, DAY],
+];
+const EVENING_KEYS: [number, Daylight][] = [
+  [-12, NIGHT],
+  [-6, DUSK],
+  [0, SUNSET],
+  [6, AFTERNOON],
+  [15, DAY],
 ];
 
-/** Hours of the fixed choices (besides "as on my clock") */
-export const DAYTIME_HOURS = { morning: 9, day: 13, evening: 17.2, night: 0 } as const;
-
-/** Sunrise and sunset of the winter sun */
-const SUNRISE = 7.8;
-const SUNSET_AT = 16.9;
+/** The sun of the fixed choices (besides "as on my clock") */
+export const DAYTIME_FIXED: Record<'morning' | 'day' | 'evening' | 'night', SunPlace> = {
+  morning: { elevation: 3, hourAngle: -50 },
+  day: { elevation: 20, hourAngle: 0 },
+  evening: { elevation: -3, hourAngle: 60 },
+  night: { elevation: -40, hourAngle: 180 },
+};
 
 const mix = (a: number, b: number, k: number) => a + (b - a) * k;
 const mixRgb = (a: Rgb, b: Rgb, k: number): Rgb => [
@@ -187,6 +198,11 @@ const mixRgb = (a: Rgb, b: Rgb, k: number): Rgb => [
   mix(a[1], b[1], k),
   mix(a[2], b[2], k),
 ];
+const smooth = (a: number, b: number, x: number) => {
+  const k = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return k * k * (3 - 2 * k);
+};
+const RAD = Math.PI / 180;
 
 /** Blends two looks: k = 0 is `a`, 1 is `b` */
 export function blendDaylight(a: Daylight, b: Daylight, k: number): Daylight {
@@ -199,28 +215,74 @@ export function blendDaylight(a: Daylight, b: Daylight, k: number): Daylight {
   return out as unknown as Daylight;
 }
 
-/** The look of the courtyard at this hour (0..24) */
-export function daylightAt(hour: number): Daylight {
-  const h = ((hour % 24) + 24) % 24;
-  for (let i = 1; i < KEYS.length; i++) {
-    const [h1, b] = KEYS[i];
-    if (h <= h1) {
-      const [h0, a] = KEYS[i - 1];
-      const k = (h - h0) / Math.max(1e-6, h1 - h0);
-      return blendDaylight(a, b, k * k * (3 - 2 * k));
+function byHeight(keys: [number, Daylight][], elevation: number): Daylight {
+  if (elevation <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) {
+    const [e1, b] = keys[i];
+    if (elevation <= e1) {
+      const [e0, a] = keys[i - 1];
+      return blendDaylight(a, b, smooth(e0, e1, elevation));
     }
   }
-  return NIGHT;
+  return keys[keys.length - 1][1];
+}
+
+/** The look of the courtyard with the sun at this place */
+export function daylightAt(sun: SunPlace): Daylight {
+  // Morning and evening looks meet smoothly around noon and around midnight
+  const evening = smooth(-0.25, 0.25, Math.sin(sun.hourAngle * RAD));
+  return blendDaylight(
+    byHeight(MORNING_KEYS, sun.elevation),
+    byHeight(EVENING_KEYS, sun.elevation),
+    evening,
+  );
 }
 
 /**
- * Where the sun is at this hour: azimuth (as in Math.atan2(z, x)) and elevation, rad.
- * A low winter arc: rises in the east, ~24° at noon, sets in the west.
+ * Where to draw the sun in the scene: azimuth (as in Math.atan2(z, x)) and elevation, rad.
+ * The yard has no north: the sun just goes from left to right over the same side of the sky.
  */
-export function sunAt(hour: number): { azimuth: number; elevation: number } {
-  const k = (hour - SUNRISE) / (SUNSET_AT - SUNRISE);
-  return {
-    azimuth: -Math.PI / 2 + (k - 0.5) * 2.4,
-    elevation: Math.sin(Math.PI * k) * 0.42,
-  };
+export function sunInScene(sun: SunPlace): { azimuth: number; elevation: number } {
+  return { azimuth: -Math.PI / 2 + sun.hourAngle * RAD * 1.3, elevation: sun.elevation * RAD };
+}
+
+/**
+ * The real sun at a moment and a place (a short astronomical formula, good to a fraction
+ * of a degree): elevation and hour angle, degrees.
+ */
+export function sunPlace(time: number, lat: number, lon: number): SunPlace {
+  const d = time / 86_400_000 - 10_957.5; // days since 1 Jan 2000, noon UTC
+  const g = (357.529 + 0.98560028 * d) * RAD;
+  const q = 280.459 + 0.98564736 * d;
+  const l = (q + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * RAD;
+  const e = (23.439 - 0.00000036 * d) * RAD;
+  const ra = Math.atan2(Math.cos(e) * Math.sin(l), Math.cos(l)) / RAD;
+  const dec = Math.asin(Math.sin(e) * Math.sin(l));
+  const sidereal = 280.46061837 + 360.98564736629 * d + lon;
+  const ha = ((((sidereal - ra) % 360) + 540) % 360) - 180;
+  const elevation = Math.asin(
+    Math.sin(lat * RAD) * Math.sin(dec) + Math.cos(lat * RAD) * Math.cos(dec) * Math.cos(ha * RAD),
+  );
+  return { elevation: elevation / RAD, hourAngle: ha };
+}
+
+/** Sunrise and sunset of the day around `time` (UTC ms), or null if the sun does not cross the horizon */
+export function sunTimes(
+  time: number,
+  lat: number,
+  lon: number,
+  dayStart: number,
+): { rise: number | null; set: number | null; up: boolean } {
+  const HORIZON = -0.833; // the refraction lifts the sun a little
+  const STEP = 5 * 60_000;
+  let rise: number | null = null;
+  let set: number | null = null;
+  let prev = sunPlace(dayStart, lat, lon).elevation;
+  for (let t = dayStart + STEP; t <= dayStart + 86_400_000; t += STEP) {
+    const e = sunPlace(t, lat, lon).elevation;
+    if (prev < HORIZON && e >= HORIZON) rise ??= t;
+    if (prev >= HORIZON && e < HORIZON) set ??= t;
+    prev = e;
+  }
+  return { rise, set, up: sunPlace(time, lat, lon).elevation >= HORIZON };
 }

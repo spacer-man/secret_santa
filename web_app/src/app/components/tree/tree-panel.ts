@@ -88,7 +88,7 @@ function readSeen(): Record<string, string> | null {
             [decorMode]="decorMode()"
             [preview]="preview()"
             [snowfall]="shownSnow()"
-            [daytime]="daytime.hour()"
+            [daytime]="daytime.sun()"
             [cabinLights]="shownLights()"
             (cabinClick)="openLights()"
             (padClick)="openPad($event)"
@@ -310,11 +310,12 @@ function readSeen(): Record<string, string> | null {
               }
             </div>
             <p class="small muted">
-              {{
-                daytime.mode() === 'auto'
-                  ? i18n.t('daytimeNow').replace('%s', clockText())
-                  : i18n.t('daytimeFixed')
-              }}
+              @if (daytime.mode() === 'auto') {
+                {{ i18n.t('daytimeNow').replace('%s', daytime.clock()) }}
+                {{ sunText() }}
+              } @else {
+                {{ i18n.t('daytimeFixed') }}
+              }
             </p>
           }
           @case ('lights') {
@@ -438,10 +439,15 @@ export class TreePanel {
   protected readonly daytime = inject(Daytime);
   protected readonly daytimeModes: DaytimeMode[] = DAYTIME_MODES;
   protected readonly phaseIcons = PHASE_ICONS;
-  protected readonly clockText = computed(() => {
-    const h = this.daytime.clockHour();
-    const minutes = Math.round(h * 60);
-    return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
+  /** Today's sunrise and sunset here, or the polar night / day */
+  protected readonly sunText = computed(() => {
+    const { rise, set, up } = this.daytime.today();
+    if (rise || set)
+      return this.i18n
+        .t('daytimeSun')
+        .replace('%r', rise ?? '—')
+        .replace('%s', set ?? '—');
+    return this.i18n.t(up ? 'daytimePolarDay' : 'daytimePolarNight');
   });
 
   // Snowfall strength: dense modes are bought in the shop

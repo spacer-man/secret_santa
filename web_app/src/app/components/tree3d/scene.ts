@@ -21,7 +21,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { HIDDEN_LAYER, emit, pushForward } from './glow';
-import { blendDaylight, daylightAt, sunAt } from './daytime';
+import { SunPlace, blendDaylight, daylightAt, sunInScene } from './daytime';
 import { FACING_DECAY, LANTERN_LIGHT, Lanterns, facingLights, lanternFactory } from './lantern';
 import {
   Birds,
@@ -637,22 +637,22 @@ export class TreeWorld {
   private mainLight?: THREE.DirectionalLight;
   private fillLight?: THREE.DirectionalLight;
   private mountains?: { geo: THREE.BufferGeometry; night: Float32Array; day: Float32Array };
-  /** The hour shown (0..24) and the look of the sky now; a change goes smoothly */
-  private hour = 0;
-  private daylight = daylightAt(0);
+  /** Where the sun is and the look of the sky now; a change goes smoothly */
+  private sunPlace: SunPlace = { elevation: -40, hourAngle: 180 };
+  private daylight = daylightAt(this.sunPlace);
   private daylightFrom = this.daylight;
   private daylightTo = this.daylight;
   private daylightStart = 0;
   private mountainDay = -1;
 
   /**
-   * Time of day, 0..24: sky, sun or moon, light, lanterns.
+   * Time of day by where the sun is: sky, sun or moon, light, lanterns.
    * @param instant no transition (the first setting, or the clock ticking on in the auto mode)
    */
-  setDaytime(hour: number, instant = false): void {
-    this.hour = hour;
-    this.daylightFrom = instant ? daylightAt(hour) : this.daylight;
-    this.daylightTo = daylightAt(hour);
+  setDaytime(sun: SunPlace, instant = false): void {
+    this.sunPlace = sun;
+    this.daylightFrom = instant ? daylightAt(sun) : this.daylight;
+    this.daylightTo = daylightAt(sun);
     this.daylightStart = performance.now();
     this.updateDaytime();
     this.renderOnce();
@@ -688,7 +688,7 @@ export class TreeWorld {
       this.hemiLight.intensity = d.hemi * (1 + overcast * 0.25);
     }
     // The sun and the moon: the main light comes from whichever rules the sky
-    const sun = sunAt(this.hour);
+    const sun = sunInScene(this.sunPlace);
     const sunDir = new THREE.Vector3(
       Math.cos(sun.azimuth) * Math.cos(sun.elevation),
       Math.sin(sun.elevation),

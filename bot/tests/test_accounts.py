@@ -18,7 +18,7 @@ import db
 from api import accounts as accounts_api
 from api import app as api_module
 from db import new_db_session
-from db.models import Delivery, MandarinTx, User, UserItem, ValidStatus
+from db.models import Delivery, Letter, MandarinTx, User, UserItem, ValidStatus
 from helpers import init_data, run
 from repos.wish.sqlmodel import SQLModelWishRepository
 from services import accounts, google, push, shop
@@ -377,9 +377,12 @@ def test_merge_asks_whose_email_and_gift(mail):
 
     async def gifts() -> None:
         async with new_db_session() as session:
-            mine = Delivery(recipient_id=a.id, year=2027, opened_at=opened, reaction="🔥")
-            theirs = Delivery(recipient_id=b.id, year=2027, opened_at=opened, reaction="❤️")
+            mine = Delivery(recipient_id=a.id, year=2027, opened_at=opened)
+            theirs = Delivery(recipient_id=b.id, year=2027, opened_at=opened)
             session.add_all([mine, theirs])
+            await session.flush()
+            session.add(Letter(delivery_id=mine.id, creators=True, reaction="🔥"))
+            session.add(Letter(delivery_id=theirs.id, creators=True, reaction="❤️"))
             # Each was rewarded for opening
             for d, owner in ((mine, a), (theirs, b)):
                 session.add(
@@ -424,8 +427,16 @@ def test_merge_asks_whose_email_and_gift(mail):
 
     async def reactions() -> list[str | None]:
         async with new_db_session() as session:
-            rows = await session.scalars(select(Delivery).where(Delivery.recipient_id == a.id))
-            return [d.reaction for d in rows]
+            rows = await session.scalars(
+                select(Letter)
+                .join(Delivery, Delivery.id == Letter.delivery_id)  # ty: ignore[invalid-argument-type]
+                .where(Delivery.recipient_id == a.id)
+            )
+            letters = rows.all()
+            all_letters = (await session.scalars(select(Letter))).all()
+            # The losing box went with its letters
+            assert all([await session.get(Delivery, x.delivery_id) for x in all_letters])
+            return [x.reaction for x in letters]
 
     assert run(reactions()) == ["❤️"]  # the other account's gift, as chosen
 
@@ -473,9 +484,10 @@ def test_delete_restore_and_erase(mail):
 
     async def deliver() -> None:
         async with new_db_session() as session:
-            session.add(
-                Delivery(recipient_id=reader.id, year=2027, wish_id=UUID(wish_id), opened_at=None)
-            )
+            box = Delivery(recipient_id=reader.id, year=2027, opened_at=None)
+            session.add(box)
+            await session.flush()
+            session.add(Letter(delivery_id=box.id, wish_id=UUID(wish_id)))
             await session.commit()
 
     run(deliver())
@@ -508,9 +520,13 @@ def test_delete_restore_and_erase(mail):
     assert erased >= 1
     assert user_by(email="leaving@example.com") is None
 
-    async def gift() -> Delivery | None:
+    async def gift() -> Letter | None:
         async with new_db_session() as session:
-            return await session.scalar(select(Delivery).where(Delivery.recipient_id == reader.id))
+            return await session.scalar(
+                select(Letter)
+                .join(Delivery, Delivery.id == Letter.delivery_id)  # ty: ignore[invalid-argument-type]
+                .where(Delivery.recipient_id == reader.id)
+            )
 
     left = run(gift())
     assert left and left.wish_id is None and left.wish_erased

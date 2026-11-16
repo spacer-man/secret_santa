@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Api, Delivery } from '../core/api';
+import { Api, Delivery, Letter } from '../core/api';
 import { I18n } from '../core/i18n';
 import { Store } from '../core/store';
 import { Telegram } from '../core/telegram';
@@ -18,42 +18,70 @@ import { MediaList } from '../components/media';
             <span class="badge approved">🎄 {{ g.year }}</span>
             <span class="muted">{{ i18n.t('fromSanta') }}</span>
           </div>
-          @if (g.wish; as wish) {
-            <media-list [items]="wish.media" />
-            <p class="wish-text">{{ wish.text }}</p>
-
-            <p class="small muted">{{ i18n.t('react') }}</p>
-            <div class="reactions">
-              @for (r of reactions(); track r) {
-                <button class="reaction" [class.selected]="g.reaction === r" (click)="react(g, r)">
-                  {{ r }}
-                </button>
+          @for (l of g.letters; track l.id; let i = $index) {
+            <section
+              class="letter"
+              [class.idea]="!!l.creators"
+              [class.creators-letter]="!!l.creators"
+            >
+              @if (l.creators; as c) {
+                <h2 class="letter-title">✉️ {{ i18n.t('creatorsLetter') }}</h2>
+                <p class="wish-text letter-text">{{ c.text }}</p>
+                <p class="letter-sign">{{ c.signature }}</p>
+              } @else if (l.wish; as wish) {
+                @if (wishCount(g) > 1) {
+                  <p class="small muted">{{ letterLabel(g, l) }}</p>
+                }
+                <media-list [items]="wish.media" />
+                <p class="wish-text">{{ wish.text }}</p>
+              } @else {
+                <p class="wish-text">🎅 {{ i18n.t(l.erased ? 'erasedGift' : 'emptyGift') }}</p>
               }
-            </div>
 
-            @if (g.reply) {
-              <p class="small muted">{{ i18n.t('yourReply') }}</p>
-              <blockquote>{{ g.reply }}</blockquote>
-            } @else {
-              <div class="reply">
-                <textarea
-                  class="textarea"
-                  rows="2"
-                  maxlength="1024"
-                  [placeholder]="i18n.t('replyPlaceholder')"
-                  [(ngModel)]="drafts[g.id]"
-                ></textarea>
-                <button
-                  class="btn btn-secondary"
-                  [disabled]="!drafts[g.id]?.trim()"
-                  (click)="reply(g)"
-                >
-                  {{ i18n.t('replySend') }}
-                </button>
-              </div>
-            }
-          } @else {
-            <p class="wish-text">🎅 {{ i18n.t(g.erased ? 'erasedGift' : 'emptyGift') }}</p>
+              @if (l.creators || l.wish) {
+                <p class="small muted">{{ i18n.t(l.creators ? 'reactCreators' : 'react') }}</p>
+                <div class="reactions">
+                  @for (r of reactions(); track r) {
+                    <button
+                      class="reaction"
+                      [class.selected]="l.reaction === r"
+                      (click)="react(l, r)"
+                    >
+                      {{ r }}
+                    </button>
+                  }
+                </div>
+
+                @if (l.reply) {
+                  <p class="small muted">{{ i18n.t('yourReply') }}</p>
+                  <blockquote>{{ l.reply }}</blockquote>
+                } @else {
+                  <div class="reply">
+                    <textarea
+                      class="textarea"
+                      rows="2"
+                      maxlength="1024"
+                      [placeholder]="
+                        i18n.t(l.creators ? 'creatorsReplyPlaceholder' : 'replyPlaceholder')
+                      "
+                      [(ngModel)]="drafts[l.id]"
+                    ></textarea>
+                    <button
+                      class="btn btn-secondary"
+                      [disabled]="!drafts[l.id]?.trim()"
+                      (click)="reply(l)"
+                    >
+                      {{ i18n.t('replySend') }}
+                    </button>
+                  </div>
+                }
+              }
+            </section>
+          } @empty {
+            <p class="wish-text">🎅 {{ i18n.t('emptyGift') }}</p>
+          }
+          @if (onlyCreators(g)) {
+            <p class="wish-text">🎅 {{ i18n.t('emptyGift') }}</p>
           }
         </article>
       } @empty {
@@ -94,29 +122,52 @@ export class InboxPage {
     }
   }
 
-  private update(id: string, patch: Partial<Delivery>): void {
-    this.gifts.update((list) => list?.map((g) => (g.id === id ? { ...g, ...patch } : g)) ?? null);
+  protected wishCount(g: Delivery): number {
+    return g.letters.filter((l) => l.wish || (!l.creators && l.erased)).length;
   }
 
-  async react(g: Delivery, reaction: string): Promise<void> {
+  /** Only the creators' letter, no wishes: the "not enough greetings" text goes beside it */
+  protected onlyCreators(g: Delivery): boolean {
+    return g.letters.length > 0 && g.letters.every((l) => l.creators);
+  }
+
+  protected letterLabel(g: Delivery, l: Letter): string {
+    const wishes = g.letters.filter((x) => !x.creators);
+    return this.i18n
+      .t('letterN')
+      .replace('%s', String(wishes.indexOf(l) + 1))
+      .replace('%s', String(wishes.length));
+  }
+
+  private update(id: string, patch: Partial<Letter>): void {
+    this.gifts.update(
+      (list) =>
+        list?.map((g) => ({
+          ...g,
+          letters: g.letters.map((l) => (l.id === id ? { ...l, ...patch } : l)),
+        })) ?? null,
+    );
+  }
+
+  async react(l: Letter, reaction: string): Promise<void> {
     this.tg.haptic('light');
-    const previous = g.reaction;
-    this.update(g.id, { reaction });
+    const previous = l.reaction;
+    this.update(l.id, { reaction });
     try {
-      await this.api.react(g.id, { reaction });
+      await this.api.react(l.id, { reaction });
       if (!previous) this.store.showToast(this.i18n.t('thanks'));
     } catch {
-      this.update(g.id, { reaction: previous });
+      this.update(l.id, { reaction: previous });
       this.store.showToast(this.i18n.t('error'));
     }
   }
 
-  async reply(g: Delivery): Promise<void> {
-    const text = this.drafts[g.id]?.trim();
+  async reply(l: Letter): Promise<void> {
+    const text = this.drafts[l.id]?.trim();
     if (!text) return;
     try {
-      const result = await this.api.react(g.id, { reply: text });
-      this.update(g.id, { reply: result.reply });
+      const result = await this.api.react(l.id, { reply: text });
+      this.update(l.id, { reply: result.reply });
       this.tg.haptic('success');
       this.store.showToast(this.i18n.t('thanks'));
     } catch {

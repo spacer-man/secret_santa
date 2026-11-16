@@ -14,9 +14,9 @@ from db.models import MandarinTx
 
 class Reason(enum.StrEnum):
     WISH_APPROVED = "wish_approved"  # ref: wish id
-    WISH_DELIVERED = "wish_delivered"  # ref: delivery id
-    REACTION = "reaction"  # ref: delivery id
-    REPLY = "reply"  # ref: delivery id
+    WISH_DELIVERED = "wish_delivered"  # ref: wish id (once per wish; delivery id before 2027)
+    REACTION = "reaction"  # ref: letter id
+    REPLY = "reply"  # ref: letter id
     FRIEND_JOINED = "friend_joined"  # ref: friend user id
     FRIEND_WISH = "friend_wish"  # ref: friend user id (first approved wish)
     GIFT_OPENED = "gift_opened"  # ref: delivery id

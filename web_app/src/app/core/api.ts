@@ -215,15 +215,23 @@ export interface MyWish {
   feedback: { recipients: number; reactions: Record<string, number>; replies: string[] };
 }
 
+export interface Letter {
+  id: string;
+  /** Non-null: the New Year letter from the creators of the app */
+  creators: { text: string; signature: string } | null;
+  /** A wish from an anonymous participant */
+  wish: { text: string; media: MediaItem[] } | null;
+  reaction: string | null;
+  reply: string | null;
+  /** The wish was erased with its author's account */
+  erased: boolean;
+}
+
 export interface Delivery {
   id: string;
   year: number;
   opened_at: string | null;
-  reaction: string | null;
-  reply: string | null;
-  wish: { text: string; media: MediaItem[] } | null;
-  /** The wish was erased with its author's account */
-  erased?: boolean;
+  letters: Letter[];
 }
 
 export type Gift =

@@ -49,6 +49,18 @@ MIGRATIONS = (
     *(f"ALTER TABLE delivery ADD COLUMN IF NOT EXISTS {c}" for c in DELIVERY_COLUMNS),
 )
 
+# A box held one wish before letters: it becomes the box's only letter, with the same id
+# (rewards for it keep their refs). The old columns are cleared, so it runs once.
+OLD_LETTER = "d.wish_id IS NOT NULL OR d.wish_erased"
+LETTERS_MIGRATION = (
+    "INSERT INTO letter (id, delivery_id, position, wish_id, creators, reaction, reply, "
+    "wish_erased) "
+    "SELECT d.id, d.id, 0, d.wish_id, FALSE, d.reaction, d.reply, d.wish_erased FROM delivery d "
+    f"WHERE ({OLD_LETTER}) AND NOT EXISTS (SELECT 1 FROM letter l WHERE l.delivery_id = d.id)",
+    "UPDATE delivery SET wish_id = NULL, reaction = NULL, reply = NULL, wish_erased = FALSE "
+    f"WHERE {OLD_LETTER.replace('d.', '')}",
+)
+
 
 async def _sqlite_allow_copies(conn: AsyncConnection) -> None:
     """
@@ -153,5 +165,7 @@ async def setup_relations(drop_if_exist: bool = False) -> None:
             # of old tables are added here (idempotent)
             for statement in MIGRATIONS:
                 await conn.execute(text(statement))
+        for statement in LETTERS_MIGRATION:
+            await conn.execute(text(statement))
         await conn.commit()
         log.info("Successful created database relations")

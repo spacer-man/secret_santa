@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import update
 
 from db import new_db_session
-from db.models import Delivery, MediaType, User, ValidStatus, Wish
+from db.models import Letter, MediaType, User, ValidStatus, Wish
 from repos.media.abc import MediaRepository
 from repos.user.abc import UserRepository
 from repos.wish.abc import WishRepository
@@ -236,8 +236,8 @@ class WishService:
 
             # Gifts that already contain the wish become empty
             await db_session.execute(
-                update(Delivery)
-                .where(Delivery.wish_id == wish_id)  # type: ignore
+                update(Letter)
+                .where(Letter.wish_id == wish_id)  # type: ignore
                 .values(wish_id=None)
             )
             await media_repo.delete(filter_by={"wish_id": wish_id})

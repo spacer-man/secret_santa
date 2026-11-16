@@ -2,6 +2,7 @@
 New Year gifts: who received which wish, reactions and anonymous replies.
 """
 
+import math
 import random
 from collections import Counter
 from collections.abc import Iterable
@@ -9,33 +10,45 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlmodel import col, select
 
 import timezones
 from db import new_db_session
-from db.models import Delivery, User, ValidStatus, Wish
+from db.models import Delivery, Letter, User, ValidStatus, Wish
 from repos.wish.abc import WishRepository
-from services import mandarins, shop
+from services import creators, mandarins, shop
+from services.creators import CreatorsText
+from services.notifier import lang_of
 from services.wish import WishDTO, WishService
 
 REACTIONS = ("❤️", "😂", "🥹", "🔥", "🎉", "👏")
 MAX_REPLY_LENGTH = 1024
+# Letters from participants in one box (the creators' letter is on top of them)
+MAX_LETTERS = 5
 
 
 class DeliveryError(Exception):
     pass
 
 
+class LetterDTO(BaseModel):
+    id: UUID
+    # The letter from the creators (``creators_text``) instead of a wish
+    creators: bool = False
+    creators_text: CreatorsText | None = None
+    wish: WishDTO | None = None
+    reaction: str | None = None
+    reply: str | None = None
+    # The wish was erased with its author's account
+    erased: bool = False
+
+
 class DeliveryDTO(BaseModel):
     id: UUID
     year: int
     opened_at: datetime | None
-    reaction: str | None
-    reply: str | None
-    wish: WishDTO | None = None
-    # The wish was erased with its author's account
-    erased: bool = False
+    letters: list[LetterDTO] = []
 
 
 class FeedbackDTO(BaseModel):
@@ -137,7 +150,7 @@ class DeliveryService:
             if not delivery:
                 return None
             await session.commit()
-            return await self._to_dto(delivery)
+            return await self._to_dto(session, delivery, user.language)
 
     async def _current_delivery(self, session, user: User) -> Delivery | None:
         now = utc_now()
@@ -162,7 +175,7 @@ class DeliveryService:
 
     async def open(self, who: int | UUID) -> DeliveryDTO | None:
         """
-        Open the gift: assign a wish to it (once).
+        Open the gift: put the letters in the box (once).
         ``None`` if the New Year hasn't come for the user yet.
         """
         async with new_db_session() as session:
@@ -173,29 +186,67 @@ class DeliveryService:
             if not delivery:
                 return None
 
-            if delivery.wish_id is None:
-                wish_repo = self.wish_repo_type(session=session)
-                wishes = list(
-                    await wish_repo.get_with_min_recipients(
-                        recipient=user.id, since=season_start(delivery.year)
-                    )
-                )
-                if wishes:
-                    wish = random.choice(wishes)
-                    delivery.wish_id = wish.id
-                    await wish_repo.increment_recipients(wish.id)
-                    # The author's ball lights up
-                    await mandarins.award(
-                        session, wish.author_id, mandarins.Reason.WISH_DELIVERED, delivery.id
-                    )
-
+            # Two taps at once (the bot and the app): only one fills the box
+            await session.refresh(delivery, with_for_update=True)
             if delivery.opened_at is None:
+                await self._fill(session, user, delivery)
                 delivery.opened_at = utc_now()
                 await mandarins.award(session, user.id, mandarins.Reason.GIFT_OPENED, delivery.id)
 
             session.add(delivery)
             await session.commit()
-            return await self._to_dto(delivery)
+            return await self._to_dto(session, delivery, user.language)
+
+    async def _fill(self, session, user: User, delivery: Delivery) -> None:
+        """
+        Letters for the box. Every wish of the season should reach someone, so the box gets
+        a share of the undelivered ones: undelivered / participants who haven't opened yet
+        (at least one, at most :data:`MAX_LETTERS`; the user's own ones count too). Wishes written later go to those who
+        open later. Fewer wishes than people: a wish goes to several of them. Never the
+        user's own wish, never one wish twice in a box; least delivered ones first.
+        """
+        if await creators.exists(session, delivery.year):
+            session.add(Letter(delivery_id=delivery.id, position=0, creators=True))
+
+        wishes = (
+            await session.execute(
+                select(Wish.id, Wish.author_id, Wish.recipients_count)
+                .join(User, col(User.id) == Wish.author_id)
+                # Authors who deleted their account: their wishes wait (and go with it)
+                .where(col(User.deleted_at).is_(None))
+                .where(Wish.valid_status == ValidStatus.APPROVED)
+                .where(col(Wish.timestamp) >= season_start(delivery.year))
+            )
+        ).all()
+        # The user's own wishes count in the share (others will take them), but never come
+        undelivered = sum(1 for w in wishes if w.recipients_count == 0)
+        wishes = [w for w in wishes if w.author_id != user.id]
+        if not wishes:
+            return None
+
+        opened = select(Delivery.recipient_id).where(
+            Delivery.year == delivery.year, col(Delivery.opened_at).is_not(None)
+        )
+        waiting = await session.scalar(
+            select(func.count(col(User.id)))
+            .where(col(User.deleted_at).is_(None))
+            .where(col(User.id).not_in(opened))
+        )
+        share = math.ceil(undelivered / max(waiting or 0, 1))
+        count = min(MAX_LETTERS, max(1, share))
+
+        # Least delivered first, random among equals
+        chosen = sorted(wishes, key=lambda w: (w.recipients_count, random.random()))[:count]
+        for position, wish in enumerate(chosen, start=1):
+            session.add(Letter(delivery_id=delivery.id, position=position, wish_id=wish.id))
+            await session.execute(
+                update(Wish)
+                .where(col(Wish.id) == wish.id)
+                .values(recipients_count=col(Wish.recipients_count) + 1)
+            )
+            # The author's ball lights up (rewarded once per wish)
+            await mandarins.award(session, wish.author_id, mandarins.Reason.WISH_DELIVERED, wish.id)
+        await session.flush()
 
     async def inbox(self, who: int | UUID) -> list[DeliveryDTO]:
         """All opened gifts of the user, newest first"""
@@ -211,18 +262,19 @@ class DeliveryService:
                     .order_by(col(Delivery.year).desc())
                 )
             ).all()
-        return [await self._to_dto(d) for d in deliveries]
+            return [await self._to_dto(session, d, user.language) for d in deliveries]
 
     async def react(
         self,
         who: int | UUID,
-        delivery_id: UUID,
+        letter_id: UUID,
         reaction: str | None = None,
         reply: str | None = None,
     ) -> ReactionResult:
         """
-        Set a reaction and/or an anonymous reply to the received wish.
+        Set a reaction and/or an anonymous reply to a letter of the user's gift.
         The reaction can be changed, the reply can be sent only once.
+        The creators' letter can be answered too: no author to notify, no mandarins.
         """
         if reaction is not None and reaction not in REACTIONS:
             raise DeliveryError("Unknown reaction")
@@ -231,55 +283,69 @@ class DeliveryService:
 
         async with new_db_session() as session:
             user = await self._user(session, who)
-            delivery = await session.get(Delivery, delivery_id)
-            if not (user and delivery and delivery.recipient_id == user.id):
+            letter = await session.get(Letter, letter_id)
+            delivery = await session.get(Delivery, letter.delivery_id) if letter else None
+            if not (user and letter and delivery and delivery.recipient_id == user.id):
                 raise DeliveryError("Gift not found")
-            if delivery.wish_id is None:
+            if letter.wish_id is None and not letter.creators:
                 raise DeliveryError("Gift is empty")
 
-            is_new_reaction = bool(reaction) and delivery.reaction is None
-            is_new_reply = bool(reply) and delivery.reply is None
+            is_new_reaction = bool(reaction) and letter.reaction is None
+            is_new_reply = bool(reply) and letter.reply is None
             if reaction:
-                delivery.reaction = reaction
+                letter.reaction = reaction
             if is_new_reply:
-                delivery.reply = reply
+                letter.reply = reply
 
-            session.add(delivery)
-            author = (
-                await session.execute(
-                    select(User.id, User.telegram_id)
-                    .join(Wish, col(Wish.author_id) == User.id)
-                    .where(Wish.id == delivery.wish_id)
-                )
-            ).first()
-            author_tg_id = author[1] if author else None
+            session.add(letter)
+            author = None
+            if letter.wish_id:
+                author = (
+                    await session.execute(
+                        select(User.id, User.telegram_id)
+                        .join(Wish, col(Wish.author_id) == User.id)
+                        .where(Wish.id == letter.wish_id)
+                    )
+                ).first()
             if author and is_new_reaction:
-                await mandarins.award(session, author[0], mandarins.Reason.REACTION, delivery.id)
+                await mandarins.award(session, author[0], mandarins.Reason.REACTION, letter.id)
             if author and is_new_reply:
-                await mandarins.award(session, author[0], mandarins.Reason.REPLY, delivery.id)
+                await mandarins.award(session, author[0], mandarins.Reason.REPLY, letter.id)
             await session.commit()
 
         return ReactionResult(
             author_id=author[0] if author else None,
-            author_telegram_id=author_tg_id,
-            reaction=delivery.reaction,
-            reply=delivery.reply,
-            is_new_reaction=is_new_reaction,
-            is_new_reply=is_new_reply,
+            author_telegram_id=author[1] if author else None,
+            reaction=letter.reaction,
+            reply=letter.reply,
+            is_new_reaction=is_new_reaction and author is not None,
+            is_new_reply=is_new_reply and author is not None,
         )
 
-    async def _to_dto(self, delivery: Delivery) -> DeliveryDTO:
-        wish = None
-        if delivery.wish_id:
-            wish = await self.wish_service.get_one(delivery.wish_id)
+    async def _to_dto(self, session, delivery: Delivery, language: str | None) -> DeliveryDTO:
+        letters = (
+            await session.scalars(
+                select(Letter)
+                .where(Letter.delivery_id == delivery.id)
+                .order_by(col(Letter.position))
+            )
+        ).all()
+        result = []
+        for letter in letters:
+            dto = LetterDTO(
+                id=letter.id,
+                creators=letter.creators,
+                reaction=letter.reaction,
+                reply=letter.reply,
+                erased=letter.wish_erased,
+            )
+            if letter.creators:
+                dto.creators_text = await creators.text(delivery.year, lang_of(language))
+            elif letter.wish_id:
+                dto.wish = await self.wish_service.get_one(letter.wish_id)
+            result.append(dto)
         return DeliveryDTO(
-            id=delivery.id,
-            year=delivery.year,
-            opened_at=delivery.opened_at,
-            reaction=delivery.reaction,
-            reply=delivery.reply,
-            wish=wish,
-            erased=delivery.wish_erased,
+            id=delivery.id, year=delivery.year, opened_at=delivery.opened_at, letters=result
         )
 
     # ====== Author side ====== #
@@ -292,14 +358,16 @@ class DeliveryService:
         async with new_db_session() as session:
             rows = (
                 await session.execute(
-                    select(Delivery.wish_id, Delivery.reaction, Delivery.reply)
-                    .where(col(Delivery.wish_id).in_(wish_ids))
-                    .order_by(col(Delivery.opened_at))
+                    select(Letter.wish_id, Letter.reaction, Letter.reply)
+                    .where(col(Letter.wish_id).in_(wish_ids))
+                    .order_by(col(Letter.id))
                 )
             ).all()
 
         counters: dict[UUID, Counter] = {}
         for wish_id, reaction, reply in rows:
+            if wish_id is None:
+                continue
             feedback = result[wish_id]
             feedback.recipients += 1
             if reaction:
@@ -335,9 +403,11 @@ class DeliveryService:
                 .where(col(Delivery.opened_at).is_not(None))
             )
             reactions = await session.scalar(
-                select(func.count(col(Delivery.id)))
+                select(func.count(col(Letter.id)))
+                .join(Delivery, col(Delivery.id) == Letter.delivery_id)
                 .where(Delivery.year == year)
-                .where(col(Delivery.reaction).is_not(None))
+                .where(col(Letter.wish_id).is_not(None))
+                .where(col(Letter.reaction).is_not(None))
             )
 
         return {

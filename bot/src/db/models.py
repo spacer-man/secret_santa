@@ -81,10 +81,10 @@ class Media(SQLModel, table=True):
 
 class Delivery(SQLModel, table=True):
     """
-    New Year gift for a user: one per user per year.
+    New Year gift box for a user: one per user per year.
 
     Created when the New Year comes in the user's timezone (``notified_at``),
-    a wish is assigned when the user opens the gift (``opened_at``).
+    letters (:class:`Letter`) are put in when the user opens the box (``opened_at``).
     """
 
     __table_args__ = (UniqueConstraint("recipient_id", "year"),)
@@ -92,13 +92,44 @@ class Delivery(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
     recipient_id: UUID = Field(foreign_key="user.id", index=True)
     year: int
-    wish_id: UUID | None = Field(default=None, foreign_key="wish.id", index=True)
     notified_at: datetime | None = Field(default=None, sa_column=Column(TIMESTAMP(timezone=True)))
     opened_at: datetime | None = Field(default=None, sa_column=Column(TIMESTAMP(timezone=True)))
+    # Before letters a box held one wish: these columns are only read by the migration
+    # to :class:`Letter` (``db/core.py``)
+    wish_id: UUID | None = Field(default=None, foreign_key="wish.id", index=True)
+    reaction: str | None = Field(default=None, max_length=16)
+    reply: str | None = Field(default=None, max_length=1024)
+    wish_erased: bool = Field(default=False)
+
+
+class Letter(SQLModel, table=True):
+    """
+    One letter in a gift box: a wish of another participant or the letter from the creators
+    (``creators``, no wish). Each letter has its own reaction and anonymous reply.
+    """
+
+    id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
+    delivery_id: UUID = Field(foreign_key="delivery.id", index=True)
+    position: int = Field(default=0)
+    wish_id: UUID | None = Field(default=None, foreign_key="wish.id", index=True)
+    creators: bool = Field(default=False)
     reaction: str | None = Field(default=None, max_length=16)
     reply: str | None = Field(default=None, max_length=1024)
     # The wish was erased with its author's account (``wish_id`` is gone then)
     wish_erased: bool = Field(default=False)
+
+
+class CreatorsLetter(SQLModel, table=True):
+    """
+    The New Year letter from the creators, one per season: on top of every gift box.
+    Stored in the DB to be edited without a deploy (``services/creators.py`` seeds a draft).
+    """
+
+    year: int = Field(primary_key=True)
+    text_ru: str = Field(max_length=4096)
+    text_en: str = Field(max_length=4096)
+    signature_ru: str = Field(max_length=128)
+    signature_en: str = Field(max_length=128)
 
 
 class MandarinTx(SQLModel, table=True):

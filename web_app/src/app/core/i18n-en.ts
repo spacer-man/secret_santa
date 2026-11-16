@@ -357,6 +357,10 @@ export const en: Dict = {
   react: 'How do you like it? The author will see your reaction, but not who you are',
   replyPlaceholder: 'Anonymous reply to the author…',
   replySend: 'Reply',
+  creatorsLetter: 'A letter from the creators',
+  creatorsReplyPlaceholder: 'The creators will read your reply…',
+  reactCreators: 'How do you like the letter? Only we will see your reaction',
+  letterN: 'Letter %s of %s',
   yourReply: 'Your reply',
   thanks: 'Sent to the author ✨',
   // Accounts & settings

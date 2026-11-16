@@ -27,11 +27,11 @@ wish_open_router = Router(name="wish.open")
 REACT_PREFIX = "w.react_"
 
 
-def reactions_keyboard(delivery_id: UUID, selected: str | None = None) -> InlineKeyboardMarkup:
+def reactions_keyboard(letter_id: UUID, selected: str | None = None) -> InlineKeyboardMarkup:
     reactions_row = [
         InlineKeyboardButton(
             text=f"[{emoji}]" if emoji == selected else emoji,
-            callback_data=f"{REACT_PREFIX}{delivery_id}:{index}",
+            callback_data=f"{REACT_PREFIX}{letter_id}:{index}",
         )
         for index, emoji in enumerate(REACTIONS)
     ]
@@ -55,9 +55,11 @@ async def open_wish(call: CallbackQuery) -> None:
         return None
 
     await call.answer()
-    gift_header = await message.edit_caption(caption=messages.OPENED_WISH)
+    wishes = [letter for letter in delivery.letters if letter.wish]
+    header = messages.OPENED_WISHES % len(wishes) if len(wishes) > 1 else messages.OPENED_WISH
+    gift_header = await message.edit_caption(caption=header)
 
-    if not delivery.wish:
+    if not delivery.letters:
         alert = await message.answer(text=messages.HAVE_NO_WISH)
         await asyncio.sleep(3)
         await alert.delete()
@@ -65,10 +67,23 @@ async def open_wish(call: CallbackQuery) -> None:
             await gift_header.delete()
         return None
 
-    await wish_utils.send_wish(chat_id=chat_id, bot=bot, wish=delivery.wish)
-    await message.answer(
-        text=messages.REACT_OFFER, reply_markup=reactions_keyboard(delivery.id, delivery.reaction)
-    )
+    for letter in delivery.letters:
+        if letter.creators_text:
+            await message.answer(
+                text=f"{letter.creators_text.text}\n\n— {letter.creators_text.signature}",
+                parse_mode=None,
+            )
+            offer = messages.REACT_OFFER_CREATORS
+        elif letter.wish:
+            await wish_utils.send_wish(chat_id=chat_id, bot=bot, wish=letter.wish)
+            offer = messages.REACT_OFFER
+        else:
+            continue
+        await message.answer(
+            text=offer, reply_markup=reactions_keyboard(letter.id, letter.reaction)
+        )
+    if not wishes:
+        await message.answer(text=messages.HAVE_NO_WISH)
 
 
 @wish_open_router.callback_query(F.data.startswith(REACT_PREFIX))
@@ -80,16 +95,17 @@ async def react(call: CallbackQuery) -> None:
 
     try:
         raw_id, raw_index = call.data[len(REACT_PREFIX) :].split(":")
-        delivery_id = UUID(raw_id)
+        letter_id = UUID(raw_id)
         reaction = REACTIONS[int(raw_index)]
         result = await delivery_service.react(
-            message.chat.id, delivery_id=delivery_id, reaction=reaction
+            message.chat.id, letter_id=letter_id, reaction=reaction
         )
     except (ValueError, IndexError, DeliveryError):
         await call.answer()
         return None
 
-    await call.answer(text=messages.REACTION_SENT % reaction)
+    sent = messages.REACTION_SENT if result.author_id else messages.REACTION_SENT_CREATORS
+    await call.answer(text=sent % reaction)
     with contextlib.suppress(Exception):  # Same markup: nothing changed
-        await message.edit_reply_markup(reply_markup=reactions_keyboard(delivery_id, reaction))
+        await message.edit_reply_markup(reply_markup=reactions_keyboard(letter_id, reaction))
     await notify_author(bot=bot, result=result)

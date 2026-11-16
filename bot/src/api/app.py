@@ -20,12 +20,12 @@ import timezones
 from configs.notify import NotifyConfig
 from configs.webapp import WebAppConfig
 from db import new_db_session
-from db.models import Delivery, Media, MediaType, User, Wish
+from db.models import Letter, Media, MediaType, User, Wish
 from handlers.referral import parse_ref_code, ref_code
 from repos.media.sqlmodel import SQLModelMediaRepository
 from repos.user.sqlmodel import SQLModelUserRepository
 from repos.wish.sqlmodel import SQLModelWishRepository
-from services import accounts, debug, email, google, mandarins, push, shop
+from services import accounts, creators, debug, email, google, mandarins, push, shop
 from services.delivery import (
     REACTIONS,
     DeliveryDTO,
@@ -73,6 +73,7 @@ state: dict = {}
 async def lifespan(_: FastAPI):
     await db.setup_relations()
     await shop.seed_catalog()
+    await creators.seed(current_season_year())
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
     state["bot"] = bot
     state["bot_username"] = (await bot.me()).username
@@ -310,7 +311,7 @@ async def delete_wish(wish_id: UUID, user: RegisteredUser) -> None:
     async with new_db_session() as session:
         wish = await session.get(Wish, wish_id)
         delivered = await session.scalar(
-            select(func.count(col(Delivery.id))).where(Delivery.wish_id == wish_id)
+            select(func.count(col(Letter.id))).where(Letter.wish_id == wish_id)
         )
     if not wish or wish.author_id != user.id:
         raise HTTPException(status_code=404)
@@ -411,18 +412,28 @@ async def debug_state(body: DebugIn, user: RegisteredUser) -> dict:
 
 # ====== Gifts ====== #
 async def delivery_out(delivery: DeliveryDTO) -> dict:
-    wish = None
-    if delivery.wish:
-        media = await media_of([delivery.wish.id])
-        wish = {"text": delivery.wish.text, "media": media[delivery.wish.id]}
+    """A gift box: the creators' letter on top, then letters from participants"""
+    media = await media_of([letter.wish.id for letter in delivery.letters if letter.wish])
+    letters = []
+    for letter in delivery.letters:
+        wish = None
+        if letter.wish:
+            wish = {"text": letter.wish.text, "media": media[letter.wish.id]}
+        letters.append(
+            {
+                "id": letter.id,
+                "creators": letter.creators_text.model_dump() if letter.creators_text else None,
+                "wish": wish,
+                "reaction": letter.reaction,
+                "reply": letter.reply,
+                "erased": letter.erased,
+            }
+        )
     return {
         "id": delivery.id,
         "year": delivery.year,
         "opened_at": delivery.opened_at,
-        "reaction": delivery.reaction,
-        "reply": delivery.reply,
-        "wish": wish,
-        "erased": delivery.erased,
+        "letters": letters,
     }
 
 
@@ -455,12 +466,12 @@ class ReactionIn(BaseModel):
     reply: str | None = Field(default=None, max_length=1024)
 
 
-@app.post("/api/inbox/{delivery_id}/react")
-async def react(delivery_id: UUID, body: ReactionIn, user: RegisteredUser) -> dict:
+@app.post("/api/inbox/{letter_id}/react")
+async def react(letter_id: UUID, body: ReactionIn, user: RegisteredUser) -> dict:
     try:
         result = await delivery_service.react(
             user.id,
-            delivery_id=delivery_id,
+            letter_id=letter_id,
             reaction=body.reaction,
             reply=body.reply,
         )

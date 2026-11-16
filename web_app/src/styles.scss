@@ -3197,3 +3197,26 @@ svg.hm.hm-free {
 .session-meta > span {
   white-space: nowrap;
 }
+
+/* Inbox: several letters in one box; the creators' letter is a gold note on top */
+.letter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+}
+.creators-letter {
+  padding: 0.8rem 0.9rem;
+}
+.letter-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.letter-text {
+  white-space: pre-line;
+}
+.letter-sign {
+  margin: 0;
+  text-align: right;
+  font-style: italic;
+}

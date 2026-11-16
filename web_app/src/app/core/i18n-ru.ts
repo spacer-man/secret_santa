@@ -358,6 +358,10 @@ export const ru = {
   react: 'Как тебе? Автор увидит реакцию, но не узнает, кто ты',
   replyPlaceholder: 'Анонимный ответ автору…',
   replySend: 'Ответить',
+  creatorsLetter: 'Письмо от создателей',
+  creatorsReplyPlaceholder: 'Ответ прочитают создатели…',
+  reactCreators: 'Как тебе письмо? Реакцию увидим только мы',
+  letterN: 'Письмо %s из %s',
   yourReply: 'Твой ответ',
   thanks: 'Отправлено автору ✨',
   // Accounts & settings

@@ -72,23 +72,61 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
                   <span class="rarity">{{ rarityText(it.rarity) }}</span>
                   <div class="card-action">
                     @if (it.owned) {
-                      <span class="mark">{{
-                        i18n.t(it.friends ? 'receivedMark' : 'ownedMark')
-                      }}</span>
-                      @if (it.category === 'figure' && canPlace()) {
-                        @if (it.pad !== null) {
-                          <span class="small muted">{{ i18n.t('inYard') }}</span>
+                      <span class="mark"
+                        >{{ i18n.t(it.friends ? 'receivedMark' : 'ownedMark') }}
+                        @if (it.count > 1) {
+                          ×{{ it.count }}
                         }
-                        <button class="card-btn" (click)="placeFigure.emit(it.key)">
-                          {{ i18n.t(it.pad === null ? 'placeFigure' : 'moveFigure') }}
-                        </button>
-                        @if (it.pad !== null) {
+                      </span>
+                      @if (it.category === 'figure' && canPlace()) {
+                        @if (it.pads.length) {
+                          <span class="small muted">{{
+                            it.count > 1
+                              ? f('inYardCount', it.pads.length) + '/' + it.count
+                              : i18n.t('inYard')
+                          }}</span>
+                        }
+                        @if (shop.spareCount(it) > 0) {
+                          <button class="card-btn" (click)="placeFigure.emit(it.key)">
+                            {{ i18n.t('placeFigure') }}
+                          </button>
+                        } @else if (it.count === 1) {
+                          <!-- The only copy stands in the yard: move it or take it off -->
+                          <button class="card-btn" (click)="placeFigure.emit(it.key)">
+                            {{ i18n.t('moveFigure') }}
+                          </button>
                           <button
                             class="card-btn quiet"
                             [disabled]="shop.busy()"
                             (click)="remove(it)"
                           >
                             {{ i18n.t('removeFigure') }}
+                          </button>
+                        }
+                      }
+                      @if (it.count < it.max) {
+                        <!-- Figures can be bought again: one more copy -->
+                        @if (confirming() === it.key) {
+                          <span class="confirm-q">{{ f('buyConfirm', it.price) }}</span>
+                          <div class="confirm-row">
+                            <button
+                              class="card-btn primary"
+                              [disabled]="shop.busy()"
+                              (click)="buy(it)"
+                            >
+                              {{ i18n.t('buyYes') }}
+                            </button>
+                            <button class="card-btn quiet" (click)="confirming.set(null)">
+                              {{ i18n.t('buyNo') }}
+                            </button>
+                          </div>
+                        } @else {
+                          <button
+                            class="card-btn price"
+                            [disabled]="lack(it) > 0"
+                            (click)="ask(it)"
+                          >
+                            {{ f('buyMore', it.price) }}
                           </button>
                         }
                       }

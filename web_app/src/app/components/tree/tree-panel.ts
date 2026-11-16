@@ -212,7 +212,7 @@ function readSeen(): Record<string, string> | null {
                 <button
                   class="btn btn-secondary wide"
                   [disabled]="shop.busy()"
-                  (click)="padRemove(s.item)"
+                  (click)="padRemove(s.item, s.pad)"
                 >
                   {{ i18n.t('padRemove') }}
                 </button>
@@ -229,7 +229,11 @@ function readSeen(): Record<string, string> | null {
                     } @else {
                       {{ shop.icon(f.key) }}
                     }
-                    {{ shop.name(f.key) }} — {{ i18n.t(s.item ? 'padPutHere' : 'padTry') }}
+                    {{ shop.name(f.key) }}
+                    @if (shop.spareCount(f) > 1) {
+                      ×{{ shop.spareCount(f) }}
+                    }
+                    — {{ i18n.t(s.item ? 'padPutHere' : 'padTry') }}
                   </button>
                 }
                 @if (padReplacing()) {
@@ -690,8 +694,9 @@ export class TreePanel {
     this.leavePad();
   }
 
-  async padRemove(item: string): Promise<void> {
-    if (!(await this.shop.place(item, null))) return;
+  /** Takes off the copy of the figure standing on this place */
+  async padRemove(item: string, pad: number): Promise<void> {
+    if (!(await this.shop.place(item, null, pad))) return;
     await this.load();
     this.store.showToast(this.i18n.t('removedToast'));
     this.leavePad();

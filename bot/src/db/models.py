@@ -115,9 +115,11 @@ class ShopItem(SQLModel, table=True):
 
 
 class UserItem(SQLModel, table=True):
-    """A decoration owned by a user (one copy of each)"""
-
-    __table_args__ = (UniqueConstraint("user_id", "item_key"),)
+    """
+    A decoration owned by a user: one row per copy. Figures can be bought several times
+    (``services.shop.MAX_COPIES``), everything else is owned once: the shop checks it,
+    not the DB.
+    """
 
     id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
     user_id: UUID = Field(foreign_key="user.id", index=True)

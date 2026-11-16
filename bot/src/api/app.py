@@ -351,6 +351,8 @@ class BuyIn(BaseModel):
 class PlaceIn(BaseModel):
     item: str
     pad: int | None = None
+    # Which copy of the figure: the one standing on this place (absent: a spare copy)
+    from_pad: int | None = None
 
 
 @app.get("/api/shop")
@@ -370,7 +372,7 @@ async def shop_buy(body: BuyIn, user=Depends(registered_user)) -> dict:
 @app.put("/api/shop/place")
 async def shop_place(body: PlaceIn, user=Depends(registered_user)) -> dict:
     try:
-        await shop.place(user.id, body.item, body.pad)
+        await shop.place(user.id, body.item, body.pad, body.from_pad)
     except shop.ShopError as err:
         raise shop_http_error(err) from err
     return (await shop.shop_payload(user.id)).model_dump(mode="json")

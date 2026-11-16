@@ -61,10 +61,15 @@ export class ShopState {
       .filter((i) => i.owned)
       .map((i) => i.key),
   );
-  /** Owned figures that are not in the courtyard yet */
+  /** Owned figures with a copy that is not in the courtyard yet */
   readonly spare = computed(() =>
-    this.items().filter((i) => i.category === 'figure' && i.owned && i.pad === null),
+    this.items().filter((i) => i.category === 'figure' && this.spareCount(i) > 0),
   );
+
+  /** Copies of the item that do not stand in the yard */
+  spareCount(it: ShopItem): number {
+    return Math.max(0, (it.count ?? (it.owned ? 1 : 0)) - (it.pads?.length ?? 0));
+  }
 
   async load(): Promise<void> {
     try {
@@ -121,12 +126,15 @@ export class ShopState {
     }
   }
 
-  /** Put a figure on a courtyard place (null: take it off) */
-  async place(key: string, pad: number | null): Promise<boolean> {
+  /**
+   * Put a figure on a courtyard place (null: take it off).
+   * @param fromPad the copy standing on this place (absent: a spare copy)
+   */
+  async place(key: string, pad: number | null, fromPad?: number): Promise<boolean> {
     if (this.busy()) return false;
     this.busy.set(true);
     try {
-      this.data.set(await this.api.place(key, pad));
+      this.data.set(await this.api.place(key, pad, fromPad));
       this.tg.haptic('success');
       return true;
     } catch {

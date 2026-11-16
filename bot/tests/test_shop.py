@@ -121,7 +121,7 @@ def test_buy_flow():
     assert body["balance"] == 40 and body["bonus"] == 0
     cane = next(i for i in body["items"] if i["key"] == "candy-cane")
     assert cane["owned"] is True and cane["pad"] is None
-    assert buy(2101, "candy-cane").status_code == 409
+    assert (cane["count"], cane["max"], cane["pads"]) == (1, shop.MAX_COPIES, [])
 
     history = client.get("/api/mandarins", headers=h(2101)).json()
     assert {"amount": -60, "reason": "purchase"} in [
@@ -129,6 +129,52 @@ def test_buy_flow():
     ]
     assert history["balance"] == 40
     assert "purchase" not in client.get("/api/config").json()["rewards"]
+
+
+def test_several_copies_of_a_figure():
+    register(2151)
+    give(2151, 10_000, "a")
+    # Figures: up to MAX_COPIES, each one paid
+    for n in range(1, shop.MAX_COPIES + 1):
+        r = buy(2151, "candy-cane")
+        assert r.status_code == 200
+        assert next(i for i in r.json()["items"] if i["key"] == "candy-cane")["count"] == n
+    assert buy(2151, "candy-cane").status_code == 409
+    assert (
+        client.get("/api/shop", headers=h(2151)).json()["balance"] == 10_000 - 60 * shop.MAX_COPIES
+    )
+    # Lights and weather: once
+    assert buy(2151, "lights-warm").status_code == 200
+    assert buy(2151, "lights-warm").status_code == 409
+    assert shop_items(2151)["lights-warm"]["max"] == 1
+
+    # Each copy has its own place
+    place(2151, "candy-cane", 2)
+    place(2151, "candy-cane", 7)
+    cane = shop_items(2151)["candy-cane"]
+    assert cane["pads"] == [2, 7] and cane["pad"] == 2
+    tree = client.get("/api/tree", headers=h(2151)).json()
+    assert sorted(d["pad"] for d in tree["decor"] if d["item"] == "candy-cane") == [2, 7]
+    assert tree["owned"].count("candy-cane") == 1
+
+    # A named copy is moved / taken off; the others stay
+    r = client.put(
+        "/api/shop/place", headers=h(2151), json={"item": "candy-cane", "pad": 9, "from_pad": 2}
+    )
+    assert r.status_code == 200 and shop_items(2151)["candy-cane"]["pads"] == [7, 9]
+    client.put(
+        "/api/shop/place", headers=h(2151), json={"item": "candy-cane", "pad": None, "from_pad": 7}
+    )
+    assert shop_items(2151)["candy-cane"]["pads"] == [9]
+    # No copy stands there
+    r = client.put(
+        "/api/shop/place", headers=h(2151), json={"item": "candy-cane", "pad": 1, "from_pad": 7}
+    )
+    assert r.status_code == 403
+    # A copy put onto a place taken by another copy of the same figure replaces it
+    place(2151, "candy-cane", 9)
+    cane = shop_items(2151)["candy-cane"]
+    assert cane["pads"] == [9] and cane["count"] == shop.MAX_COPIES
 
 
 def test_milestone_gifts():
@@ -234,3 +280,51 @@ def test_debug_tools(monkeypatch):
     # null: the real level again
     assert client.put("/api/debug", headers=h(9101), json={"level": None}).json()["level"] == 1
     assert client.put("/api/debug", headers=h(9101), json={"level": 0}).status_code == 422
+
+
+def test_sqlite_table_is_rebuilt_for_copies():
+    """A local SQLite DB made before copies existed loses "one of each", the rows stay"""
+    from sqlalchemy import text
+
+    if db.core.engine.dialect.name != "sqlite":
+        pytest.skip("Postgres drops the constraint with ALTER TABLE")
+
+    async def old_schema() -> int:
+        async with db.core.engine.begin() as conn:
+            before = await conn.scalar(text("SELECT count(*) FROM useritem"))
+            await conn.execute(text("ALTER TABLE useritem RENAME TO useritem_new"))
+            await conn.execute(text("DROP INDEX IF EXISTS ix_useritem_user_id"))
+            await conn.execute(
+                text(
+                    "CREATE TABLE useritem (id CHAR(32) NOT NULL PRIMARY KEY, "
+                    "user_id CHAR(32) NOT NULL, item_key VARCHAR(32) NOT NULL, pad INTEGER, "
+                    "acquired_at TIMESTAMP, UNIQUE (user_id, item_key))"
+                )
+            )
+            # One row per pair fits the old table
+            await conn.execute(
+                text(
+                    "INSERT INTO useritem SELECT id, user_id, item_key, pad, acquired_at "
+                    "FROM useritem_new GROUP BY user_id, item_key"
+                )
+            )
+            await conn.execute(text("DROP TABLE useritem_new"))
+            return before or 0
+
+    async def state() -> tuple[str, int]:
+        async with db.core.engine.connect() as conn:
+            sql = await conn.scalar(text("SELECT sql FROM sqlite_master WHERE name = 'useritem'"))
+            return sql or "", await conn.scalar(text("SELECT count(*) FROM useritem")) or 0
+
+    run(old_schema())
+    sql, rows = run(state())
+    assert "UNIQUE" in sql and rows > 0
+
+    run(db.setup_relations())
+    sql, kept = run(state())
+    assert "UNIQUE" not in sql and kept == rows
+    # And a second copy can be bought now
+    register(2901)
+    give(2901, 500, "a")
+    assert buy(2901, "candy-cane").status_code == 200
+    assert buy(2901, "candy-cane").status_code == 200

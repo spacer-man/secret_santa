@@ -23,6 +23,10 @@ log = logging.getLogger(__name__)
 
 PADS = 15  # courtyard places, pad index 0..PADS-1
 
+# How many copies of one figure a user can own. Everything else (lights, weather,
+# milestone gifts) is owned once.
+MAX_COPIES = 5
+
 CATEGORIES = ("figure", "lights", "weather")
 RARITIES = ("common", "rare", "epic", "legendary")
 
@@ -46,7 +50,11 @@ class NotForSale(ShopError):
 
 
 class AlreadyOwned(ShopError):
-    pass
+    """Owned already (or as many copies as allowed)"""
+
+
+def max_copies(item: ShopItem) -> int:
+    return MAX_COPIES if item.category == "figure" and item.friends_required == 0 else 1
 
 
 class NotEnoughMandarins(ShopError):
@@ -125,6 +133,8 @@ async def grant_milestones(session: AsyncSession, user_id: UUID) -> int:
     """Give milestone gifts earned by invited friends. Caller commits. Returns friends count."""
     friends = await friends_count(session, user_id)
     if friends:
+        # Nothing in the DB forbids a second copy: concurrent requests go one by one
+        await session.execute(select(User.id).where(User.id == user_id).with_for_update())
         owned = set(
             await session.scalars(select(UserItem.item_key).where(UserItem.user_id == user_id))
         )
@@ -186,14 +196,17 @@ async def buy(user_id: UUID, item_key: str) -> int:
             raise UnknownItem(item_key)
         if item.friends_required > 0:
             raise NotForSale(item_key)
-        if await _user_item_id(session, user_id, item_key):
+        copies = await _copies(session, user_id, item_key)
+        if copies >= max_copies(item):
             raise AlreadyOwned(item_key)
         if await mandarins.balance(session, user_id) < item.price:
             raise NotEnoughMandarins(item_key)
 
         try:
+            # The ledger takes one entry per user/reason/ref: every next copy has its own ref
+            ref = item_key if copies == 0 else f"{item_key}#{copies + 1}"
             await mandarins.award(
-                session, user_id, mandarins.Reason.PURCHASE, item_key, amount=-item.price
+                session, user_id, mandarins.Reason.PURCHASE, ref, amount=-item.price
             )
             session.add(UserItem(user_id=user_id, item_key=item_key))
             await session.flush()
@@ -205,9 +218,14 @@ async def buy(user_id: UUID, item_key: str) -> int:
         return bonus
 
 
-async def _user_item_id(session: AsyncSession, user_id: UUID, item_key: str) -> UUID | None:
-    return await session.scalar(
-        select(UserItem.id).where(UserItem.user_id == user_id).where(UserItem.item_key == item_key)
+async def _copies(session: AsyncSession, user_id: UUID, item_key: str) -> int:
+    return (
+        await session.scalar(
+            select(func.count(col(UserItem.id)))
+            .where(UserItem.user_id == user_id)
+            .where(UserItem.item_key == item_key)
+        )
+        or 0
     )
 
 
@@ -230,21 +248,41 @@ async def _award_set_bonus(session: AsyncSession, user_id: UUID, set_key: str | 
     )
 
 
-async def place(user_id: UUID, item_key: str, pad: int | None) -> None:
+async def place(user_id: UUID, item_key: str, pad: int | None, from_pad: int | None = None) -> None:
     """
     Put an owned figure on a courtyard place (or take it off with ``pad=None``).
     A figure that stood on the place is taken off.
+
+    Which copy: the one standing on ``from_pad`` if given; otherwise a spare copy
+    (not in the yard yet), and when there is none, one of the placed copies is moved.
     """
-    if pad is not None and not 0 <= pad < PADS:
-        raise InvalidPlacement(f"pad must be in 0..{PADS - 1}")
+    for value in (pad, from_pad):
+        if value is not None and not 0 <= value < PADS:
+            raise InvalidPlacement(f"pad must be in 0..{PADS - 1}")
 
     async with new_db_session() as session:
         await session.execute(select(User.id).where(User.id == user_id).with_for_update())
 
         item = await session.get(ShopItem, item_key)
-        user_item = await session.scalar(
-            select(UserItem).where(UserItem.user_id == user_id).where(UserItem.item_key == item_key)
-        )
+        copies = (
+            await session.scalars(
+                select(UserItem)
+                .where(UserItem.user_id == user_id)
+                .where(UserItem.item_key == item_key)
+                .order_by(col(UserItem.acquired_at), col(UserItem.id))
+            )
+        ).all()
+        if from_pad is not None:
+            user_item = next((c for c in copies if c.pad == from_pad), None)
+        else:
+            # A spare copy first; taking a figure off without saying which: the last placed one
+            spare = [c for c in copies if c.pad is None]
+            placed = [c for c in copies if c.pad is not None]
+            user_item = (
+                (placed[-1] if placed else None)
+                if pad is None
+                else (spare[0] if spare else placed[0] if placed else None)
+            )
         if not item or not user_item:
             raise NotOwned(item_key)
         if item.category != "figure":
@@ -255,7 +293,7 @@ async def place(user_id: UUID, item_key: str, pad: int | None) -> None:
                 select(UserItem)
                 .where(UserItem.user_id == user_id)
                 .where(UserItem.pad == pad)
-                .where(UserItem.item_key != item_key)
+                .where(UserItem.id != user_item.id)
             )
             for other in others:
                 other.pad = None
@@ -273,7 +311,12 @@ class ShopItemOut(BaseModel):
     set: str | None
     friends: int
     owned: bool
+    # First courtyard place of the figure (kept for old clients; see ``pads``)
     pad: int | None
+    # Copies owned, how many can be owned at most, and the places of the copies in the yard
+    count: int
+    max: int
+    pads: list[int]
 
 
 class ShopSetOut(BaseModel):
@@ -300,7 +343,12 @@ async def shop_payload(user_id: UUID) -> ShopOut:
                 select(ShopItem).where(col(ShopItem.active).is_(True)).order_by(col(ShopItem.sort))
             )
         ).all()
-        pads = {u.item_key: u.pad for u, _ in await owned_items(session, user_id)}
+        counts: dict[str, int] = {}
+        pads: dict[str, list[int]] = {}
+        for u, _ in await owned_items(session, user_id):
+            counts[u.item_key] = counts.get(u.item_key, 0) + 1
+            if u.pad is not None:
+                pads.setdefault(u.item_key, []).append(u.pad)
 
     sets: dict[str, list[str]] = {}
     for item in items:
@@ -318,8 +366,11 @@ async def shop_payload(user_id: UUID) -> ShopOut:
                 price=item.price,
                 set=item.set_key,
                 friends=item.friends_required,
-                owned=item.key in pads,
-                pad=pads.get(item.key),
+                owned=item.key in counts,
+                pad=min(pads[item.key]) if item.key in pads else None,
+                count=counts.get(item.key, 0),
+                max=max_copies(item),
+                pads=sorted(pads.get(item.key, [])),
             )
             for item in items
         ],
@@ -328,7 +379,7 @@ async def shop_payload(user_id: UUID) -> ShopOut:
                 key=key,
                 bonus=SET_BONUS.get(key, 0),
                 items=keys,
-                done=all(k in pads for k in keys),
+                done=all(k in counts for k in keys),
             )
             for key, keys in sets.items()
         ],

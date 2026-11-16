@@ -44,7 +44,10 @@ export const ru = {
     evening: 'Вечер',
     night: 'Ночь',
   } as Record<string, string>,
-  daytimeNow: 'У тебя сейчас %s: двор живёт по твоим часам.',
+  daytimeNow: 'У тебя сейчас %s: во дворе то же солнце, что за окном.',
+  daytimeSun: 'Сегодня восход в %r, закат в %s.',
+  daytimePolarNight: 'Сегодня солнце не встаёт: полярная ночь, в полдень только синие сумерки.',
+  daytimePolarDay: 'Сегодня солнце не заходит: полярный день.',
   daytimeFixed: 'Двор застыл в выбранном времени. Фонари и окна загораются, когда стемнеет.',
   snowLocked: 'Такой снегопад стоит %s 🍊',
   snowModes: { clear: 'Ясно', light: 'Лёгкий', snowfall: 'Снегопад', blizzard: 'Метель' } as Record<

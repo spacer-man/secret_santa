@@ -45,7 +45,10 @@ export const en: Dict = {
     evening: 'Evening',
     night: 'Night',
   } as Record<string, string>,
-  daytimeNow: 'It is %s for you: the yard follows your clock.',
+  daytimeNow: 'It is %s for you: the yard has the same sun as your window.',
+  daytimeSun: 'Sunrise today at %r, sunset at %s.',
+  daytimePolarNight: 'The sun does not rise today: polar night, only blue twilight at noon.',
+  daytimePolarDay: 'The sun does not set today: polar day.',
   daytimeFixed: 'The yard stays at the chosen time. Lanterns and windows light up after dark.',
   snowLocked: 'This snowfall costs %s 🍊',
   snowModes: {

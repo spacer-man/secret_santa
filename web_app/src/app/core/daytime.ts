@@ -1,11 +1,10 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { DAYTIME_HOURS } from '../components/tree3d/daytime';
+import { DAYTIME_FIXED, SunPlace, sunPlace, sunTimes } from '../components/tree3d/daytime';
 import { Store } from './store';
-import { offsetMinutes } from './time';
 
-/** Time of day of the courtyard: as on the user's clock, or a fixed one picked by hand */
-export type DaytimeMode = 'auto' | keyof typeof DAYTIME_HOURS;
-export type DayPhase = keyof typeof DAYTIME_HOURS;
+/** Time of day of the courtyard: by the real sun at the user's place, or a fixed one picked by hand */
+export type DayPhase = keyof typeof DAYTIME_FIXED;
+export type DaytimeMode = 'auto' | DayPhase;
 
 export const DAYTIME_MODES: DaytimeMode[] = ['auto', 'morning', 'day', 'evening', 'night'];
 export const PHASE_ICONS: Record<DaytimeMode, string> = {
@@ -27,42 +26,76 @@ function readMode(): DaytimeMode {
   }
 }
 
-/** Which part of the day an hour belongs to (for the icon on the button) */
-export function phaseOf(hour: number): DayPhase {
-  if (hour < 7 || hour >= 19.5) return 'night';
-  if (hour < 11) return 'morning';
-  if (hour < 16) return 'day';
-  return 'evening';
+/** Which part of the day it is by the sun (for the icon on the button) */
+export function phaseOf(sun: SunPlace): DayPhase {
+  if (sun.elevation < -6) return 'night';
+  if (sun.elevation < 10) return sun.hourAngle < 0 ? 'morning' : 'evening';
+  return 'day';
 }
 
-/** The chosen time of day (this browser only) and the hour the scene shows */
+const hhmm = (time: number) => {
+  const d = new Date(time);
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+/**
+ * The chosen time of day (this browser only) and where the sun is for the scene.
+ * The place is the main city of the device's timezone (`Europe/Moscow` → Moscow):
+ * no geolocation, nothing leaves the device. Unknown zone: the device's UTC offset
+ * gives the longitude, the latitude is a middle northern one.
+ */
 @Injectable({ providedIn: 'root' })
 export class Daytime {
   private readonly store = inject(Store);
   readonly mode = signal<DaytimeMode>(readMode());
+  private readonly place = signal({ lat: 50, lon: -new Date().getTimezoneOffset() / 4 });
+  /** Changes once a minute: the sun is recounted, the scene follows without a transition */
+  private readonly minute = computed(() => Math.floor(this.store.now() / 60_000));
 
-  /** Hour (0..24, to the minute) in the user's timezone, or on this device if it is unknown */
-  readonly clockHour = computed(() => {
-    const now = this.store.now();
-    const tz = this.store.me()?.timezone;
-    let minutes: number;
-    if (tz) {
-      const d = new Date(now + offsetMinutes(tz) * 60_000);
-      minutes = d.getUTCHours() * 60 + d.getUTCMinutes();
-    } else {
-      const d = new Date(now);
-      minutes = d.getHours() * 60 + d.getMinutes();
+  constructor() {
+    void this.locate();
+  }
+
+  private async locate(): Promise<void> {
+    let zone = '';
+    try {
+      zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      return;
     }
-    return minutes / 60;
-  });
+    // The table is small but not needed at start: a chunk of its own
+    const { ZONES } = await import('./zones');
+    const found = ZONES.split(';').find((row) => row.startsWith(zone + ' '));
+    if (!found) return;
+    const [, lat, lon] = found.split(' ');
+    this.place.set({ lat: Number(lat), lon: Number(lon) });
+  }
 
-  /** The hour shown in the scene */
-  readonly hour = computed(() => {
+  /** Where the sun is for the scene */
+  readonly sun = computed<SunPlace>(() => {
     const mode = this.mode();
-    return mode === 'auto' ? this.clockHour() : DAYTIME_HOURS[mode];
+    if (mode !== 'auto') return DAYTIME_FIXED[mode];
+    const { lat, lon } = this.place();
+    return sunPlace(this.minute() * 60_000, lat, lon);
   });
 
-  readonly phase = computed(() => phaseOf(this.hour()));
+  readonly phase = computed(() => phaseOf(this.sun()));
+
+  /** The time on this device, "16:05" */
+  readonly clock = computed(() => hhmm(this.minute() * 60_000));
+
+  /** Today's sunrise and sunset here, as "8:58" (null: polar night or day, see `up`) */
+  readonly today = computed(() => {
+    const now = this.minute() * 60_000;
+    const { lat, lon } = this.place();
+    const midnight = new Date(now).setHours(0, 0, 0, 0);
+    const t = sunTimes(now, lat, lon, midnight);
+    return {
+      rise: t.rise === null ? null : hhmm(t.rise),
+      set: t.set === null ? null : hhmm(t.set),
+      up: t.up,
+    };
+  });
 
   set(mode: DaytimeMode): void {
     this.mode.set(mode);

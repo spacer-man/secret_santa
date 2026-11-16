@@ -2188,8 +2188,9 @@ svg.hm-field {
   height: auto;
   overflow: visible;
   /* The coat does not end with a cut: it fades out into the paper. Plus the grain of the pencil */
-  -webkit-mask-image: linear-gradient(#000 0 74%, transparent 97%), var(--hm-grain-soft);
-  mask-image: linear-gradient(#000 0 74%, transparent 97%), var(--hm-grain-soft);
+  -webkit-mask-image:
+    linear-gradient(#000 0 74%, transparent 97%), var(--m-grain, var(--hm-grain-soft));
+  mask-image: linear-gradient(#000 0 74%, transparent 97%), var(--m-grain, var(--hm-grain-soft));
   -webkit-mask-size:
     100% 100%,
     160px 160px;

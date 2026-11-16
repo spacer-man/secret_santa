@@ -824,10 +824,11 @@ const PAD = 18;
 
 /**
  * A tile of pencil grain as a CSS mask: `holes` of the pixels are faint (`hole` of the
- * colour is left), the rest keep `min`..1
+ * colour is left), the rest keep `min`..1. The tile is shown 160 px wide; with `scale` it has
+ * that many grains per CSS pixel (a finer grain on dense screens).
  */
-function grainTile(holes: number, min: number, hole = 0): string {
-  const size = 160;
+function grainTile(holes: number, min: number, hole = 0, scale = 1): string {
+  const size = Math.round(160 * scale);
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
@@ -857,6 +858,9 @@ export class Handmade {
     const root = document.documentElement.style;
     root.setProperty('--hm-grain', grainTile(0.3, 0.55));
     root.setProperty('--hm-grain-soft', grainTile(0.05, 0.86, 0.62));
+    // The mascot: a finer and denser grain, one grain per screen pixel (at most 3 per CSS pixel)
+    const dense = Math.min(3, Math.max(1, Math.round(window.devicePixelRatio || 1)));
+    root.setProperty('--m-grain', grainTile(0.2, 0.72, 0.4, dense));
     this.listen();
     new MutationObserver(() => this.schedule()).observe(document.body, {
       childList: true,

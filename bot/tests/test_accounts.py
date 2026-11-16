@@ -238,6 +238,11 @@ def test_merge_two_accounts(mail):
     assert r["status"] == "taken"
     assert r["mine"]["wishes"] == 1 and r["other"]["wishes"] == 2
     assert r["other"]["identities"] == ["email"]
+    # The preview is the merge done and rolled back: nothing changed yet
+    preview = r["preview"]
+    assert preview["report"]["refunded"] == 1 and preview["report"]["unplaced"] == 1
+    assert preview["report"]["refunded_mandarins"] == lantern_price
+    assert user_by(id=mail_user.id) is not None
 
     # Somebody else can't use the token
     client.put("/api/me", headers=tg(4002), json={"timezone": "UTC+3"})
@@ -262,6 +267,8 @@ def test_merge_two_accounts(mail):
     # 6 lanterns + lights: one lantern over the limit is paid back
     assert merged["figures"] == 5 + 1
     assert merged["mandarins"] == balance_before + lantern_price
+    # What was promised is what happened (the time zone was chosen after the preview)
+    assert {**preview["result"], "timezone": "UTC-5"} == merged
     shop_items = {i["key"]: i for i in client.get("/api/shop", headers=tg(4001)).json()["items"]}
     assert shop_items["lantern"]["count"] == 5
     assert shop_items["lantern"]["pads"] == [0]  # one figure on a place, the other put away

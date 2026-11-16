@@ -37,10 +37,30 @@ export interface AccountSummary {
   registered_at: string;
   timezone: string;
   identities: IdentityKind[];
+  email: string | null;
   wishes: number;
   mandarins: number;
   figures: number;
   gifts: number;
+  friends: number;
+}
+
+/** What a merge does besides adding up (bot/src/services/accounts.py) */
+export interface MergeReport {
+  refunded: number;
+  refunded_mandarins: number;
+  unplaced: number;
+  rewards_dropped: number;
+  rewards_dropped_mandarins: number;
+  gifts_dropped: number;
+  identities_dropped: IdentityKind[];
+  email_dropped: string | null;
+}
+
+/** The merge done on the server and rolled back: what the merged account will have */
+export interface MergePreview {
+  result: AccountSummary;
+  report: MergeReport;
 }
 
 /** A proof of another way to sign in, to link it to the account */
@@ -51,7 +71,13 @@ export type LinkProof =
 
 export type LinkResult =
   | { status: 'linked' | 'same' | 'replace'; me: Me }
-  | { status: 'taken'; merge_token: string; mine: AccountSummary; other: AccountSummary };
+  | {
+      status: 'taken';
+      merge_token: string;
+      mine: AccountSummary;
+      other: AccountSummary;
+      preview: MergePreview;
+    };
 
 export interface Config {
   bot_username: string;

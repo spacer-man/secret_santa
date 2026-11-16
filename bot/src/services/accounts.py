@@ -17,7 +17,7 @@ from uuid import UUID
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import col, delete, select, update
+from sqlmodel import col, select, update
 
 from api.auth import IdentityKind, Principal
 from db import new_db_session
@@ -224,44 +224,77 @@ async def set_channels(user_id: UUID, chosen: list[str]) -> None:
 
 # ====== Merge ====== #
 class AccountSummary(BaseModel):
-    """What an account has: shown before a merge"""
+    """What an account has: shown before a merge (and what the merged one will have)"""
 
     registered_at: datetime
     timezone: str
     identities: list[IdentityKind]
+    email: str | None = None
     wishes: int
     mandarins: int
     figures: int
     gifts: int
+    friends: int
+
+
+class MergeReport(BaseModel):
+    """What a merge does besides adding things up: shown to the person before it"""
+
+    # Copies over the limit, paid back in mandarins
+    refunded: int = 0
+    refunded_mandarins: int = 0
+    # Figures put away from a place taken by a figure of the kept account
+    unplaced: int = 0
+    # Rewards not doubled (the same thing rewarded in both) or for inviting each other
+    rewards_dropped: int = 0
+    rewards_dropped_mandarins: int = 0
+    # Opened gifts of a year the kept account has its own opened gift for
+    gifts_dropped: int = 0
+    # Ways to sign in of the other account the kept one already has (its own stays)
+    identities_dropped: list[IdentityKind] = []
+    email_dropped: str | None = None
+
+
+class MergePreview(BaseModel):
+    result: AccountSummary
+    report: MergeReport
+
+
+async def _summary(session: AsyncSession, user_id: UUID) -> AccountSummary:
+    user = await session.get(User, user_id)
+    if not user:
+        raise AccountError("No such user")
+
+    async def count(stmt) -> int:
+        return (await session.scalar(stmt)) or 0
+
+    return AccountSummary(
+        registered_at=user.registered_at,
+        timezone=user.timezone,
+        identities=identities(user),
+        email=user.email,
+        wishes=await count(select(func.count(col(Wish.id))).where(Wish.author_id == user_id)),
+        mandarins=await mandarins.balance(session, user_id),
+        figures=await count(
+            select(func.count(col(UserItem.id))).where(UserItem.user_id == user_id)
+        ),
+        gifts=await count(
+            select(func.count(col(Delivery.id)))
+            .where(Delivery.recipient_id == user_id)
+            .where(col(Delivery.opened_at).is_not(None))
+        ),
+        friends=await count(select(func.count(col(User.id))).where(User.referrer_id == user_id)),
+    )
 
 
 async def summary(user_id: UUID) -> AccountSummary:
     async with new_db_session() as session:
-        user = await session.get(User, user_id)
-        if not user:
-            raise AccountError("No such user")
-
-        async def count(stmt) -> int:
-            return (await session.scalar(stmt)) or 0
-
-        return AccountSummary(
-            registered_at=user.registered_at,
-            timezone=user.timezone,
-            identities=identities(user),
-            wishes=await count(select(func.count(col(Wish.id))).where(Wish.author_id == user_id)),
-            mandarins=await mandarins.balance(session, user_id),
-            figures=await count(
-                select(func.count(col(UserItem.id))).where(UserItem.user_id == user_id)
-            ),
-            gifts=await count(
-                select(func.count(col(Delivery.id)))
-                .where(Delivery.recipient_id == user_id)
-                .where(col(Delivery.opened_at).is_not(None))
-            ),
-        )
+        return await _summary(session, user_id)
 
 
-async def _merge_deliveries(session: AsyncSession, keep: UUID, absorb: UUID) -> None:
+async def _merge_deliveries(
+    session: AsyncSession, keep: UUID, absorb: UUID, report: MergeReport
+) -> None:
     """One gift a year: of two gifts of the same year the opened one stays (ours if both are)"""
     kept = {
         d.year: d
@@ -272,6 +305,8 @@ async def _merge_deliveries(session: AsyncSession, keep: UUID, absorb: UUID) -> 
     ).all():
         ours = kept.get(delivery.year)
         if ours and (ours.opened_at or not delivery.opened_at):
+            if delivery.opened_at:
+                report.gifts_dropped += 1
             await session.delete(delivery)
             continue
         if ours:
@@ -282,12 +317,19 @@ async def _merge_deliveries(session: AsyncSession, keep: UUID, absorb: UUID) -> 
     await session.flush()
 
 
-async def _merge_mandarins(session: AsyncSession, keep: UUID, absorb: UUID) -> None:
+async def _merge_mandarins(
+    session: AsyncSession, keep: UUID, absorb: UUID, report: MergeReport
+) -> None:
     """
     Balances add up. A reward both accounts got for the same thing is not doubled; a purchase
     both made stays (with its own ref), so nothing bought becomes free.
     Rewards for inviting each other are dropped: a person can't be their own friend.
     """
+
+    def dropped(tx: MandarinTx) -> None:
+        report.rewards_dropped += 1
+        report.rewards_dropped_mandarins += tx.amount
+
     taken = {
         (reason, ref)
         for reason, ref in (
@@ -300,26 +342,34 @@ async def _merge_mandarins(session: AsyncSession, keep: UUID, absorb: UUID) -> N
     friendly = {mandarins.Reason.FRIEND_JOINED, mandarins.Reason.FRIEND_WISH}
     for tx in (await session.scalars(select(MandarinTx).where(MandarinTx.user_id == absorb))).all():
         if tx.reason in friendly and tx.ref in each_other:
+            dropped(tx)
             await session.delete(tx)
             continue
         if (tx.reason, tx.ref) in taken:
             if tx.amount > 0:
+                dropped(tx)
                 await session.delete(tx)
                 continue
             tx.ref = f"{tx.ref}@{absorb.hex[:8]}"[:64]
         tx.user_id = keep
         session.add(tx)
     # The same for the kept account: rewards from the absorbed one for inviting it
-    await session.execute(
-        delete(MandarinTx)
-        .where(col(MandarinTx.user_id) == keep)
-        .where(col(MandarinTx.reason).in_(friendly))
-        .where(col(MandarinTx.ref).in_(each_other))
-    )
+    for tx in (
+        await session.scalars(
+            select(MandarinTx)
+            .where(MandarinTx.user_id == keep)
+            .where(col(MandarinTx.reason).in_(friendly))
+            .where(col(MandarinTx.ref).in_(each_other))
+        )
+    ).all():
+        dropped(tx)
+        await session.delete(tx)
     await session.flush()
 
 
-async def _merge_items(session: AsyncSession, keep: UUID, absorb: UUID) -> None:
+async def _merge_items(
+    session: AsyncSession, keep: UUID, absorb: UUID, report: MergeReport
+) -> None:
     """
     Decorations move. Copies over the limit (figures: ``MAX_COPIES``, the rest: one) are paid
     back in mandarins at the shop price; a figure standing on a place already taken is put away.
@@ -351,15 +401,81 @@ async def _merge_items(session: AsyncSession, keep: UUID, absorb: UUID) -> None:
                     item.id,
                     amount=shop_item.price,
                 )
+                report.refunded += 1
+                report.refunded_mandarins += shop_item.price
             await session.delete(item)
             continue
         if item.pad is not None:
             if item.pad in pads:
                 item.pad = None
+                report.unplaced += 1
                 session.add(item)
             else:
                 pads.add(item.pad)
     await session.flush()
+
+
+async def _merge(
+    session: AsyncSession, keep_id: UUID, absorb_id: UUID, timezone_from_absorbed: bool
+) -> MergeReport:
+    if keep_id == absorb_id:
+        raise AccountError("Same account")
+    lock = select(User).where(col(User.id).in_([keep_id, absorb_id])).with_for_update()
+    users = {u.id: u for u in (await session.scalars(lock)).all()}
+    keep, absorb = users.get(keep_id), users.get(absorb_id)
+    if not (keep and absorb):
+        raise AccountError("No such user")
+    report = MergeReport()
+
+    await session.execute(
+        update(Wish).where(col(Wish.author_id) == absorb_id).values(author_id=keep_id)
+    )
+    await _merge_deliveries(session, keep_id, absorb_id, report)
+    await _merge_mandarins(session, keep_id, absorb_id, report)
+    await _merge_items(session, keep_id, absorb_id, report)
+    await session.execute(
+        update(PushSubscription)
+        .where(col(PushSubscription.user_id) == absorb_id)
+        .values(user_id=keep_id)
+    )
+    # Friends of the absorbed account become friends of the kept one
+    await session.execute(
+        update(User).where(col(User.referrer_id) == absorb_id).values(referrer_id=keep_id)
+    )
+    await session.refresh(keep)
+
+    # Ways to sign in: free the unique columns first, then give them to the kept account
+    moved: dict[str, int | str] = {}
+    for kind, column in COLUMNS.items():
+        theirs = getattr(absorb, column)
+        if theirs is None:
+            continue
+        if getattr(keep, column) is None:
+            moved[column] = theirs
+        else:
+            report.identities_dropped.append(kind)
+            if kind == "email":
+                report.email_dropped = theirs
+    for column in COLUMNS.values():
+        setattr(absorb, column, None)
+    session.add(absorb)
+    await session.flush()
+    for column, value in moved.items():
+        setattr(keep, column, value)
+
+    if keep.referrer_id in (keep_id, absorb_id):
+        keep.referrer_id = None
+    if keep.referrer_id is None and absorb.referrer_id not in (None, keep_id, absorb_id):
+        keep.referrer_id = absorb.referrer_id
+    keep.name = keep.name or absorb.name
+    if timezone_from_absorbed:
+        keep.timezone, keep.language = absorb.timezone, absorb.language or keep.language
+    session.add(keep)
+    await session.flush()
+
+    await session.delete(absorb)
+    await session.flush()
+    return report
 
 
 async def merge(keep_id: UUID, absorb_id: UUID, timezone_from_absorbed: bool = False) -> None:
@@ -367,54 +483,17 @@ async def merge(keep_id: UUID, absorb_id: UUID, timezone_from_absorbed: bool = F
     Move everything of ``absorb_id`` to ``keep_id`` and delete ``absorb_id``.
     The kept account gets the ways to sign in it doesn't have yet.
     """
-    if keep_id == absorb_id:
-        raise AccountError("Same account")
     async with new_db_session() as session:
-        lock = select(User).where(col(User.id).in_([keep_id, absorb_id])).with_for_update()
-        users = {u.id: u for u in (await session.scalars(lock)).all()}
-        keep, absorb = users.get(keep_id), users.get(absorb_id)
-        if not (keep and absorb):
-            raise AccountError("No such user")
-
-        await session.execute(
-            update(Wish).where(col(Wish.author_id) == absorb_id).values(author_id=keep_id)
-        )
-        await _merge_deliveries(session, keep_id, absorb_id)
-        await _merge_mandarins(session, keep_id, absorb_id)
-        await _merge_items(session, keep_id, absorb_id)
-        await session.execute(
-            update(PushSubscription)
-            .where(col(PushSubscription.user_id) == absorb_id)
-            .values(user_id=keep_id)
-        )
-        # Friends of the absorbed account become friends of the kept one
-        await session.execute(
-            update(User).where(col(User.referrer_id) == absorb_id).values(referrer_id=keep_id)
-        )
-        await session.refresh(keep)
-
-        # Ways to sign in: free the unique columns first, then give them to the kept account
-        moved = {
-            column: getattr(absorb, column)
-            for column in COLUMNS.values()
-            if getattr(keep, column) is None and getattr(absorb, column) is not None
-        }
-        for column in COLUMNS.values():
-            setattr(absorb, column, None)
-        session.add(absorb)
-        await session.flush()
-        for column, value in moved.items():
-            setattr(keep, column, value)
-
-        if keep.referrer_id in (keep_id, absorb_id):
-            keep.referrer_id = None
-        if keep.referrer_id is None and absorb.referrer_id not in (None, keep_id, absorb_id):
-            keep.referrer_id = absorb.referrer_id
-        keep.name = keep.name or absorb.name
-        if timezone_from_absorbed:
-            keep.timezone, keep.language = absorb.timezone, absorb.language or keep.language
-        session.add(keep)
-        await session.flush()
-
-        await session.delete(absorb)
+        await _merge(session, keep_id, absorb_id, timezone_from_absorbed)
         await session.commit()
+
+
+async def preview_merge(keep_id: UUID, absorb_id: UUID) -> MergePreview:
+    """The merge done for real in a transaction that is rolled back: exactly what it will be"""
+    async with new_db_session() as session:
+        try:
+            report = await _merge(session, keep_id, absorb_id, False)
+            result = await _summary(session, keep_id)
+        finally:
+            await session.rollback()
+    return MergePreview(result=result, report=report)

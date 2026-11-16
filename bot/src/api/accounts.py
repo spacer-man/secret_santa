@@ -199,6 +199,8 @@ async def link(body: LinkIn, user: RegisteredUser, principal: CurrentPrincipal) 
         "merge_token": token,
         "mine": (await accounts.summary(user.id)).model_dump(mode="json"),
         "other": (await accounts.summary(result.other_id)).model_dump(mode="json"),
+        # What the merged account will have and what changes besides adding up
+        "preview": (await accounts.preview_merge(user.id, result.other_id)).model_dump(mode="json"),
     }
 
 

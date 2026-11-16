@@ -1,17 +1,29 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { AccountSummary, Api, Channel, IdentityKind, LinkProof, Me } from '../core/api';
+import {
+  AccountSummary,
+  Api,
+  Channel,
+  IdentityKind,
+  LinkProof,
+  Me,
+  MergePreview,
+} from '../core/api';
 import { I18n, Key } from '../core/i18n';
 import { Push } from '../core/push';
 import { Store } from '../core/store';
 import { Telegram } from '../core/telegram';
+import { IosSteps } from '../components/ios-steps';
 import { SignIn } from '../components/sign-in';
 
 interface PendingMerge {
   token: string;
   mine: AccountSummary;
   other: AccountSummary;
+  preview: MergePreview;
 }
+
+type Counted = 'wishes' | 'mandarins' | 'figures' | 'gifts' | 'friends';
 
 const KINDS: IdentityKind[] = ['telegram', 'email', 'google'];
 const KIND_LABEL: Record<IdentityKind, Key> = {
@@ -30,7 +42,7 @@ const PUSH_HINT: Partial<Record<string, Key>> = {
 /** Ways to sign in (link, unlink, merge two accounts) and where to send the New Year gift */
 @Component({
   selector: 'settings-page',
-  imports: [SignIn],
+  imports: [SignIn, IosSteps],
   template: `
     <h1 class="page-title">⚙️ {{ i18n.t('settings') }}</h1>
 
@@ -68,20 +80,33 @@ const PUSH_HINT: Partial<Record<string, Key>> = {
         <div class="merge note">
           <h3>{{ i18n.t('mergeTitle') }}</h3>
           <p class="small">{{ i18n.t('mergeText') }}</p>
-          <div class="merge-cols">
-            @for (side of sides; track side) {
-              <div>
-                <b>{{ i18n.t(side === 'mine' ? 'mergeThis' : 'mergeOther') }}</b>
-                <ul class="small">
-                  <li>{{ i18n.t('mergeWishes') }}: {{ m[side].wishes }}</li>
-                  <li>{{ m[side].mandarins }} 🍊</li>
-                  <li>{{ i18n.t('mergeFigures') }}: {{ m[side].figures }}</li>
-                  <li>{{ i18n.t('mergeGifts') }}: {{ m[side].gifts }}</li>
-                  <li>{{ m[side].timezone }}</li>
-                </ul>
-              </div>
-            }
-          </div>
+          <!-- Preview: both accounts and exactly what the merged one will have -->
+          <table class="merge-table small">
+            <thead>
+              <tr>
+                <th></th>
+                <th>{{ i18n.t('mergeThis') }}</th>
+                <th>{{ i18n.t('mergeOther') }}</th>
+                <th class="merge-result">{{ i18n.t('mergeResult') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of mergeRows; track row.key) {
+                <tr>
+                  <th>{{ i18n.t(row.label) }}</th>
+                  <td>{{ m.mine[row.key] }}</td>
+                  <td>{{ m.other[row.key] }}</td>
+                  <td class="merge-result">{{ m.preview.result[row.key] }}</td>
+                </tr>
+              }
+              <tr>
+                <th>{{ i18n.t('mergeTzRow') }}</th>
+                <td>{{ m.mine.timezone }}</td>
+                <td>{{ m.other.timezone }}</td>
+                <td class="merge-result">{{ m[keepTz()].timezone }}</td>
+              </tr>
+            </tbody>
+          </table>
           @if (m.mine.timezone !== m.other.timezone) {
             <p class="small">{{ i18n.t('mergeTz') }}</p>
             <div class="row">
@@ -96,6 +121,14 @@ const PUSH_HINT: Partial<Record<string, Key>> = {
               }
             </div>
           }
+          <p class="small">
+            <b>{{ i18n.t('mergeRules') }}</b>
+          </p>
+          <ul class="merge-rules small">
+            @for (line of mergeLines(m); track line) {
+              <li>{{ line }}</li>
+            }
+          </ul>
           <div class="row">
             <button class="btn btn-primary" [disabled]="busy()" (click)="doMerge(m)">
               {{ i18n.t('mergeBtn') }}
@@ -126,6 +159,16 @@ const PUSH_HINT: Partial<Record<string, Key>> = {
           }
         </button>
       }
+      @if (pushState() === 'ios-install') {
+        <!-- iPhone: push comes only to the app from the Home Screen; say how to get there -->
+        <div class="note ios-push">
+          <p class="small">
+            <b>🔔 {{ i18n.t('iosPushTitle') }}</b>
+          </p>
+          <ios-steps />
+          <p class="small">{{ i18n.t('iosPushThen') }}</p>
+        </div>
+      }
     </section>
 
     @if (!tg.isMiniApp) {
@@ -144,6 +187,13 @@ export class SettingsPage {
   protected readonly kinds = KINDS;
   protected readonly kindLabel = KIND_LABEL;
   protected readonly sides = ['mine', 'other'] as const;
+  protected readonly mergeRows: { key: Counted; label: Key }[] = [
+    { key: 'wishes', label: 'mergeWishes' },
+    { key: 'mandarins', label: 'mergeMandarins' },
+    { key: 'figures', label: 'mergeFigures' },
+    { key: 'gifts', label: 'mergeGifts' },
+    { key: 'friends', label: 'mergeFriends' },
+  ];
   protected readonly channels: { key: Channel; label: Key }[] = [
     { key: 'telegram', label: 'chTelegram' },
     { key: 'push', label: 'chPush' },
@@ -151,6 +201,7 @@ export class SettingsPage {
   ];
 
   protected readonly me = this.store.me;
+  protected readonly pushState = this.push.state;
   protected readonly busy = signal(false);
   protected readonly merge = signal<PendingMerge | null>(null);
   protected readonly keepTz = signal<'mine' | 'other'>('mine');
@@ -245,7 +296,12 @@ export class SettingsPage {
     const result = await this.api.link(proof);
     if (result.status === 'taken') {
       this.keepTz.set('mine');
-      this.merge.set({ token: result.merge_token, mine: result.mine, other: result.other });
+      this.merge.set({
+        token: result.merge_token,
+        mine: result.mine,
+        other: result.other,
+        preview: result.preview,
+      });
       return;
     }
     this.me.set(result.me);
@@ -259,6 +315,30 @@ export class SettingsPage {
       ),
     );
   };
+
+  /** The rules of the merge, as they apply to these two accounts */
+  protected mergeLines(m: PendingMerge): string[] {
+    const t = (key: Key, ...values: (string | number)[]) =>
+      values.reduce<string>((text, v) => text.replace('%s', String(v)), this.i18n.t(key));
+    const r = m.preview.report;
+    const ways = m.preview.result.identities.map((k) => this.i18n.t(KIND_LABEL[k])).join(', ');
+    const lines = [t('mergeRuleAll'), t('mergeRuleWays', ways)];
+    if (r.rewards_dropped) {
+      lines.push(t('mergeRuleRewards', r.rewards_dropped, r.rewards_dropped_mandarins));
+    }
+    if (r.refunded) lines.push(t('mergeRuleRefund', r.refunded, r.refunded_mandarins));
+    if (r.unplaced) lines.push(t('mergeRuleUnplaced', r.unplaced));
+    if (r.gifts_dropped) lines.push(t('mergeRuleGifts', r.gifts_dropped));
+    for (const kind of r.identities_dropped) {
+      lines.push(
+        kind === 'email'
+          ? t('mergeRuleEmail', r.email_dropped ?? '', m.mine.email ?? '')
+          : t('mergeRuleWay', this.i18n.t(KIND_LABEL[kind])),
+      );
+    }
+    lines.push(t('mergeRuleFinal'));
+    return lines;
+  }
 
   protected async doMerge(m: PendingMerge): Promise<void> {
     if (!(await this.save(() => this.api.merge(m.token, this.keepTz())))) return;

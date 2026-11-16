@@ -192,3 +192,25 @@ class PushSubscription(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True))
     )
+
+
+class Session(SQLModel, table=True):
+    """
+    A sign-in on a device (website / PWA): the session token carries its id, ending it here
+    ends the token. Tied to the way of signing in (kind + key), not the account: after a merge
+    it follows the identity into the kept account. The Mini App signs in by Telegram itself
+    and has none. (``services/sessions.py``)
+    """
+
+    id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
+    kind: str = Field(max_length=16, index=True)
+    key: str = Field(max_length=254, index=True)
+    # What the person sees in the list: browser and system, a part of the IP address
+    device: str = Field(default="", max_length=64)
+    ip: str = Field(default="", max_length=64)
+    created_at: datetime = Field(
+        default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True))
+    )
+    last_seen_at: datetime = Field(
+        default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True))
+    )

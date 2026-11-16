@@ -60,6 +60,8 @@ class Principal(BaseModel):
     via_tma: bool = False
     # When the person proved who they are (unix time; 0: unknown, an old token)
     issued_at: int = 0
+    # The session (``db.models.Session``) of this token; None: an old token or the Mini App
+    session_id: str | None = None
     # When this session token was made, unix milliseconds (a re-issued token is newer than
     # the sign-in); tokens made before "sign out everywhere" don't work
     minted_at: int = 0
@@ -171,9 +173,10 @@ def unsign(token: str, bot_token: str, purpose: str, now: float | None = None) -
     return payload
 
 
-def make_session(principal: Principal, bot_token: str) -> str:
+def make_session(principal: Principal, bot_token: str, session_id: str | None = None) -> str:
     return sign(
         {
+            "sid": session_id,
             "k": principal.kind,
             "v": principal.key,
             "fn": principal.first_name,
@@ -197,6 +200,7 @@ def read_session(token: str, bot_token: str) -> Principal:
         first_name=payload.get("fn"),
         issued_at=int(payload.get("iat", 0)),
         minted_at=int(payload.get("t", int(payload.get("iat", 0)) * 1000)),
+        session_id=payload.get("sid"),
     )
 
 

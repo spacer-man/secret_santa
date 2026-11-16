@@ -209,7 +209,8 @@ def test_link_free_identity(mail):
     assert client.delete("/api/me/link/telegram", headers=tg(3001)).status_code == 409
     me = client.delete("/api/me/link/email", headers=tg(3001)).json()
     assert me["identities"]["email"] is None
-    assert client.delete("/api/me/link/email", headers=bearer(token)).status_code == 403
+    # The e-mail's own session ended with it
+    assert client.delete("/api/me/link/email", headers=bearer(token)).status_code == 401
 
 
 def test_merge_two_accounts(mail):
@@ -418,7 +419,8 @@ def test_merge_asks_whose_email_and_gift(mail):
     # The session signed in with a@ which went away: a new one with b@
     assert done["me"]["identities"]["email"] == "b@example.com"
     assert client.get("/api/me", headers=bearer(done["token"])).json()["registered"]
-    assert client.get("/api/me", headers=bearer(a_token)).json()["registered"] is False
+    # The old session's way in is gone: it ended (the new token carries on the same device)
+    assert client.get("/api/me", headers=bearer(a_token)).status_code == 401
 
     async def reactions() -> list[str | None]:
         async with new_db_session() as session:
@@ -446,10 +448,10 @@ def test_logout_everywhere(mail):
     accounts_api._email_sends.clear()
     laptop = email_login(mail, "devices@example.com")
     r = client.post("/api/me/logout-all", headers=bearer(laptop)).json()
-    # Both old tokens end; the one that asked gets a new token
+    # The other device is signed out; this one stays, no new token needed
+    assert "token" not in r
     assert client.get("/api/me", headers=bearer(phone)).status_code == 401
-    assert client.get("/api/me", headers=bearer(laptop)).status_code == 401
-    assert client.get("/api/me", headers=bearer(r["token"])).json()["registered"]
+    assert client.get("/api/me", headers=bearer(laptop)).json()["registered"]
 
 
 def test_delete_restore_and_erase(mail):
@@ -483,7 +485,7 @@ def test_delete_restore_and_erase(mail):
     r = client.delete("/api/me", headers=bearer(author)).json()
     assert r["me"]["deleted"] is True
     assert client.get("/api/me", headers=bearer(other_device)).status_code == 401
-    token = r["token"]
+    token = author
     assert client.get("/api/tree", headers=bearer(token)).status_code == 403
     assert (
         client.put("/api/me", headers=bearer(token), json={"timezone": "UTC+1"}).status_code == 403
@@ -524,7 +526,7 @@ def test_erase_now_and_deleted_accounts_not_merged(mail):
     client.put("/api/me", headers=bearer(token), json={"timezone": "UTC+3"})
     # Not deleted yet: nothing to erase
     assert client.post("/api/me/erase", headers=bearer(token)).status_code == 409
-    token = client.delete("/api/me", headers=bearer(token)).json()["token"]
+    assert client.delete("/api/me", headers=bearer(token)).json()["me"]["deleted"]
 
     # Another account can't absorb a deleted one
     client.put("/api/me", headers=tg(9201), json={"timezone": "UTC+3"})
@@ -539,6 +541,50 @@ def test_erase_now_and_deleted_accounts_not_merged(mail):
 
     assert client.post("/api/me/erase", headers=bearer(token)).status_code == 204
     assert user_by(email="gone@example.com") is None
+
+
+def test_sessions_list_and_end_one(mail):
+    phone = email_login(mail, "list@example.com")
+    client.put("/api/me", headers=bearer(phone), json={"timezone": "UTC+3"})
+    accounts_api._email_sends.clear()
+    r = client.post(
+        "/api/auth/email/start",
+        json={"email": "list@example.com"},
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0) Chrome/130.0 Safari/537.36"},
+    )
+    assert r.status_code == 200
+    laptop = client.post(
+        "/api/auth/email/verify",
+        json={"email": "list@example.com", "code": code_of(mail, "list@example.com")},
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0) Chrome/130.0 Safari/537.36",
+            "X-Forwarded-For": "95.31.18.119",
+        },
+    ).json()["token"]
+
+    listed = client.get("/api/me/sessions", headers=bearer(laptop)).json()["sessions"]
+    assert len(listed) == 2
+    mine = next(s for s in listed if s["current"])
+    assert mine["device"] == "Chrome · Windows" and mine["ip"] == "95.31.*.*"
+    other = next(s for s in listed if not s["current"])
+
+    # Another account can't end it
+    stranger = email_login(mail, "nosy@example.com")
+    client.put("/api/me", headers=bearer(stranger), json={"timezone": "UTC+3"})
+    assert (
+        client.delete(f"/api/me/sessions/{other['id']}", headers=bearer(stranger)).status_code
+        == 404
+    )
+
+    # The owner ends the phone's session: the phone is signed out, the laptop stays
+    left = client.delete(f"/api/me/sessions/{other['id']}", headers=bearer(laptop)).json()
+    assert [s["current"] for s in left["sessions"]] == [True]
+    assert client.get("/api/me", headers=bearer(phone)).status_code == 401
+    assert client.get("/api/me", headers=bearer(laptop)).status_code == 200
+
+    # Signing out here ends the session on the server too
+    assert client.post("/api/me/logout", headers=bearer(laptop)).status_code == 204
+    assert client.get("/api/me", headers=bearer(laptop)).status_code == 401
 
 
 # ====== Security ====== #

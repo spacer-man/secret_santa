@@ -29,6 +29,7 @@ from db.models import (
     MandarinTx,
     Media,
     PushSubscription,
+    Session,
     ShopItem,
     UsedProof,
     User,
@@ -253,6 +254,13 @@ async def purge_account(user_id: UUID) -> None:
         )
         if user.email:
             await session.execute(delete(EmailCode).where(col(EmailCode.email) == user.email))
+        for kind, column in COLUMNS.items():
+            if (value := getattr(user, column)) is not None:
+                await session.execute(
+                    delete(Session)
+                    .where(col(Session.kind) == kind)
+                    .where(col(Session.key) == str(value))
+                )
         await session.delete(user)
         await session.commit()
 

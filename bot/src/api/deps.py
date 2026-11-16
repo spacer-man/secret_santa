@@ -6,7 +6,7 @@ from fastapi import Depends, Header, HTTPException
 
 from configs.bot import BotConfig
 from db.models import User
-from services import accounts
+from services import accounts, sessions
 
 from . import auth
 
@@ -20,12 +20,14 @@ async def current_principal(
         principal = auth.parse_authorization(authorization, BOT_TOKEN)
     except auth.AuthError as err:
         raise HTTPException(status_code=401, detail=str(err)) from err
-    # "Sign out everywhere": tokens made before it don't work (the Mini App is Telegram's own
-    # session, it can't be ended by us)
-    if not principal.via_tma:
+    if principal.session_id:
+        # A sign-in on the website: its session must still be there (it can be ended)
+        if not await sessions.alive(principal.session_id, principal.kind, principal.key):
+            raise HTTPException(status_code=401, detail="Session ended")
+    elif not principal.via_tma:
+        # An older token without a session: "sign out everywhere" ends it by time
         user = await accounts.get_user(principal)
         after = user.sessions_after if user else None
-        # Milliseconds: a token re-issued right after it must work, every older one not
         if after and principal.minted_at < accounts.aware(after).timestamp() * 1000:
             raise HTTPException(status_code=401, detail="Session ended")
     return principal

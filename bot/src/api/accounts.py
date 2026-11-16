@@ -24,7 +24,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from services import accounts, email, google, notifier, push
+from services import accounts, email, google, notifier, push, sessions
 
 from . import auth
 from .deps import (
@@ -67,8 +67,15 @@ def _limit_ip(request: Request) -> None:
     sends.append(now)
 
 
-def _token(principal: auth.Principal) -> dict:
-    return {"token": auth.make_session(principal, BOT_TOKEN)}
+async def _token(principal: auth.Principal, request: Request) -> dict:
+    """A new session (a row in the list of sessions) and its token"""
+    sid = await sessions.start(
+        principal.kind,
+        principal.key,
+        request.headers.get("user-agent", ""),
+        _client_ip(request),
+    )
+    return {"token": auth.make_session(principal, BOT_TOKEN, sid)}
 
 
 # ====== Proofs of identities ====== #
@@ -167,8 +174,8 @@ async def _notice(user_id: UUID, key: str, kind: str, email_masked: str | None =
 
 # ====== Sign in ====== #
 @router.post("/api/auth/telegram")
-async def login_by_widget(data: LoginWidgetData) -> dict:
-    return _token(await telegram_principal(data))
+async def login_by_widget(data: LoginWidgetData, request: Request) -> dict:
+    return await _token(await telegram_principal(data), request)
 
 
 @router.post("/api/auth/email/start")
@@ -193,12 +200,12 @@ async def email_start(body: EmailStartIn, request: Request) -> dict:
 
 
 @router.post("/api/auth/email/verify")
-async def email_verify(body: EmailCodeIn) -> dict:
-    return _token(await email_principal(body))
+async def email_verify(body: EmailCodeIn, request: Request) -> dict:
+    return await _token(await email_principal(body), request)
 
 
 @router.post("/api/auth/google")
-async def login_by_google(body: GoogleIn) -> dict:
+async def login_by_google(body: GoogleIn, request: Request) -> dict:
     principal, user = await google_principal(body)
     # The same person came by e-mail before: only an address Google itself manages (Gmail,
     # Workspace) proves it's them; any other could have been registered by someone else
@@ -211,7 +218,7 @@ async def login_by_google(body: GoogleIn) -> dict:
         if owner and owner.google_id is None:
             await accounts.link(owner.id, principal)
             await _notice(owner.id, "sec_linked", "google")
-    return _token(principal)
+    return await _token(principal, request)
 
 
 # ====== Linking & merging ====== #
@@ -326,6 +333,14 @@ async def merge(body: MergeIn, user: FreshUser, principal: CurrentPrincipal) -> 
     came = next((k for k, c in accounts.COLUMNS.items() if getattr(before, c) is not None), "email")
     gone_tg = (before.telegram_id,) if before.telegram_id not in (None, merged.telegram_id) else ()
     gone_mail = (before.email,) if before.email and before.email != merged.email else ()
+    # Sessions of the ways in that didn't stay end with them
+    for kind, value in (
+        ("telegram", gone_tg[0] if gone_tg else None),
+        ("email", gone_mail[0] if gone_mail else None),
+        ("google", before.google_id if before.google_id not in (None, merged.google_id) else None),
+    ):
+        if value is not None:
+            await sessions.end_identity(kind, str(value))
     await _notice(
         user.id,
         "sec_merged",
@@ -344,7 +359,10 @@ async def merge(body: MergeIn, user: FreshUser, principal: CurrentPrincipal) -> 
         first_name=principal.first_name,
         issued_at=principal.issued_at,
     )
-    return {"me": await _me(fresh), "token": auth.make_session(fresh, BOT_TOKEN)}
+    # The same session, now signed in with the way that stayed
+    await sessions.move(principal.session_id, fresh.kind, fresh.key)
+    token = auth.make_session(fresh, BOT_TOKEN, principal.session_id)
+    return {"me": await _me(fresh), "token": token}
 
 
 @router.delete("/api/me/link/{kind}")
@@ -353,10 +371,13 @@ async def unlink(kind: auth.IdentityKind, user: FreshUser, principal: CurrentPri
         # Signed in with it: the session would point nowhere
         raise HTTPException(status_code=409, detail="Signed in with it")
     old_tg, old_mail = user.telegram_id, user.email
+    old_value = getattr(user, accounts.COLUMNS[kind])
     try:
         await accounts.unlink(user.id, kind)
     except accounts.LastIdentity as err:
         raise HTTPException(status_code=409, detail=str(err)) from err
+    if old_value is not None:
+        await sessions.end_identity(kind, str(old_value))
     # The way that left hears it too: if it wasn't the owner who removed it, they'll know
     await _notice(
         user.id,
@@ -370,7 +391,9 @@ async def unlink(kind: auth.IdentityKind, user: FreshUser, principal: CurrentPri
 
 
 @router.post("/api/me/reauth")
-async def reauth(body: LinkIn, user: AnyUser, principal: CurrentPrincipal) -> dict:
+async def reauth(
+    body: LinkIn, user: AnyUser, principal: CurrentPrincipal, request: Request
+) -> dict:
     """
     Confirm it's the owner (before linking, unlinking or merging): any way to sign in of this
     same account. Gives a fresh session token for that way.
@@ -381,36 +404,44 @@ async def reauth(body: LinkIn, user: AnyUser, principal: CurrentPrincipal) -> di
     owner = await accounts.get_user(proved)
     if not owner or owner.id != user.id:
         raise HTTPException(status_code=403, detail="Not this account")
-    return {**_token(proved), "me": await _me(proved)}
+    # A new sign-in: a new session instead of this one
+    if principal.session_id:
+        await sessions.end(user, principal.session_id)
+    return {**await _token(proved, request), "me": await _me(proved)}
 
 
 # ====== Sessions, deletion ====== #
-def _renewed(principal: auth.Principal) -> dict:
-    """A new token for this session after the others were ended (the Mini App has none)"""
-    if principal.via_tma:
+async def _renewed(principal: auth.Principal, request: Request) -> dict:
+    """
+    After the others were ended: this one keeps its session (an old token without one gets
+    a session and a new token; the Mini App has none)
+    """
+    if principal.via_tma or principal.session_id:
         return {}
-    return _token(principal)
+    return await _token(principal, request)
 
 
 @router.post("/api/me/logout-all")
-async def logout_all(user: RegisteredUser, principal: CurrentPrincipal) -> dict:
+async def logout_all(user: RegisteredUser, principal: CurrentPrincipal, request: Request) -> dict:
     """
     Sign out on every device: all session tokens stop working; this one gets a new token.
     (The Telegram Mini App signs in by Telegram itself: it isn't ended.)
     """
     await accounts.end_sessions(user.id)
-    return {**_renewed(principal), "me": await _me(principal)}
+    await sessions.end_all(user, keep=principal.session_id)
+    return {**await _renewed(principal, request), "me": await _me(principal)}
 
 
 @router.delete("/api/me")
-async def delete_me(user: FreshUser, principal: CurrentPrincipal) -> dict:
+async def delete_me(user: FreshUser, principal: CurrentPrincipal, request: Request) -> dict:
     """
     Delete the account: hidden from everything at once, every other session ended, erased for
     good in 30 days unless restored (signing in shows the restore page)
     """
     purge_at = await accounts.delete_account(user.id)
+    await sessions.end_all(user, keep=principal.session_id)
     await _notice(user.id, "sec_deleted", principal.kind, date=purge_at.date().isoformat())
-    return {**_renewed(principal), "me": await _me(principal)}
+    return {**await _renewed(principal, request), "me": await _me(principal)}
 
 
 @router.post("/api/me/restore")
@@ -430,6 +461,34 @@ async def erase_me(user: AnyUser, principal: CurrentPrincipal) -> None:
         raise HTTPException(status_code=409, detail="Delete the account first")
     require_fresh(principal)
     await accounts.purge_account(user.id)
+
+
+@router.get("/api/me/sessions")
+async def my_sessions(user: AnyUser, principal: CurrentPrincipal) -> dict:
+    """Where the account is signed in on the website / PWA (the Mini App isn't listed)"""
+    listed = await sessions.listed(user, principal.session_id)
+    return {
+        "sessions": [s.model_dump(mode="json") for s in listed],
+        # This device signed in before sessions were listed (or is the Mini App)
+        "current_listed": any(s.current for s in listed),
+    }
+
+
+@router.delete("/api/me/sessions/{session_id}")
+async def end_session(session_id: str, user: AnyUser, principal: CurrentPrincipal) -> dict:
+    """End one session: that device is signed out at its next request"""
+    if not await sessions.end(user, session_id):
+        raise HTTPException(status_code=404)
+    listed = await sessions.listed(user, principal.session_id)
+    return {"sessions": [s.model_dump(mode="json") for s in listed]}
+
+
+@router.post("/api/me/logout", status_code=204)
+async def logout(principal: CurrentPrincipal) -> None:
+    """Sign out on this device: its session ends on the server too"""
+    user = await accounts.get_user(principal)
+    if user and principal.session_id:
+        await sessions.end(user, principal.session_id)
 
 
 # ====== Notifications ====== #

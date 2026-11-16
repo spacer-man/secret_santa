@@ -26,6 +26,8 @@ const ICONS: Record<string, string> = {
   'lights-candy': '🍭',
   'lights-flakes': '❄️',
   'lights-rainbow': '🌈',
+  'lights-stars': '⭐',
+  'lights-sparks': '💫',
   'lights-meteor': '☄️',
   'snow-snowfall': '🌨',
   'snow-blizzard': '🌬',

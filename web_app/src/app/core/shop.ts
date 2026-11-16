@@ -32,7 +32,7 @@ const ICONS: Record<string, string> = {
  * Figures with a picture in `public/shop/` (rendered from the 3D models by
  * `TreeWorld.thumbnail()`, see CLAUDE.md)
  */
-const PICTURES = new Set([
+export const PICTURES = new Set([
   'candy-cane',
   'candy-cane-green',
   'lantern',

@@ -6,6 +6,7 @@ import { Store } from './core/store';
 import { Telegram } from './core/telegram';
 import { Handmade } from './core/handmade';
 import { Theme } from './core/theme';
+import { Install } from './core/install';
 import { Snow } from './components/fx/snow';
 
 @Component({
@@ -71,6 +72,7 @@ export class App {
     this.tg.init();
     this.theme.init();
     inject(Handmade).start();
+    inject(Install).init();
     document.documentElement.lang = this.i18n.lang();
     document.title = this.i18n.t('appName');
 

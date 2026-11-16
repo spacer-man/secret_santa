@@ -43,24 +43,24 @@ const RULES: [selector: string, kind: Kind][] = [
   ['.btn-ghost, .card-btn.quiet', 'light'],
   // Framed things: buttons, options to choose from, cards
   [
-    '.btn-secondary, .shop-card, .card-btn, .snow-mode, .reaction, .pattern-btn, .shop-set, .theme-toggle',
+    '.btn-secondary, .shop-card, .card-btn, .snow-mode, .reaction, .pattern-btn, .shop-set, .theme-toggle, .mascot-opt',
     'card',
   ],
   ['.page', 'sheet-frame'],
   ['.card > h2, .label, .page-title', 'title'],
-  ['.number, .stats b, .tabs a.active', 'underline'],
-  ['.sheet h3, .earn li, .card.row', 'rule'],
+  ['.number, .stats b, .tabs a.active, .step-no', 'underline'],
+  ['.sheet h3, .earn li, .card.row, .steps li, .facts li', 'rule'],
   ['.tabs, .sheet', 'top-rule'],
   ['.tree-card', 'picture'],
   ['.seal', 'seal'],
-  ['.sheet-emoji, .card-icon, .hero-emoji', 'wash'],
+  ['.sheet-emoji, .card-icon, .hero-emoji, .rule-icon', 'wash'],
   // Progress: a pencil line and a hatched part of it
   ['.level-bar, .wave .bar, .friends-bar, .load-bar', 'bar-track'],
   ['.level-bar > span, .wave .bar > span, .friends-bar > span, .load-bar > span', 'bar-fill'],
   // Little pictures drawn in pencil (the loading screen): data-doodle = snowflake | star | fir
   ['.doodle', 'doodle'],
   // Bigger tinted areas: a watercolour wash (quotes, hints, the row of the user)
-  ['.quote, blockquote, .idea, .designer, .wave li.mine, .shop-tabs', 'note'],
+  ['.quote, blockquote, .idea, .designer, .wave li.mine, .shop-tabs, .mascot-bubble', 'note'],
   ['.badge, .chip', 'chip'],
   // Form fields cannot hold a drawing inside: it is laid over them
   ['.select, .textarea', 'field'],
@@ -161,8 +161,21 @@ function ribbon(raw: Pt[], pen: Pen): string {
   return out;
 }
 
+/**
+ * Points of the drawn line per point of the hand: dense enough for an uneven edge
+ * (about one every 2.5 px); the noise along the line is counted in the old, sparser points
+ */
+const DENSE = 6;
+const SPARSE = 4 / DENSE;
 /** Points of the line in one piece of even pressure */
-const PIECE = 4;
+const PIECE = 6;
+/**
+ * How much the edge of a line wanders (a share of its half-width, and a bit in px on top) and
+ * how slowly: the edge is a gentle wave, not teeth — a pencil line is soft, not torn
+ */
+const EDGE = 0.3;
+const EDGE_PX = 0.42;
+const EDGE_WAVE = 0.4;
 
 function pencilPass(raw: Pt[], pen: Pen, offset: number, alpha: number): string {
   const { w, seed, jit = 1.2, taper = 0.7 } = pen;
@@ -171,10 +184,13 @@ function pencilPass(raw: Pt[], pen: Pen, offset: number, alpha: number): string 
       x + (hash(seed * 91.7 + i * 7.13) - 0.5) * 2 * jit,
       y + (hash(seed * 53.3 + i * 11.9) - 0.5) * 2 * jit,
     ]),
+    DENSE,
   );
   const n = pts.length;
   const left: string[] = [];
   const right: string[] = [];
+  /** Half the width of the line at every point (the radius of a round end there) */
+  const radius: number[] = [];
   for (let i = 0; i < n; i++) {
     const a = pts[Math.max(0, i - 1)];
     const b = pts[Math.min(n - 1, i + 1)];
@@ -184,23 +200,39 @@ function pencilPass(raw: Pt[], pen: Pen, offset: number, alpha: number): string 
     const s = i / (n - 1);
     // The pencil comes down over the first 14% of the line and lifts over the last 16%
     const env = Math.min(1, s / 0.14, (1 - s) / 0.16);
-    const press = noise1(i * 0.21 + seed * 1.9);
+    const press = noise1(i * SPARSE * 0.21 + seed * 1.9);
     const half = (w / 2) * (1 - taper + taper * env) * (0.85 + 0.3 * press);
+    // The edge of a pencil line is never even: each side wanders on its own, smoothly
+    const edge = (side: number): number => {
+      const v = noise1(i * EDGE_WAVE + seed * 13.7 + side * 57.7);
+      return Math.max(0.12, half * (1 + EDGE * v) + EDGE_PX * v);
+    };
+    const [hl, hr] = [edge(0), edge(1)];
     const cx = pts[i][0] + nx * offset;
     const cy = pts[i][1] + ny * offset;
-    left.push(`${r1(cx + nx * half)} ${r1(cy + ny * half)}`);
-    right.push(`${r1(cx - nx * half)} ${r1(cy - ny * half)}`);
+    left.push(`${r1(cx + nx * hl)} ${r1(cy + ny * hl)}`);
+    right.push(`${r1(cx - nx * hr)} ${r1(cy - ny * hr)}`);
+    radius.push((hl + hr) / 2);
   }
+  // Pressure of a piece: light pieces fade, the lightest are gaps
+  const pressAt = (i0: number): number =>
+    0.7 * noise1(i0 * SPARSE * 0.085 + seed * 2.7) + 0.3 * noise1(i0 * SPARSE * 0.45 + seed * 6.1);
+  const drawn = (i0: number): boolean => i0 >= 0 && i0 < n - 1 && pressAt(i0) >= -0.5;
   let out = '';
   for (let i0 = 0; i0 < n - 1; i0 += PIECE) {
+    if (!drawn(i0)) continue;
     const i1 = Math.min(n - 1, i0 + PIECE);
-    // Pressure of this piece: light pieces fade, the lightest are gaps
-    const press = 0.7 * noise1(i0 * 0.085 + seed * 2.7) + 0.3 * noise1(i0 * 0.45 + seed * 6.1);
-    if (press < -0.5) continue;
-    const opacity = alpha * Math.max(0.16, Math.min(1, 0.62 + 0.75 * press));
+    const opacity = alpha * Math.max(0.16, Math.min(1, 0.62 + 0.75 * pressAt(i0)));
     const l = left.slice(i0, i1 + 1);
     const r = right.slice(i0, i1 + 1).reverse();
-    out += `<path class="hm-fill" opacity="${opacity.toFixed(2)}" d="M${l.join('L')}L${r.join('L')}Z"/>`;
+    // Where the pencil came down or lifted the end is round (a lead has no corners);
+    // between two pieces it stays flat, or they would overlap into a darker spot
+    const arc = (i: number): string => `A${r1(radius[i])} ${r1(radius[i])} 0 0 0 `;
+    const end = drawn(i0 + PIECE) ? 'L' : arc(i1);
+    const start = drawn(i0 - PIECE) ? '' : arc(i0) + l[0];
+    out +=
+      `<path class="hm-fill hm-pencil" opacity="${opacity.toFixed(2)}" ` +
+      `d="M${l.join('L')}${end}${r.join('L')}${start}Z"/>`;
   }
   return out;
 }
@@ -398,16 +430,42 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
   // The line is cut into pieces of a few strokes, each with its own pressure (tone and width);
   // they are also what the drawing animation shows one after another.
   let out = '';
-  let d = '';
+  // A piece is drawn as three copies of the line: two wide faint ones and the body over them
+  // (see below). Each copy goes its own slightly wavy way, so the soft edge of a stroke is
+  // uneven too: wider here, narrower there, as the hand and the paper make it.
+  const ds = ['', '', ''];
+  const sway = [1.05, 0.8, 0.4];
   const p = (pt: Pt) => `${r1(pt[0])} ${r1(pt[1])}`;
+  /** A stroke from `a0` to `a1` bent through `bend`, as points every ~13 px that sway aside */
+  const wavy = (a0: Pt, bend: Pt, a1: Pt, copy: number, i: number): string => {
+    const len = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]) || 1;
+    const [nx, ny] = [-(a1[1] - a0[1]) / len, (a1[0] - a0[0]) / len];
+    const n = Math.max(2, Math.round(len / 13));
+    let path = '';
+    for (let k = 1; k <= n; k++) {
+      const t = k / n;
+      const u = 1 - t;
+      // No sway at the ends: there the copies meet in the turn to the next stroke
+      const off =
+        noise1(k * 0.8 + i * 7.3 + copy * 31.7 + o.seed * 2.9) *
+        sway[copy] *
+        Math.min(1, t * 4, u * 4);
+      path += `L${p([
+        u * u * a0[0] + 2 * u * t * bend[0] + t * t * a1[0] + nx * off,
+        u * u * a0[1] + 2 * u * t * bend[1] + t * t * a1[1] + ny * off,
+      ])}`;
+    }
+    return path;
+  };
   const ends = (i: number): [Pt, Pt] => {
     const [from, , to] = strokes[i];
     return i % 2 ? [to, from] : [from, to];
   };
   strokes.forEach(([, bend], i) => {
     const [a0, a1] = ends(i);
-    if (!d) d = `M${p(a0)}`;
-    d += `Q${p(bend)} ${p(a1)}`;
+    ds.forEach((d, copy) => {
+      ds[copy] = (d || `M${p(a0)}`) + wavy(a0, bend, a1, copy, i);
+    });
     const last = i === strokes.length - 1;
     let next = a1;
     if (!last) {
@@ -416,7 +474,8 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
       const len = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]) || 1;
       const reach = Math.min(o.gap * 0.9, 7);
       const [ux, uy] = [((a1[0] - a0[0]) / len) * reach, ((a1[1] - a0[1]) / len) * reach];
-      d += `C${p([a1[0] + ux, a1[1] + uy])} ${p([next[0] + ux, next[1] + uy])} ${p(next)}`;
+      const turn = `C${p([a1[0] + ux, a1[1] + uy])} ${p([next[0] + ux, next[1] + uy])} ${p(next)}`;
+      ds.forEach((_, copy) => (ds[copy] += turn));
     }
     if ((i + 1) % HATCH_PIECE && !last) return;
     const piece = Math.floor(i / HATCH_PIECE);
@@ -425,11 +484,37 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
     const press = noise1(piece * 2.3 + o.seed * 1.3);
     const opacity = o.alpha * Math.max(0.78, Math.min(1, 0.9 + 0.14 * press));
     const width = o.lw * (0.8 + 0.4 * hash(o.seed * 4.1 + piece * 5.9));
+    // The two free ends of the whole line are round (the pieces in between join flat)
+    const body = Math.max(1, width - 1.4);
+    let caps = '';
+    const cap = (at: Pt, toward: Pt, sweep: number): void => {
+      const len = Math.hypot(toward[0] - at[0], toward[1] - at[1]) || 1;
+      const [ex, ey] = [
+        (-(toward[1] - at[1]) / len) * (body / 2),
+        ((toward[0] - at[0]) / len) * (body / 2),
+      ];
+      caps +=
+        `<path class="hm-fill hm-cap" style="--i:${seq}" ` +
+        `d="M${p([at[0] + ex, at[1] + ey])}A${r1(body / 2)} ${r1(body / 2)} 0 0 ${sweep} ` +
+        `${p([at[0] - ex, at[1] - ey])}Z"/>`;
+    };
+    if (piece === 0) cap(ends(0)[0], strokes[0][1], 1);
+    if (last) cap(a1, [2 * a1[0] - bend[0], 2 * a1[1] - bend[1]], 0);
+    // The tone of a pencil stroke weakens towards its edge: around the body lie two wider
+    // and fainter copies of the line. One group, so that pieces do not darken each other.
+    const layer = (copy: number, w: number, tone: number): string =>
+      `<path class="hm-stroke hm-seq" pathLength="1" style="--i:${seq}" ` +
+      `opacity="${tone}" stroke-width="${r1(w)}" d="${ds[copy]}"/>`;
     out +=
-      `<path class="hm-stroke hm-seq" pathLength="1" style="--i:${seq++}" ` +
-      `opacity="${opacity.toFixed(2)}" stroke-width="${r1(width)}" d="${d}"/>`;
+      `<g opacity="${opacity.toFixed(2)}">` +
+      layer(0, width + 0.4, 0.2) +
+      layer(1, width - 0.5, 0.42) +
+      layer(2, body, 1) +
+      caps +
+      `</g>`;
+    seq++;
     // The next piece starts where this one ended: at the beginning of a stroke, heading along it
-    d = `M${p(next)}`;
+    ds.fill(`M${p(next)}`);
   });
   return grow ? `<g transform="translate(${-grow} ${-grow})">${out}</g>` : out;
 }
@@ -521,7 +606,10 @@ function draw(
     case 'doodle':
       return doodle(el.dataset['doodle'] ?? 'star', w, h, seed);
     case 'sheet-frame':
-      return frame(w, h, 5, 3, { w: 1.2, seed, taper: 0.5, jit: 0.8 });
+      return (
+        `<g class="hm-frost">${frost(w, h, seed)}</g>` +
+        frame(w, h, 5, 3, { w: 1.2, seed, taper: 0.5, jit: 0.8 })
+      );
     case 'title': {
       // Two rules on both sides of the text
       const range = document.createRange();
@@ -590,6 +678,162 @@ function draw(
       );
     }
   }
+}
+
+// ====== Frost on the sheet ====== //
+
+/**
+ * Ice lines collected by thickness: thousands of fine needles go into a few
+ * `<path>` elements (one per thickness), so the frost costs almost nothing to draw.
+ */
+class Ice {
+  private readonly d: string[] = ['', '', ''];
+  constructor(private readonly seed: number) {}
+
+  /** A needle from (x, y) in direction `a`; `size` 0 (finest) .. 2 (a stem) */
+  needle(x: number, y: number, a: number, len: number, size: 0 | 1 | 2, seed: number): void {
+    // A long needle bends very slightly, as a hand-drawn line does
+    const bend = len > 14 ? (hash(seed * 5.1 + this.seed) - 0.5) * len * 0.08 : 0;
+    const mx = x + Math.cos(a) * len * 0.5 - Math.sin(a) * bend;
+    const my = y + Math.sin(a) * len * 0.5 + Math.cos(a) * bend;
+    const ex = x + Math.cos(a) * len;
+    const ey = y + Math.sin(a) * len;
+    this.d[size] +=
+      `M${r1(x)} ${r1(y)}Q${r1(2 * mx - (x + ex) / 2)} ${r1(2 * my - (y + ey) / 2)} ${r1(ex)} ${r1(ey)}`;
+  }
+
+  toString(): string {
+    const widths = [0.7, 1.05, 1.5];
+    const alphas = [0.55, 0.75, 0.9];
+    return this.d
+      .map((d, i) =>
+        d
+          ? `<path class="hm-stroke" stroke-width="${widths[i]}" opacity="${alphas[i]}" d="${d}"/>`
+          : '',
+      )
+      .join('');
+  }
+}
+
+/**
+ * A frost feather, as on a window pane: a stem with dense needles on both
+ * sides at ~60°, shorter towards the tip; the big needles have needles of their own.
+ */
+function feather(
+  ice: Ice,
+  x: number,
+  y: number,
+  a: number,
+  len: number,
+  depth: number,
+  seed: number,
+) {
+  ice.needle(x, y, a, len, depth >= 2 ? 2 : depth === 1 ? 1 : 0, seed);
+  if (depth === 0 || len < 8) return;
+  const gap = depth >= 2 ? 7 : 4.5;
+  const spread = 1.0 + (hash(seed * 1.9) - 0.5) * 0.2;
+  for (let t = gap / len + 0.06; t < 0.94; t += gap / len) {
+    const px = x + Math.cos(a) * len * t;
+    const py = y + Math.sin(a) * len * t;
+    // Needles get shorter towards the tip; a little randomness keeps it alive
+    const sub = len * (depth >= 2 ? 0.36 : 0.3) * (1 - t) * (0.7 + hash(seed * 3.7 + t * 91) * 0.6);
+    for (const side of [1, -1]) {
+      const turn = side * (spread + (hash(seed * 5.3 + t * 57 + side) - 0.5) * 0.2);
+      if (sub >= 3) feather(ice, px, py, a + turn, sub, depth - 1, seed + t * 31 + side * 7);
+    }
+  }
+}
+
+/** Frost creeping in from a corner of the sheet; `a` is the direction into the sheet */
+function cornerFrost(ice: Ice, x: number, y: number, a: number, size: number, seed: number) {
+  const stems = 3;
+  for (let i = 0; i < stems; i++) {
+    // A fan of feathers; the middle one is the longest
+    const k = i / (stems - 1) - 0.5;
+    const dir = a + k * 1.25 + (hash(seed + i * 4.1) - 0.5) * 0.2;
+    const len = size * (1 - Math.abs(k) * 0.55) * (0.85 + hash(seed * 2.2 + i) * 0.3);
+    feather(ice, x, y, dir, len, 2, seed + i * 31.7);
+  }
+  // A few loose crystals in front of the feathers
+  for (let i = 0; i < 3; i++) {
+    const d = size * (0.9 + hash(seed * 6.1 + i) * 0.35);
+    const b = a + (hash(seed * 8.3 + i) - 0.5) * 1.3;
+    snowflake(
+      ice,
+      x + Math.cos(b) * d,
+      y + Math.sin(b) * d,
+      4 + hash(seed + i) * 3,
+      seed + i * 9.9,
+    );
+  }
+}
+
+/** A six-armed snowflake: a dendrite with twigs, a star with a hexagon, or a star with short rays */
+function snowflake(ice: Ice, cx: number, cy: number, r: number, seed: number): void {
+  const kind = Math.floor(hash(seed * 6.6) * 3);
+  const rot = hash(seed * 8.8) * Math.PI;
+  const big = r > 9;
+  for (let k = 0; k < 6; k++) {
+    const a = rot + (k * Math.PI) / 3;
+    const s = seed + k * 3.3;
+    ice.needle(cx, cy, a, r, big ? 2 : 1, s);
+    const at = (t: number): Pt => [cx + Math.cos(a) * r * t, cy + Math.sin(a) * r * t];
+    if (kind === 0) {
+      // Pairs of twigs along every arm
+      for (const [t, l] of [
+        [0.38, 0.36],
+        [0.62, 0.28],
+        [0.82, 0.18],
+      ]) {
+        const [x, y] = at(t);
+        ice.needle(x, y, a + 1.05, r * l, big ? 1 : 0, s + t * 7);
+        ice.needle(x, y, a - 1.05, r * l, big ? 1 : 0, s + t * 9);
+      }
+    } else if (kind === 1) {
+      // A hexagon around the centre and a "V" at the tip
+      const [x0, y0] = at(0.42);
+      const b = a + Math.PI / 3;
+      const x1 = cx + Math.cos(b) * r * 0.42;
+      const y1 = cy + Math.sin(b) * r * 0.42;
+      ice.needle(x0, y0, Math.atan2(y1 - y0, x1 - x0), Math.hypot(x1 - x0, y1 - y0), 1, s + 1);
+      const [x, y] = at(0.72);
+      ice.needle(x, y, a + 0.75, r * 0.3, big ? 1 : 0, s + 2);
+      ice.needle(x, y, a - 0.75, r * 0.3, big ? 1 : 0, s + 3);
+    } else {
+      // Short rays between the arms and a cross bar on every arm
+      ice.needle(cx, cy, a + Math.PI / 6, r * 0.42, 0, s + 4);
+      const [x, y] = at(0.55);
+      ice.needle(x, y, a + Math.PI / 2, r * 0.16, 0, s + 5);
+      ice.needle(x, y, a - Math.PI / 2, r * 0.16, 0, s + 6);
+    }
+  }
+}
+
+/**
+ * Frost on the paper: ice feathers creeping in from the corners and pencil
+ * snowflakes along the edges of the sheet, half hidden under the content.
+ */
+function frost(w: number, h: number, seed: number): string {
+  const ice = new Ice(seed);
+  const size = Math.min(110, w * 0.28);
+  cornerFrost(ice, 3, 3, Math.PI / 4, size, seed);
+  cornerFrost(ice, w - 3, 3, (Math.PI * 3) / 4, size * 0.8, seed + 1);
+  cornerFrost(ice, w - 3, h - 3, (-Math.PI * 3) / 4, size * 0.75, seed + 2);
+  cornerFrost(ice, 3, h - 3, -Math.PI / 4, size * 0.9, seed + 3);
+  // Snowflakes in the margins: about one per 200 px of the sheet, on alternating sides
+  for (let y = size * 1.6, i = 0; y < h - size * 1.4; i++) {
+    const left = (i + Math.round(hash(seed * 4.4))) % 2 === 0;
+    const r = 9 + hash(seed * 3.1 + i) * 9;
+    const x = left ? 8 + r * 0.25 : w - 8 - r * 0.25;
+    snowflake(ice, x, y, r, seed + i * 17.9);
+    y += 200 * (0.7 + hash(seed + i * 2.9) * 0.6);
+  }
+  // Inside the sheet only: the frost must not hang over its edge
+  const clip = `hm-frost-${Math.round(seed * 1000)}`;
+  return (
+    `<clipPath id="${clip}"><rect x="2" y="2" width="${r1(w - 4)}" height="${r1(h - 4)}"/></clipPath>` +
+    `<g clip-path="url(#${clip})">${ice}</g>`
+  );
 }
 
 /** A broken line through the corners, with points every few px: corners stay corners after smoothing */
@@ -761,22 +1005,75 @@ const QUIET = 'shop-sheet';
 const PAD = 18;
 
 /**
- * A tile of pencil grain as a CSS mask: `holes` of the pixels are faint (`hole` of the
- * colour is left), the rest keep `min`..1
+ * The tooth of the paper: several layers of smooth noise of different scale (fractal noise,
+ * as Perlin's) and a little fine grain. A pencil leaves colour on the bumps of the paper and
+ * skips the pits, and bumps come in patches, not as separate points — that is what makes a
+ * line look like pencil and not like sand. The field repeats seamlessly (every layer is a
+ * lattice that wraps around). Values: 0 in the pits .. 1 on the bumps, `size` x `size` of them.
  */
-function grainTile(holes: number, min: number, hole = 0): string {
-  const size = 160;
+function toothField(size: number): Float32Array {
+  // Cells of each layer across the tile (bumps of 1.5, 2, 3 and 4.5 px) and its share.
+  // Bigger patches read as dirt on light fills (the beard of the mascot).
+  const layers: [cells: number, weight: number][] = [
+    [107, 0.38],
+    [80, 0.3],
+    [53, 0.2],
+    [36, 0.12],
+  ];
+  const lattices = layers.map(([cells], k) =>
+    Float32Array.from({ length: cells * cells }, (_, i) => hash(i * 0.917 + k * 53.3)),
+  );
+  const ease = (t: number): number => t * t * (3 - 2 * t);
+  const field = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let n = 0;
+      for (let k = 0; k < layers.length; k++) {
+        const [cells, weight] = layers[k];
+        const fx = (x / size) * cells;
+        const fy = (y / size) * cells;
+        const x0 = Math.floor(fx);
+        const y0 = Math.floor(fy);
+        const x1 = (x0 + 1) % cells;
+        const y1 = (y0 + 1) % cells;
+        const tx = ease(fx - x0);
+        const ty = ease(fy - y0);
+        const g = lattices[k];
+        const top = g[y0 * cells + x0] * (1 - tx) + g[y0 * cells + x1] * tx;
+        const bottom = g[y1 * cells + x0] * (1 - tx) + g[y1 * cells + x1] * tx;
+        n += weight * (top * (1 - ty) + bottom * ty);
+      }
+      const i = y * size + x;
+      n = n * 0.82 + hash(i * 1.37) * 0.18;
+      // A soft edge between the pits (low noise) and the bumps
+      field[i] = ease(Math.min(1, Math.max(0, (n - 0.36) / 0.22)));
+    }
+  }
+  return field;
+}
+
+/**
+ * The tooth as a CSS mask tile (shown 160 px wide), put into the custom property `name`.
+ * The image goes through a blob URL: a data URL of this size in a property that hundreds
+ * of drawings use would be a heavy string.
+ *
+ * @param min what is left of the colour in the deepest pits: the lower, the rougher
+ */
+function toothMask(name: string, field: Float32Array, min: number): void {
+  const size = Math.sqrt(field.length);
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return 'none';
+  if (!ctx) return;
   const image = ctx.createImageData(size, size);
-  for (let i = 0; i < size * size; i++) {
-    const v = hash(i * 0.731 + holes * 97);
-    image.data[i * 4 + 3] = Math.round(255 * (v < holes ? hole : min + (1 - min) * hash(i * 1.37)));
+  for (let i = 0; i < field.length; i++) {
+    image.data[i * 4 + 3] = Math.round(255 * (min + (1 - min) * field[i]));
   }
   ctx.putImageData(image, 0, 0);
-  return `url(${canvas.toDataURL()})`;
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    document.documentElement.style.setProperty(name, `url(${URL.createObjectURL(blob)})`);
+  });
 }
 
 @Injectable({ providedIn: 'root' })
@@ -791,10 +1088,17 @@ export class Handmade {
   private boilFrame = 0;
 
   start(): void {
-    // Grain of the pencil lead: masks made once and tiled (much cheaper than an SVG filter per drawing)
-    const root = document.documentElement.style;
-    root.setProperty('--hm-grain', grainTile(0.3, 0.55));
-    root.setProperty('--hm-grain-soft', grainTile(0.05, 0.86, 0.62));
+    // Texture of pencil on paper: masks made once from one noise field and tiled (much
+    // cheaper than an SVG filter per drawing). A point per screen pixel, at most 3 per CSS pixel.
+    const dense = Math.min(3, Math.max(1, Math.round(window.devicePixelRatio || 1)));
+    const tooth = toothField(160 * dense);
+    // Rough for lines, light for hatching (the text on a button must stay readable)
+    toothMask('--hm-grain', tooth, 0.3);
+    toothMask('--hm-grain-soft', tooth, 0.72);
+    // The mascot; on the dark sheet the dark paper shows through the pits of his white
+    // beard as dirt, so there the tooth is shallower
+    toothMask('--m-grain', tooth, 0.56);
+    toothMask('--m-grain-dark', tooth, 0.76);
     this.listen();
     new MutationObserver(() => this.schedule()).observe(document.body, {
       childList: true,

@@ -3146,3 +3146,32 @@ svg.hm.hm-free {
 .ios-push p {
   margin: 0;
 }
+.place-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.8rem;
+}
+.place-ask p {
+  margin: 0;
+}
+.merge-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.merge-choice .row > .choice {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.choice > span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.merge-choice + .merge-choice {
+  margin-top: 0.5rem;
+}
+.merge-choice > span {
+  padding-bottom: 0.2rem;
+}

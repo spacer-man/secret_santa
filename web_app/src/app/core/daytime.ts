@@ -216,16 +216,15 @@ export class Daytime {
     return [...starts, ...holds].slice(0, 6);
   }
 
-  /** Returns the new timezone of the account if the city is in another one */
-  pickCity(city: City): Promise<string | null> {
-    return this.setPlace({ ...city, source: 'city' });
+  placeOfCity(city: City): Place {
+    return { ...city, source: 'city' };
   }
 
   /**
    * The browser's geolocation (it asks the person). Rounded to ~10 km: the sun does not
    * need more. Named by the nearest city of the list, if it is close.
    */
-  async locate(): Promise<{ result: 'ok' | 'denied' | 'unavailable'; timezone?: string | null }> {
+  async locate(): Promise<{ result: 'ok' | 'denied' | 'unavailable'; place?: Place }> {
     if (!navigator.geolocation) return { result: 'unavailable' };
     try {
       const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
@@ -249,7 +248,7 @@ export class Daytime {
       if (near && km(place, near) < 120) {
         Object.assign(place, { ru: near.ru, en: near.en, offset: near.offset });
       }
-      return { result: 'ok', timezone: await this.setPlace(place) };
+      return { result: 'ok', place };
     } catch (err) {
       return {
         result: (err as GeolocationPositionError)?.code === 1 ? 'denied' : 'unavailable',
@@ -264,22 +263,25 @@ export class Daytime {
   }
 
   /**
-   * Remember the place; one in another timezone moves the account's timezone there
-   * (returns the new one, null if it stayed)
+   * The timezone the account would move to for this place (null: it already is in it).
+   * The caller asks the person first: no, and the place stays as it was.
    */
-  private async setPlace(place: Place): Promise<string | null> {
+  timezoneFor(place: Place): string | null {
     const offset = place.offset ?? this.deviceOffset;
-    let timezone: string | null = null;
-    if (this.store.registered() && offset !== this.accountOffset()) {
-      const known = this.store.config()?.timezones ?? [formatOffset(offset)];
-      timezone = closestTimezone(known, offset);
+    if (!this.store.registered() || offset === this.accountOffset()) return null;
+    return closestTimezone(this.store.config()?.timezones ?? [formatOffset(offset)], offset);
+  }
+
+  /** Remember the place; one in another timezone moves the account's timezone there */
+  async setPlace(place: Place): Promise<void> {
+    const timezone = this.timezoneFor(place);
+    if (timezone) {
       this.store.me.set(await this.api.saveProfile(timezone, null, this.i18n.lang()));
       // The closest known offset, if the city's own isn't one of them
       place = { ...place, offset: offsetMinutes(timezone) };
     }
     this.custom.set(place);
     writePlace(place);
-    return timezone;
   }
 
   /** Where the sun is for the scene */

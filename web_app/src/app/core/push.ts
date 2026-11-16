@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { Api } from './api';
+import { Install } from './install';
 import { Telegram } from './telegram';
 
 /**
@@ -28,6 +29,7 @@ function keyBytes(base64url: string): Uint8Array<ArrayBuffer> {
 export class Push {
   private readonly api = inject(Api);
   private readonly tg = inject(Telegram);
+  private readonly install = inject(Install);
 
   readonly state = signal<PushState>('unsupported');
 
@@ -40,14 +42,6 @@ export class Push {
     );
   }
 
-  private get iosBrowser(): boolean {
-    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const standalone =
-      matchMedia('(display-mode: standalone)').matches ||
-      (navigator as Navigator & { standalone?: boolean }).standalone === true;
-    return ios && !standalone;
-  }
-
   /** The service worker, if there is one (none in development) */
   private async registration(): Promise<ServiceWorkerRegistration | null> {
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), SW_WAIT_MS));
@@ -56,7 +50,7 @@ export class Push {
 
   async refresh(vapidKey: string | null | undefined): Promise<PushState> {
     let state: PushState;
-    if (this.iosBrowser && !('PushManager' in window)) state = 'ios-install';
+    if (this.install.iosBrowser) state = 'ios-install';
     else if (!this.supported) state = 'unsupported';
     else if (!vapidKey) state = 'server-off';
     else if (Notification.permission === 'denied') state = 'denied';

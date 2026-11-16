@@ -3047,14 +3047,22 @@ svg.hm.hm-free {
 .sign-in:not(:has(.sign-in-google:not(:empty), .sign-in-telegram iframe)) .sign-in-or {
   display: none;
 }
-.imprint a.theme-toggle {
+/* Theme and settings: square icon buttons as tall as the old text button */
+.imprint-tools {
+  display: flex;
+  gap: 0.5rem;
+}
+.theme-toggle.icon-btn {
+  --icon-btn: 1.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-btn);
+  height: var(--icon-btn);
+  padding: 0;
+  font-size: 1.15rem;
+  line-height: 1;
   text-decoration: none;
-}
-.imprint {
-  flex-wrap: wrap;
-}
-.imprint-text {
-  flex: 1 1 9rem;
 }
 .identities {
   list-style: none;
@@ -3099,12 +3107,42 @@ svg.hm.hm-free {
 .merge p {
   margin: 0;
 }
-.merge-cols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
+.merge-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
 }
-.merge-cols ul {
-  margin: 0.2rem 0 0;
+.merge-table th,
+.merge-table td {
+  padding: 0.3rem 0.25rem;
+  border-bottom: 1px solid var(--rule-soft);
+  text-align: center;
+}
+.merge-table tbody th {
+  text-align: left;
+  font-weight: 400;
+}
+.merge-table thead th {
+  font-family: var(--slab);
+  font-weight: 700;
+}
+.merge-table .merge-result {
+  font-weight: 700;
+  color: var(--stamp);
+}
+.merge-rules {
+  margin: 0;
   padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.ios-push {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.8rem;
+}
+.ios-push p {
+  margin: 0;
 }

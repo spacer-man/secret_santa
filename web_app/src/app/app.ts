@@ -19,12 +19,25 @@ import { Snow } from './components/fx/snow';
       <footer class="imprint">
         <span class="seal" aria-hidden="true"><i>❄</i></span>
         <span class="imprint-text">{{ i18n.t('appName') }} · {{ i18n.t('imprint') }}</span>
-        <button class="theme-toggle" (click)="theme.cycle()">
-          {{ themeIcon() }} {{ i18n.t(themeLabel()) }}
-        </button>
-        @if (store.registered()) {
-          <a class="theme-toggle" routerLink="/settings">⚙ {{ i18n.t('settings') }}</a>
-        }
+        <span class="imprint-tools">
+          <button
+            class="theme-toggle icon-btn"
+            [attr.aria-label]="i18n.t(themeLabel())"
+            [title]="i18n.t(themeLabel())"
+            (click)="theme.cycle()"
+          >
+            {{ themeIcon() }}
+          </button>
+          @if (store.registered()) {
+            <a
+              class="theme-toggle icon-btn"
+              routerLink="/settings"
+              [attr.aria-label]="i18n.t('settings')"
+              [title]="i18n.t('settings')"
+              >⚙</a
+            >
+          }
+        </span>
       </footer>
     </main>
 

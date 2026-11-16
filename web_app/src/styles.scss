@@ -27,6 +27,7 @@
   --buy: #2f6f57;
   --wash: rgba(104, 138, 164, 0.3);
   --wash-ink: #5f86a6;
+  --frost: rgba(78, 128, 168, 0.5);
   --rarity-common: #7d7d8c;
   --rarity-rare: #1f86ad;
   --rarity-epic: #8748bd;
@@ -69,6 +70,7 @@
   --buy: #2f8062;
   --wash: rgba(120, 160, 200, 0.22);
   --wash-ink: #7fa8cf;
+  --frost: rgba(160, 200, 240, 0.42);
   --rarity-common: #8b8ba0;
   --rarity-rare: #4cc9f0;
   --rarity-epic: #c77dff;
@@ -1674,6 +1676,10 @@ svg.hm {
   z-index: 0;
   --hm: var(--rule-soft);
 }
+/* Frost on the sheet: ice ferns in the corners, snowflakes along the edges */
+.page > svg.hm .hm-frost {
+  --hm: var(--frost);
+}
 
 /* Stamp frame */
 .festive,
@@ -1895,6 +1901,24 @@ svg.hm-anim .hm-v .hm-seq {
   animation: hm-scribble var(--each, 40ms) linear forwards;
   animation-delay: calc(var(--i) * var(--each, 40ms));
 }
+/* A pencil line has a soft edge: a faint rim around every piece of it */
+.hm-pencil {
+  stroke: var(--hm);
+  stroke-width: 0.9px;
+  stroke-opacity: 0.32;
+  stroke-linejoin: round;
+}
+/* The round ends of a hatching line appear when its piece is drawn */
+svg.hm-anim .hm-v .hm-cap {
+  opacity: 0;
+  animation: hm-appear 1ms linear forwards;
+  animation-delay: calc((var(--i) + 1) * var(--each, 40ms));
+}
+@keyframes hm-appear {
+  to {
+    opacity: 1;
+  }
+}
 .hm-old {
   animation: hm-fade var(--dur, 300ms) ease-in forwards;
 }
@@ -2068,6 +2092,831 @@ svg.hm-field {
 }
 .card-btn.price:disabled {
   opacity: 0.7 !important;
+}
+
+/* ===== Install offer ===== */
+.install-steps {
+  margin: 0;
+  padding-left: 1.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.share-icon {
+  width: 1.1em;
+  height: 1.1em;
+  vertical-align: -0.15em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ===== How to play ===== */
+.steps,
+.facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.steps li {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.7rem;
+  align-items: start;
+  padding: 0.7rem 0;
+}
+.steps li:last-child,
+.facts li:last-child {
+  border-bottom: none;
+}
+.steps li:last-child > svg.hm,
+.facts li:last-child > svg.hm {
+  display: none !important;
+}
+.steps p {
+  margin: 0.2rem 0 0;
+  font-size: 0.92rem;
+}
+.step-no {
+  font-family: var(--slab);
+  font-size: 2rem;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--stamp);
+  min-width: 1.4rem;
+  text-align: center;
+}
+.rule-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  font-size: 1.4rem;
+  object-fit: contain;
+}
+.facts li {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.55rem 0;
+  font-size: 0.92rem;
+}
+.facts li > span {
+  flex: none;
+}
+.ball-path {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem;
+  text-align: center;
+}
+.ball-path > div,
+.friend-gifts > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  flex: 1;
+}
+.ball-path small,
+.friend-gifts small {
+  color: var(--ink-2);
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+.ball-path > i {
+  font-style: normal;
+  color: var(--ink-2);
+}
+.friend-gifts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+  text-align: center;
+}
+.friend-gifts .rule-icon {
+  width: 3.4rem;
+  height: 3.4rem;
+}
+.friend-gifts b {
+  font-family: var(--slab);
+  font-size: 0.85rem;
+  color: var(--stamp);
+}
+
+/* ===== Mascot: Ded Moroz / Santa ===== */
+/*
+ * Coloured pencil on the paper of the sheet, as the rest of the interface: fills are careless
+ * hatching over a pale base (patterns inside the drawing, see mascot-art.ts), outlines break
+ * here and there, the grain of the pencil lies over everything. On the dark sheet it is chalk.
+ */
+.mascot-art {
+  --m-line: #2b2522;
+  --m-fur: #fdfbf5;
+  --m-skin: #f0bf98;
+  --m-cheek: #ef8f86;
+  --m-nose: #e7837a;
+  --m-coat: #c8392d;
+  /* What the pale base of a fill is mixed with */
+  --m-paper: var(--paper);
+  --m-fur-base: color-mix(in srgb, var(--m-fur) 55%, var(--paper-3));
+  display: block;
+}
+.mascot-art.moroz {
+  --m-coat: #2f62a6;
+}
+:root[data-theme='dark'] .mascot-art {
+  --m-line: #121318;
+  --m-coat: #d8493c;
+  --m-fur-base: color-mix(in srgb, var(--m-fur) 80%, var(--paper-3));
+  /* A shallower tooth: the dark paper showing through reads as dirt on the white fur */
+  --m-grain: var(--m-grain-dark);
+}
+:root[data-theme='dark'] .mascot-art.moroz {
+  --m-coat: #4a7fc6;
+}
+.mascot-art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  /* The coat does not end with a cut: it fades out into the paper. Plus the grain of the pencil */
+  -webkit-mask-image:
+    linear-gradient(#000 0 74%, transparent 97%), var(--m-grain, var(--hm-grain-soft));
+  mask-image: linear-gradient(#000 0 74%, transparent 97%), var(--m-grain, var(--hm-grain-soft));
+  -webkit-mask-size:
+    100% 100%,
+    160px 160px;
+  mask-size:
+    100% 100%,
+    160px 160px;
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+/*
+ * Outlines are pencil: the main line lifts now and then, a heavier pass lies over it in pieces
+ * (where the hand pressed), a thin stray line runs beside. The two extra passes are added by
+ * mascot-art.ts; all three boil apart, the places of the gaps change with every variant.
+ */
+.mascot-art :is(.m-coat, .m-fur, .m-skin, .m-nose, .m-mitt) {
+  stroke: var(--m-line);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-dasharray: 52 3.4 33 3 71 3.6;
+  stroke-dashoffset: var(--m-dash, 0);
+}
+.mascot-art .m-pass {
+  fill: none;
+  stroke: var(--m-line);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+/* The soft uneven rim of the main line: it lifts where the line does */
+.mascot-art :is(.m-soft1, .m-soft2) {
+  stroke-dasharray: 52 3.4 33 3 71 3.6;
+  stroke-dashoffset: var(--m-dash, 0);
+}
+.mascot-art .m-soft1 {
+  stroke-width: 2.7;
+  opacity: 0.18;
+}
+.mascot-art .m-soft2 {
+  stroke-width: 2;
+  opacity: 0.36;
+}
+.mascot-art .m-pass2 {
+  stroke-width: 2.3;
+  opacity: 0.5;
+  stroke-dasharray: 19 21 31 13 9 27 44 17;
+  stroke-dashoffset: calc(var(--m-dash, 0) * 1.7);
+}
+.mascot-art .m-pass3 {
+  stroke-width: 0.85;
+  opacity: 0.6;
+  stroke-dasharray: 41 11 24 15 62 9;
+  stroke-dashoffset: calc(var(--m-dash, 0) * -1.3 + 20);
+}
+.m-coat {
+  fill: var(--m-fill-coat, var(--m-coat));
+}
+/* A second copy of a shape, without its outline: hides the inner lines where parts overlap */
+.mascot-art .m-fill-only {
+  stroke: none;
+}
+.m-fur,
+.m-mitt {
+  fill: var(--m-fill-fur, var(--m-fur));
+}
+/* The patterns of the hatched fills */
+.m-hatch-line {
+  fill: none;
+  stroke-linecap: round;
+}
+.m-coat-hatch .m-base {
+  fill: color-mix(in srgb, var(--m-coat) 52%, var(--m-paper));
+}
+.m-coat-hatch .m-hatch-line {
+  stroke: var(--m-coat);
+}
+.m-fur-hatch .m-base {
+  fill: var(--m-fur-base);
+}
+.m-fur-hatch .m-hatch-line {
+  stroke: var(--m-fur);
+}
+.m-skin-hatch .m-base {
+  fill: color-mix(in srgb, var(--m-skin) 70%, var(--m-paper));
+}
+.m-skin-hatch .m-hatch-line {
+  stroke: var(--m-skin);
+}
+.m-hatch {
+  fill: none;
+  stroke: color-mix(in srgb, var(--m-coat) 60%, #000);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  opacity: 0.45;
+}
+.m-skin {
+  fill: var(--m-fill-skin, var(--m-skin));
+}
+.m-nose {
+  fill: var(--m-nose);
+}
+.m-cheek {
+  fill: var(--m-cheek);
+  opacity: 0.55;
+}
+.m-eye {
+  fill: #2b2522;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: mascot-blink 5.2s infinite;
+}
+.m-mouth {
+  fill: #7a2620;
+  transform-box: fill-box;
+  transform-origin: center top;
+}
+.m-brow,
+.m-brow-out {
+  fill: none;
+  stroke: var(--m-fur);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.m-brow-out {
+  stroke: var(--m-line);
+  stroke-width: 6.4;
+}
+.m-curl,
+.m-line,
+.m-specs {
+  fill: none;
+  stroke: var(--m-line);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+.m-curl {
+  opacity: 0.45;
+}
+.m-crease {
+  fill: none;
+  stroke: var(--m-line);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  opacity: 0.6;
+}
+.m-specs {
+  stroke: #a87618;
+  stroke-width: 1.6;
+}
+.m-flake {
+  fill: none;
+  stroke: var(--m-fur);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.m-shades {
+  fill: #1d1d24;
+  stroke: var(--m-line);
+  stroke-width: 1.2;
+}
+.m-shine {
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+/* --- Parts that move: pivots are in the coordinates of the drawing --- */
+.mascot-art
+  :is(
+    .m-all,
+    .m-breath,
+    .m-head,
+    .m-head-act,
+    .m-arm,
+    .m-fore,
+    .m-arm-l,
+    .m-tip,
+    .m-look,
+    .m-brows,
+    .m-flake,
+    .m-shine
+  ) {
+  transform-box: view-box;
+}
+.m-all,
+.m-breath {
+  transform-origin: 60px 150px;
+}
+.m-head,
+.m-head-act {
+  transform-origin: 60px 96px;
+}
+.m-arm {
+  transform-origin: 85px 106px;
+  animation: mascot-arm-r 3.8s ease-in-out infinite;
+}
+.m-fore {
+  transform-origin: 95px 127px;
+}
+.m-arm-l {
+  transform-origin: 35px 106px;
+  animation: mascot-arm-l 3.8s ease-in-out infinite;
+}
+.m-tip {
+  transform-origin: 70px 30px;
+}
+.m-flake {
+  transform-origin: 60px 26px;
+}
+
+/* Always: breathing, the head sways, the eyes look around, the hat tip swings, the flake twinkles */
+.m-breath {
+  animation: mascot-breath 3.8s ease-in-out infinite;
+}
+.m-head {
+  animation: mascot-sway 7s ease-in-out infinite;
+}
+.m-look {
+  animation: mascot-look 11s ease-in-out infinite;
+}
+.m-tip {
+  animation: mascot-tip 4.4s ease-in-out infinite;
+}
+.moroz .m-flake {
+  animation: mascot-twinkle 3.2s ease-in-out infinite;
+}
+.jolly .m-head {
+  animation-duration: 3.6s;
+}
+.jolly .m-breath {
+  animation: mascot-bounce 1.8s ease-in-out infinite;
+}
+.grumpy .m-head {
+  animation-duration: 10s;
+}
+
+/* While talking: nods, the brows go up, the eyes look at the bubble, the mouth moves */
+.mascot-art.talking .m-head {
+  animation: mascot-talk-nod 1.1s ease-in-out infinite;
+}
+.mascot-art.talking .m-brows {
+  transform: translateY(-1.5px);
+}
+.grumpy.talking .m-brows {
+  transform: translateY(0.8px);
+}
+.mascot-art.talking .m-look {
+  animation: none;
+  transform: translate(1.6px, -0.3px);
+}
+.mascot-art.talking .m-mouth {
+  animation: mascot-talk 0.16s ease-in-out infinite alternate;
+}
+.m-brows,
+.m-look {
+  transition: transform 0.3s ease;
+}
+
+/* Actions now and then (see ACTS in mascot-art.ts; durations = ACT_MS) */
+.act-wave .m-arm {
+  animation: mascot-wave 2.6s ease-in-out;
+}
+.act-wave .m-fore {
+  animation: mascot-wave-fore 2.6s ease-in-out;
+}
+/* The cuff and the mitten show only on a raised arm (hanging, they would peep out of the fade) */
+.m-hand {
+  opacity: 0;
+}
+.act-wave .m-hand {
+  animation: mascot-hand 2.6s ease-in-out;
+}
+.act-wave .m-head-act {
+  animation: mascot-tilt 2.6s ease-in-out;
+}
+.act-hop .m-all {
+  animation: mascot-hop 0.75s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+.act-nod .m-head-act {
+  animation: mascot-nod 0.9s ease-in-out;
+}
+.act-look .m-look {
+  animation: mascot-glance 2.4s ease-in-out;
+}
+.act-look .m-head-act {
+  animation: mascot-turn 2.4s ease-in-out;
+}
+.act-glint .m-shine {
+  animation: mascot-glint 1.1s ease-in-out;
+}
+.act-glint .m-head-act {
+  animation: mascot-nod 0.9s ease-in-out;
+}
+.act-sway .m-head-act {
+  animation: mascot-big-sway 2.6s ease-in-out;
+}
+.act-sigh .m-all {
+  animation: mascot-sigh 2.3s ease-in-out;
+}
+.act-sigh .m-eye {
+  animation: mascot-shut 2.3s ease-in-out;
+}
+.act-shake .m-head-act {
+  animation: mascot-shake 0.9s ease-in-out;
+}
+
+@keyframes mascot-breath {
+  50% {
+    transform: scale(1.012, 1.022);
+  }
+}
+@keyframes mascot-bounce {
+  50% {
+    transform: translateY(-1.5px) scale(1.01, 1.02);
+  }
+}
+@keyframes mascot-sway {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  30% {
+    transform: rotate(-2.5deg) translateY(-0.5px);
+  }
+  70% {
+    transform: rotate(2deg);
+  }
+}
+@keyframes mascot-look {
+  0%,
+  30%,
+  92%,
+  100% {
+    transform: translate(0, 0);
+  }
+  36%,
+  54% {
+    transform: translate(-1.6px, 0);
+  }
+  60%,
+  80% {
+    transform: translate(1.4px, -0.6px);
+  }
+}
+@keyframes mascot-tip {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  50% {
+    transform: rotate(5deg);
+  }
+}
+@keyframes mascot-twinkle {
+  0%,
+  70%,
+  100% {
+    transform: scale(1) rotate(0);
+    opacity: 1;
+  }
+  80% {
+    transform: scale(1.25) rotate(30deg);
+    opacity: 0.7;
+  }
+}
+@keyframes mascot-talk-nod {
+  0%,
+  100% {
+    transform: rotate(0) translateY(0);
+  }
+  25% {
+    transform: rotate(-2deg) translateY(0.8px);
+  }
+  60% {
+    transform: rotate(1.5deg) translateY(-0.4px);
+  }
+}
+/* Waving: the upper arm goes out to the side and stays there… */
+@keyframes mascot-wave {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  15%,
+  85% {
+    transform: rotate(-84deg);
+  }
+}
+/* …the forearm bends up at the elbow (bending first, so the arm does not stick out) and swings */
+@keyframes mascot-wave-fore {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  7%,
+  93% {
+    transform: rotate(-60deg);
+  }
+  15%,
+  85% {
+    transform: rotate(-68deg);
+  }
+  27%,
+  51% {
+    transform: rotate(-54deg);
+  }
+  39%,
+  63% {
+    transform: rotate(-84deg);
+  }
+  75% {
+    transform: rotate(-60deg);
+  }
+}
+@keyframes mascot-hand {
+  0%,
+  6%,
+  94%,
+  100% {
+    opacity: 0;
+  }
+  14%,
+  86% {
+    opacity: 1;
+  }
+}
+/* Arms swing a little with the breath */
+@keyframes mascot-arm-l {
+  50% {
+    transform: rotate(2deg);
+  }
+}
+@keyframes mascot-arm-r {
+  50% {
+    transform: rotate(-2deg);
+  }
+}
+@keyframes mascot-tilt {
+  15%,
+  80% {
+    transform: rotate(-4deg);
+  }
+}
+@keyframes mascot-hop {
+  0% {
+    transform: scale(1.04, 0.95);
+  }
+  35% {
+    transform: translateY(-9px) scale(0.97, 1.04);
+  }
+  70% {
+    transform: scale(1.04, 0.96);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes mascot-nod {
+  35% {
+    transform: rotate(3deg) translateY(2px);
+  }
+  70% {
+    transform: rotate(-1deg) translateY(-0.5px);
+  }
+}
+@keyframes mascot-glance {
+  0%,
+  100% {
+    transform: none;
+  }
+  15%,
+  42% {
+    transform: translate(-2px, -0.4px);
+  }
+  55%,
+  85% {
+    transform: translate(2px, -0.4px);
+  }
+}
+@keyframes mascot-turn {
+  15%,
+  42% {
+    transform: rotate(-4deg);
+  }
+  55%,
+  85% {
+    transform: rotate(4deg);
+  }
+}
+@keyframes mascot-glint {
+  0%,
+  100% {
+    transform: translateX(0);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translateX(5px);
+    opacity: 1;
+  }
+}
+@keyframes mascot-big-sway {
+  25% {
+    transform: rotate(-6deg);
+  }
+  75% {
+    transform: rotate(6deg);
+  }
+}
+@keyframes mascot-sigh {
+  35% {
+    transform: translateY(-3px) scale(1.02, 1.03);
+  }
+  70% {
+    transform: translateY(1.5px) scale(1.01, 0.97);
+  }
+}
+@keyframes mascot-shut {
+  20%,
+  70% {
+    transform: scaleY(0.12);
+  }
+}
+@keyframes mascot-shake {
+  20%,
+  60% {
+    transform: rotate(-4deg);
+  }
+  40%,
+  80% {
+    transform: rotate(4deg);
+  }
+}
+@keyframes mascot-blink {
+  0%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+  96% {
+    transform: scaleY(0.1);
+  }
+}
+@keyframes mascot-talk {
+  from {
+    transform: scaleY(0.5);
+  }
+  to {
+    transform: scaleY(1.5);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mascot-art *,
+  .mascot-art.talking * {
+    animation: none !important;
+  }
+}
+
+.mascot {
+  display: flex;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.mascot-figure {
+  flex: none;
+  width: 6.4rem;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.mascot.compact .mascot-figure {
+  width: 4.2rem;
+}
+.mascot-bubble {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  margin-top: 0.4rem;
+}
+/* The tail of the bubble points at the mascot */
+.mascot-bubble::before {
+  content: '';
+  position: absolute;
+  left: -0.55rem;
+  top: 1.3rem;
+  border: 0.4rem solid transparent;
+  border-right: 0.6rem solid color-mix(in srgb, var(--wash-ink) 22%, transparent);
+  border-left: none;
+}
+.mascot-line {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mascot-line:disabled {
+  cursor: default;
+  color: inherit;
+}
+.mascot-name {
+  font-family: var(--slab);
+  font-size: 0.8rem;
+  color: var(--stamp);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.mascot-text {
+  font-size: 0.98rem;
+}
+.mascot-rest {
+  visibility: hidden;
+}
+.mascot-hint {
+  font-size: 0.75rem;
+  color: var(--ink-2);
+}
+
+.mascot-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.mascot-preview mascot-art {
+  flex: none;
+  width: 5.5rem;
+}
+.mascot-preview .quote {
+  flex: 1;
+  margin: 0;
+}
+.mascot-opts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.mascot-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.6rem 0.4rem;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.mascot-opt mascot-art {
+  width: 3.6rem;
+}
+.mascot-opt b {
+  font-family: var(--slab);
+}
+.mascot-opt small {
+  color: var(--ink-2);
+  font-size: 0.78rem;
 }
 
 /* Loading screen of the scene (tree3d/tree-3d.ts): chalk doodles on the night */

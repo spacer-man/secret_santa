@@ -25,5 +25,9 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/inbox').then((m) => m.InboxPage),
     canActivate: [needsUser],
   },
+  {
+    path: 'rules',
+    loadComponent: () => import('./pages/how-to').then((m) => m.HowToPage),
+  },
   { path: '**', redirectTo: '' },
 ];

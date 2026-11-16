@@ -101,7 +101,9 @@ def test_full_new_year_flow():
     ref = alice["invite_link"].split("start=")[1]
     client.put("/api/me", headers=h(1002), json={"timezone": "UTC+5:30", "ref": ref})
     client.put("/api/me", headers=h(1003), json={"timezone": "UTC+14", "ref": ref})
-    assert client.get("/api/me", headers=h(1001)).json()["invited"] == 2
+    # Friends count once their first wish is approved (see below)
+    me = client.get("/api/me", headers=h(1001)).json()
+    assert me["invited"] == 0 and me["invited_pending"] == 2
     assert client.put("/api/me", headers=h(1004), json={"timezone": "UTC+99"}).status_code == 422
 
     # Wishes: text only and with an image
@@ -128,6 +130,10 @@ def test_full_new_year_flow():
     for wish_id in (alice_wish, bob_wish):
         run(wish_service.update_wish_status(UUID(wish_id), ValidStatus.APPROVED))
 
+    # Bob's wish is approved: Bob counts as Alice's friend now (+15 joined, +50 wrote)
+    assert client.get("/api/me", headers=h(1001)).json()["invited"] == 1
+    history = client.get("/api/mandarins", headers=h(1001)).json()["history"]
+    assert {"friend_joined", "friend_wish"} <= {tx["reason"] for tx in history}
     wishes = client.get("/api/wishes", headers=h(1002)).json()
     assert wishes[0]["status"] == "approved"
     media_url = wishes[0]["media"][0]["url"]
@@ -210,13 +216,13 @@ def test_full_new_year_flow():
     alice_tree = client.get("/api/tree", headers=h(1001)).json()
     ball = alice_tree["balls"][0]
     assert ball["state"] == "lit"  # Alice's wish reached Bob (and maybe Carol)
-    assert alice_tree["garland"] == 2
-    # 2 friends joined + Bob's wish approved + her wish approved/delivered
+    assert alice_tree["garland"] == 1  # Bob counts (approved wish), Carol not yet
+    # Bob counts as a friend (joined + wrote) + her wish approved/delivered; Carol not yet
     history = client.get("/api/mandarins", headers=h(1001)).json()
     reasons = sorted(tx["reason"] for tx in history["history"])
-    assert reasons.count("friend_joined") == 2 and "friend_wish" in reasons
+    assert reasons.count("friend_joined") == 1 and "friend_wish" in reasons
     assert "wish_approved" in reasons and "wish_delivered" in reasons
-    assert history["balance"] == alice_tree["mandarins"] >= 15 * 2 + 50 + 30 + 20
+    assert history["balance"] == alice_tree["mandarins"] >= 15 + 50 + 30 + 20
 
     # Re-approving doesn't pay twice
     run(wish_service.update_wish_status(UUID(alice_wish), ValidStatus.APPROVED))

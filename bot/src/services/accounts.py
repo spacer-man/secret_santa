@@ -27,6 +27,7 @@ from db.models import (
     Delivery,
     EmailCode,
     MandarinTx,
+    Media,
     PushSubscription,
     ShopItem,
     UsedProof,
@@ -83,9 +84,12 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def _aware(moment: datetime) -> datetime:
+def aware(moment: datetime) -> datetime:
     # SQLite gives naive datetimes back
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+_aware = aware
 
 
 GMAIL = ("gmail.com", "googlemail.com")
@@ -155,20 +159,120 @@ async def register(
     language: str | None,
     referrer_id: UUID | None,
 ) -> User:
-    """A new account for this identity (the caller has checked there is none)"""
+    """
+    A new account for this identity (the caller has checked there is none). The friend who
+    invited it is rewarded later, for its first approved wish (``services/wish.py``)
+    """
     async with new_db_session() as session:
-        if referrer_id and not await session.get(User, referrer_id):
+        referrer = await session.get(User, referrer_id) if referrer_id else None
+        if not referrer or referrer.deleted_at:
             referrer_id = None
         user = User(timezone=timezone, language=language, referrer_id=referrer_id)
         setattr(user, COLUMNS[principal.kind], _value(principal))
         if principal.kind != "telegram":
             user.name = (principal.first_name or "")[:64] or None
         session.add(user)
-        await session.flush()
-        if referrer_id:
-            await mandarins.award(session, referrer_id, mandarins.Reason.FRIEND_JOINED, user.id)
         await session.commit()
         return user
+
+
+# ====== Sessions, deletion ====== #
+PURGE_AFTER = timedelta(days=30)
+
+
+async def end_sessions(user_id: UUID) -> datetime:
+    """Every session token made before now stops working ("sign out everywhere")"""
+    now = utc_now()
+    async with new_db_session() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            raise AccountError("No such user")
+        user.sessions_after = now
+        session.add(user)
+        await session.commit()
+    return now
+
+
+async def delete_account(user_id: UUID) -> datetime:
+    """
+    Hide the account from everything (gifts, the mailing, friends, stats) and end every other
+    session. It can be restored until the returned moment, then it is erased for good.
+    """
+    now = utc_now()
+    async with new_db_session() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            raise AccountError("No such user")
+        user.deleted_at = user.deleted_at or now
+        user.sessions_after = now
+        session.add(user)
+        await session.commit()
+        return aware(user.deleted_at) + PURGE_AFTER
+
+
+async def restore_account(user_id: UUID) -> None:
+    async with new_db_session() as session:
+        user = await session.get(User, user_id)
+        if not user or not user.deleted_at:
+            raise AccountError("Not deleted")
+        user.deleted_at = None
+        session.add(user)
+        await session.commit()
+
+
+async def purge_account(user_id: UUID) -> None:
+    """
+    Erase an account and everything of it. Its wishes go too: a recipient's gift keeps the
+    reaction, the wish itself is marked erased (``Delivery.wish_erased``). Friends it invited
+    stay, without a referrer.
+    """
+    async with new_db_session() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            return None
+        wish_ids = list(
+            (await session.scalars(select(Wish.id).where(Wish.author_id == user_id))).all()
+        )
+        if wish_ids:
+            await session.execute(
+                update(Delivery)
+                .where(col(Delivery.wish_id).in_(wish_ids))
+                .values(wish_id=None, wish_erased=True)
+            )
+            await session.execute(delete(Media).where(col(Media.wish_id).in_(wish_ids)))
+            await session.execute(delete(Wish).where(col(Wish.id).in_(wish_ids)))
+        for model, column in (
+            (Delivery, Delivery.recipient_id),
+            (MandarinTx, MandarinTx.user_id),
+            (UserItem, UserItem.user_id),
+            (PushSubscription, PushSubscription.user_id),
+        ):
+            await session.execute(delete(model).where(col(column) == user_id))
+        await session.execute(
+            update(User).where(col(User.referrer_id) == user_id).values(referrer_id=None)
+        )
+        if user.email:
+            await session.execute(delete(EmailCode).where(col(EmailCode.email) == user.email))
+        await session.delete(user)
+        await session.commit()
+
+
+async def purge_deleted(now: datetime | None = None) -> int:
+    """Erase the accounts deleted more than 30 days ago (a daily job). Returns how many"""
+    edge = (now or utc_now()) - PURGE_AFTER
+    async with new_db_session() as session:
+        ids = list(
+            (
+                await session.scalars(
+                    select(User.id)
+                    .where(col(User.deleted_at).is_not(None))
+                    .where(col(User.deleted_at) < edge)
+                )
+            ).all()
+        )
+    for user_id in ids:
+        await purge_account(user_id)
+    return len(ids)
 
 
 # ====== E-mail codes ====== #
@@ -239,7 +343,7 @@ async def check_email_code(email: str, code: str, secret: str) -> bool:
 class LinkResult(BaseModel):
     # linked: added to the account; same: it was already this account's;
     # taken: it belongs to another account (merge offered); replace: the account has
-    # another identity of this kind
+    # another identity of this kind; deleted: it belongs to a deleted account
     status: str
     other_id: UUID | None = None
 
@@ -253,6 +357,9 @@ async def link(user_id: UUID, principal: Principal) -> LinkResult:
         owner = await find_user(session, principal)
         if owner and owner.id == user.id:
             return LinkResult(status="same")
+        if owner and owner.deleted_at:
+            # Deleted: not merged (it's waiting to be restored or erased)
+            return LinkResult(status="deleted")
         if owner:
             return LinkResult(status="taken", other_id=owner.id)
         if getattr(user, column) is not None:

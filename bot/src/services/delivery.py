@@ -16,7 +16,7 @@ import timezones
 from db import new_db_session
 from db.models import Delivery, User, ValidStatus, Wish
 from repos.wish.abc import WishRepository
-from services import mandarins
+from services import mandarins, shop
 from services.wish import WishDTO, WishService
 
 REACTIONS = ("❤️", "😂", "🥹", "🔥", "🎉", "👏")
@@ -34,6 +34,8 @@ class DeliveryDTO(BaseModel):
     reaction: str | None
     reply: str | None
     wish: WishDTO | None = None
+    # The wish was erased with its author's account
+    erased: bool = False
 
 
 class FeedbackDTO(BaseModel):
@@ -277,6 +279,7 @@ class DeliveryService:
             reaction=delivery.reaction,
             reply=delivery.reply,
             wish=wish,
+            erased=delivery.wish_erased,
         )
 
     # ====== Author side ====== #
@@ -312,10 +315,13 @@ class DeliveryService:
         year = current_season_year()
 
         async with new_db_session() as session:
-            users = await session.scalar(select(func.count(col(User.id))))
+            alive = col(User.deleted_at).is_(None)
+            users = await session.scalar(select(func.count(col(User.id))).where(alive))
             by_tz = (
                 await session.execute(
-                    select(User.timezone, func.count(col(User.id))).group_by(User.timezone)
+                    select(User.timezone, func.count(col(User.id)))
+                    .where(alive)
+                    .group_by(User.timezone)
                 )
             ).all()
             wishes = await session.scalar(
@@ -348,9 +354,4 @@ class DeliveryService:
             user = await self._user(session, who)
             if not user:
                 return 0
-            return (
-                await session.scalar(
-                    select(func.count(col(User.id))).where(User.referrer_id == user.id)
-                )
-                or 0
-            )
+            return await shop.friends_count(session, user.id)

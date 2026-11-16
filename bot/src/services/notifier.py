@@ -49,6 +49,9 @@ TEXTS: dict[str, dict[str, str]] = {
         "sec_merged": "К твоему аккаунту присоединён другой аккаунт (вход через {what}).",
         "sec_dropped": "Способ входа {what} больше не связан с аккаунтом Тайного Санты: при "
         "объединении аккаунтов оставили другой.",
+        "sec_deleted": "Аккаунт удалён (вход через {what}). До {date} его можно восстановить: "
+        "просто войди в приложение. Потом он сотрётся навсегда.",
+        "sec_restored": "Аккаунт восстановлен (вход через {what}).",
         "sec_advice": "Если это не ты — открой настройки и убери лишнее, а потом напиши нам.",
         "id_telegram": "Telegram",
         "id_google": "Google",
@@ -80,6 +83,9 @@ TEXTS: dict[str, dict[str, str]] = {
         "sec_merged": "Another account was merged into yours (it signed in with {what}).",
         "sec_dropped": "The sign-in {what} is no longer linked to a Secret Santa account: "
         "another one was kept when accounts were merged.",
+        "sec_deleted": "The account was deleted (signed in with {what}). Until {date} it can be "
+        "restored: just sign in to the app. Then it is erased for good.",
+        "sec_restored": "The account was restored (signed in with {what}).",
         "sec_advice": "If it wasn't you, open the settings, remove what you don't know and "
         "write to us.",
         "id_telegram": "Telegram",
@@ -175,6 +181,7 @@ async def security(
     email_masked: str | None = None,
     also_telegram: tuple[int, ...] = (),
     also_email: tuple[str, ...] = (),
+    date: str = "",
 ) -> None:
     """
     Tell the owner that the ways into the account changed: by Telegram, e-mail and push at once,
@@ -187,7 +194,7 @@ async def security(
         return None
     language = user.language
     body = (
-        text(language, key, what=identity_label(language, kind, email_masked))
+        text(language, key, what=identity_label(language, kind, email_masked), date=date)
         + "\n\n"
         + text(language, "sec_advice")
     )

@@ -27,7 +27,14 @@ from pydantic import BaseModel, Field
 from services import accounts, email, google, notifier, push
 
 from . import auth
-from .deps import BOT_TOKEN, CurrentPrincipal, FreshUser, RegisteredUser
+from .deps import (
+    BOT_TOKEN,
+    AnyUser,
+    CurrentPrincipal,
+    FreshUser,
+    RegisteredUser,
+    require_fresh,
+)
 
 log = logging.getLogger(__name__)
 
@@ -151,9 +158,9 @@ def _bot():
     return state.get("bot")
 
 
-async def _notice(user_id: UUID, key: str, kind: str, email_masked: str | None = None, **also):
+async def _notice(user_id: UUID, key: str, kind: str, email_masked: str | None = None, **extra):
     try:
-        await notifier.security(_bot(), user_id, key, kind, email_masked, **also)
+        await notifier.security(_bot(), user_id, key, kind, email_masked, **extra)
     except Exception:
         log.warning("Security notice failed", exc_info=True)
 
@@ -363,7 +370,7 @@ async def unlink(kind: auth.IdentityKind, user: FreshUser, principal: CurrentPri
 
 
 @router.post("/api/me/reauth")
-async def reauth(body: LinkIn, user: RegisteredUser, principal: CurrentPrincipal) -> dict:
+async def reauth(body: LinkIn, user: AnyUser, principal: CurrentPrincipal) -> dict:
     """
     Confirm it's the owner (before linking, unlinking or merging): any way to sign in of this
     same account. Gives a fresh session token for that way.
@@ -375,6 +382,54 @@ async def reauth(body: LinkIn, user: RegisteredUser, principal: CurrentPrincipal
     if not owner or owner.id != user.id:
         raise HTTPException(status_code=403, detail="Not this account")
     return {**_token(proved), "me": await _me(proved)}
+
+
+# ====== Sessions, deletion ====== #
+def _renewed(principal: auth.Principal) -> dict:
+    """A new token for this session after the others were ended (the Mini App has none)"""
+    if principal.via_tma:
+        return {}
+    return _token(principal)
+
+
+@router.post("/api/me/logout-all")
+async def logout_all(user: RegisteredUser, principal: CurrentPrincipal) -> dict:
+    """
+    Sign out on every device: all session tokens stop working; this one gets a new token.
+    (The Telegram Mini App signs in by Telegram itself: it isn't ended.)
+    """
+    await accounts.end_sessions(user.id)
+    return {**_renewed(principal), "me": await _me(principal)}
+
+
+@router.delete("/api/me")
+async def delete_me(user: FreshUser, principal: CurrentPrincipal) -> dict:
+    """
+    Delete the account: hidden from everything at once, every other session ended, erased for
+    good in 30 days unless restored (signing in shows the restore page)
+    """
+    purge_at = await accounts.delete_account(user.id)
+    await _notice(user.id, "sec_deleted", principal.kind, date=purge_at.date().isoformat())
+    return {**_renewed(principal), "me": await _me(principal)}
+
+
+@router.post("/api/me/restore")
+async def restore_me(user: AnyUser, principal: CurrentPrincipal) -> dict:
+    try:
+        await accounts.restore_account(user.id)
+    except accounts.AccountError as err:
+        raise HTTPException(status_code=409, detail=str(err)) from err
+    await _notice(user.id, "sec_restored", principal.kind)
+    return await _me(principal)
+
+
+@router.post("/api/me/erase", status_code=204)
+async def erase_me(user: AnyUser, principal: CurrentPrincipal) -> None:
+    """Erase a deleted account now, without waiting 30 days (a recent sign-in is needed)"""
+    if not user.deleted_at:
+        raise HTTPException(status_code=409, detail="Delete the account first")
+    require_fresh(principal)
+    await accounts.purge_account(user.id)
 
 
 # ====== Notifications ====== #

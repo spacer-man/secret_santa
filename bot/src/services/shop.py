@@ -10,13 +10,13 @@ import logging
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 
 from db import new_db_session
-from db.models import ShopItem, User, UserItem
+from db.models import ShopItem, User, UserItem, ValidStatus, Wish
 from services import mandarins
 
 log = logging.getLogger(__name__)
@@ -128,10 +128,33 @@ async def seed_catalog() -> None:
         await session.commit()
 
 
+def active_friend(user_id: UUID):
+    """
+    A friend who counts: invited by the user, not deleted, with an approved wish. Just
+    registering doesn't count (accounts by e-mail are cheap to make)
+    """
+    approved = (
+        select(Wish.id)
+        .where(Wish.author_id == User.id)
+        .where(Wish.valid_status == ValidStatus.APPROVED)
+        .exists()
+    )
+    return and_(col(User.referrer_id) == user_id, col(User.deleted_at).is_(None), approved)
+
+
 async def friends_count(session: AsyncSession, user_id: UUID) -> int:
-    """Number of users invited by the user"""
+    """Friends invited by the user who count (``active_friend``)"""
+    return await session.scalar(select(func.count(col(User.id))).where(active_friend(user_id))) or 0
+
+
+async def invited_count(session: AsyncSession, user_id: UUID) -> int:
+    """Everyone who came by the user's link and is still here (counted or not yet)"""
     return (
-        await session.scalar(select(func.count(col(User.id))).where(User.referrer_id == user_id))
+        await session.scalar(
+            select(func.count(col(User.id)))
+            .where(User.referrer_id == user_id)
+            .where(col(User.deleted_at).is_(None))
+        )
         or 0
     )
 

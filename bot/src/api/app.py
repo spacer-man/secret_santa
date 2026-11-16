@@ -137,6 +137,19 @@ def invite_link(user_id: UUID) -> str | None:
 async def me_payload(principal: auth.Principal, user: User | None) -> dict:
     if not user:
         return {"registered": False, "first_name": principal.first_name}
+    if user.deleted_at:
+        # Only what the restore page needs
+        return {
+            "registered": True,
+            "deleted": True,
+            "purge_at": accounts.aware(user.deleted_at) + accounts.PURGE_AFTER,
+            "first_name": principal.first_name or user.name,
+            "signed_in_with": principal.kind,
+            "fresh": principal.is_fresh(),
+        }
+    friends = await delivery_service.invited_count(user.id)
+    async with new_db_session() as session:
+        came = await shop.invited_count(session, user.id)
     return {
         "registered": True,
         "first_name": principal.first_name or user.name,
@@ -145,7 +158,9 @@ async def me_payload(principal: auth.Principal, user: User | None) -> dict:
         if timezones.is_valid(user.timezone)
         else None,
         "invite_link": invite_link(user.id),
-        "invited": await delivery_service.invited_count(user.id),
+        # Friends who count (wrote an approved wish) and those who came but haven't yet
+        "invited": friends,
+        "invited_pending": max(0, came - friends),
         # The debug panel on the tree: DEBUG_TOOLS=1 and an admin only
         "debug": bool(user.telegram_id and debug.allowed(user.telegram_id)),
         # Settings: ways to sign in and notification channels
@@ -180,6 +195,8 @@ async def save_profile(principal: CurrentPrincipal, body: ProfileIn) -> dict:
         raise HTTPException(status_code=422, detail="Unknown timezone")
 
     user = await accounts.get_user(principal)
+    if user and user.deleted_at:
+        raise HTTPException(status_code=403, detail="account_deleted")
     if user:
         await user_service.edit_timezone(user.id, body.timezone)
     else:
@@ -405,6 +422,7 @@ async def delivery_out(delivery: DeliveryDTO) -> dict:
         "reaction": delivery.reaction,
         "reply": delivery.reply,
         "wish": wish,
+        "erased": delivery.erased,
     }
 
 

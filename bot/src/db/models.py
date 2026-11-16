@@ -39,6 +39,15 @@ class User(SQLModel, table=True):
     name: str | None = Field(default=None, max_length=64)
     # Channels of notifications, comma separated (telegram,push,email); None: all available
     notify: str | None = Field(default=None, max_length=32)
+    # Session tokens made before this moment don't work ("sign out everywhere")
+    sessions_after: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), nullable=True)
+    )
+    # Deleted by the owner: hidden from everything, can be restored for 30 days, then erased
+    # (services/accounts.py: delete_account, restore_account, purge_deleted)
+    deleted_at: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), nullable=True)
+    )
     timezone: str = Field(max_length=16)
     language: str | None = Field(default=None, max_length=8)
     referrer_id: UUID | None = Field(default=None, foreign_key="user.id", sa_type=Uuid)
@@ -88,6 +97,8 @@ class Delivery(SQLModel, table=True):
     opened_at: datetime | None = Field(default=None, sa_column=Column(TIMESTAMP(timezone=True)))
     reaction: str | None = Field(default=None, max_length=16)
     reply: str | None = Field(default=None, max_length=1024)
+    # The wish was erased with its author's account (``wish_id`` is gone then)
+    wish_erased: bool = Field(default=False)
 
 
 class MandarinTx(SQLModel, table=True):

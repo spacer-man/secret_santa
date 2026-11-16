@@ -7,7 +7,7 @@ import hashlib
 import hmac
 import re
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -18,7 +18,7 @@ import db
 from api import accounts as accounts_api
 from api import app as api_module
 from db import new_db_session
-from db.models import Delivery, MandarinTx, User, UserItem
+from db.models import Delivery, MandarinTx, User, UserItem, ValidStatus
 from helpers import init_data, run
 from repos.wish.sqlmodel import SQLModelWishRepository
 from services import accounts, google, push, shop
@@ -314,8 +314,9 @@ def test_merge_two_accounts(mail):
     shop_items = {i["key"]: i for i in client.get("/api/shop", headers=tg(4001)).json()["items"]}
     assert shop_items["lantern"]["count"] == 5
     assert shop_items["lantern"]["pads"] == [0]  # one figure on a place, the other put away
-    # The friend who invited the e-mail account now has the merged one as a friend
-    assert client.get("/api/me", headers=tg(4999)).json()["invited"] == 1
+    # The friend who invited the e-mail account now has the merged one as a friend (it counts:
+    # its wishes are approved below? not yet — pending)
+    assert client.get("/api/me", headers=tg(4999)).json()["invited_pending"] == 1
 
     # The token is single-account: a second merge finds nothing
     again = client.post("/api/me/merge", headers=tg(4001), json={"merge_token": r["merge_token"]})
@@ -436,6 +437,108 @@ def test_merge_asks_whose_email_and_gift(mail):
             return len(rows.all())
 
     assert run(opening_rewards()) == 1  # one gift a year, one reward for it
+
+
+# ====== Sign out everywhere, deletion ====== #
+def test_logout_everywhere(mail):
+    phone = email_login(mail, "devices@example.com")
+    client.put("/api/me", headers=bearer(phone), json={"timezone": "UTC+3"})
+    accounts_api._email_sends.clear()
+    laptop = email_login(mail, "devices@example.com")
+    r = client.post("/api/me/logout-all", headers=bearer(laptop)).json()
+    # Both old tokens end; the one that asked gets a new token
+    assert client.get("/api/me", headers=bearer(phone)).status_code == 401
+    assert client.get("/api/me", headers=bearer(laptop)).status_code == 401
+    assert client.get("/api/me", headers=bearer(r["token"])).json()["registered"]
+
+
+def test_delete_restore_and_erase(mail):
+    from uuid import UUID
+
+    from handlers.depends import wish_service
+
+    # Author with an approved wish delivered to a reader
+    author = email_login(mail, "leaving@example.com")
+    client.put("/api/me", headers=bearer(author), json={"timezone": "UTC+3"})
+    wish_id = client.post(
+        "/api/wishes", headers=bearer(author), data={"text": "From the one who leaves"}
+    ).json()["id"]
+    run(wish_service.update_wish_status(UUID(wish_id), ValidStatus.APPROVED))
+    leaving = user_by(email="leaving@example.com")
+    client.put("/api/me", headers=tg(9101), json={"timezone": "UTC+3"})
+    reader = user_by(telegram_id=9101)
+    assert leaving and reader
+
+    async def deliver() -> None:
+        async with new_db_session() as session:
+            session.add(
+                Delivery(recipient_id=reader.id, year=2027, wish_id=UUID(wish_id), opened_at=None)
+            )
+            await session.commit()
+
+    run(deliver())
+
+    # Deleting needs a recent sign-in, then the account is hidden and other sessions end
+    other_device = email_login(mail, "leaving@example.com")
+    r = client.delete("/api/me", headers=bearer(author)).json()
+    assert r["me"]["deleted"] is True
+    assert client.get("/api/me", headers=bearer(other_device)).status_code == 401
+    token = r["token"]
+    assert client.get("/api/tree", headers=bearer(token)).status_code == 403
+    assert (
+        client.put("/api/me", headers=bearer(token), json={"timezone": "UTC+1"}).status_code == 403
+    )
+    stats = client.get("/api/stats").json()
+    assert "leaving" not in str(stats)
+
+    # Signing in again shows the restore page; restoring brings everything back
+    accounts_api._email_sends.clear()
+    again = email_login(mail, "leaving@example.com")
+    assert client.get("/api/me", headers=bearer(again)).json()["deleted"] is True
+    assert client.post("/api/me/restore", headers=bearer(again)).json()["registered"]
+    assert client.get("/api/tree", headers=bearer(again)).status_code == 200
+
+    # Deleted again and 30 days pass: erased, the reader's gift says the wish is gone
+    client.delete("/api/me", headers=bearer(again))
+    erased = run(
+        accounts.purge_deleted(datetime.now(UTC) + accounts.PURGE_AFTER + timedelta(days=1))
+    )
+    assert erased >= 1
+    assert user_by(email="leaving@example.com") is None
+
+    async def gift() -> Delivery | None:
+        async with new_db_session() as session:
+            return await session.scalar(select(Delivery).where(Delivery.recipient_id == reader.id))
+
+    left = run(gift())
+    assert left and left.wish_id is None and left.wish_erased
+
+    # The address is free: a new account can be made with it
+    accounts_api._email_sends.clear()
+    fresh = email_login(mail, "leaving@example.com")
+    assert client.get("/api/me", headers=bearer(fresh)).json()["registered"] is False
+
+
+def test_erase_now_and_deleted_accounts_not_merged(mail):
+    token = email_login(mail, "gone@example.com")
+    client.put("/api/me", headers=bearer(token), json={"timezone": "UTC+3"})
+    # Not deleted yet: nothing to erase
+    assert client.post("/api/me/erase", headers=bearer(token)).status_code == 409
+    token = client.delete("/api/me", headers=bearer(token)).json()["token"]
+
+    # Another account can't absorb a deleted one
+    client.put("/api/me", headers=tg(9201), json={"timezone": "UTC+3"})
+    accounts_api._email_sends.clear()
+    client.post("/api/auth/email/start", json={"email": "gone@example.com"})
+    r = client.post(
+        "/api/me/link",
+        headers=tg(9201),
+        json={"email": {"email": "gone@example.com", "code": code_of(mail, "gone@example.com")}},
+    ).json()
+    assert r["status"] == "deleted"
+
+    assert client.post("/api/me/erase", headers=bearer(token)).status_code == 204
+    assert user_by(email="gone@example.com") is None
 
 
 # ====== Security ====== #

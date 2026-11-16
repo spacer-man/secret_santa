@@ -12,7 +12,7 @@ from sqlmodel import select
 import db
 from api import app as api_module
 from db import new_db_session
-from db.models import MandarinTx, ShopItem, User
+from db.models import MandarinTx, ShopItem, User, ValidStatus
 from helpers import init_data, run
 from services import shop
 
@@ -183,11 +183,22 @@ def test_milestone_gifts():
     assert shop_items(2201)["candy-cane-green"]["owned"] is False
 
     register(2202, ref)
+    # Registering isn't enough (accounts by e-mail are cheap): the friend's wish must be approved
+    assert shop_items(2201)["candy-cane-green"]["owned"] is False
+    assert client.get("/api/me", headers=h(2201)).json()["invited_pending"] == 1
+    approve_wish_of(2202)
     items = shop_items(2201)
     assert items["candy-cane-green"]["owned"] is True
     assert items["sled-long"]["owned"] is False
     assert client.get("/api/shop", headers=h(2201)).json()["friends"] == 1
     assert "candy-cane-green" in client.get("/api/tree", headers=h(2201)).json()["owned"]
+
+
+def approve_wish_of(telegram_id: int) -> None:
+    from handlers.depends import wish_service
+
+    r = client.post("/api/wishes", headers=h(telegram_id), data={"text": "Happy New Year, all!"})
+    run(wish_service.update_wish_status(UUID(r.json()["id"]), ValidStatus.APPROVED))
 
 
 def test_place_move_swap_unplace():

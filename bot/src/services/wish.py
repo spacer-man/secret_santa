@@ -273,13 +273,15 @@ class WishService:
             await db_session.commit()
 
     async def _reward_approved(self, db_session, wish_id: UUID) -> None:
-        """Author gets mandarins; the friend who invited them too (once)"""
+        """
+        Author gets mandarins; the friend who invited them too: the first approved wish is when
+        a friend counts (joined +15, wrote +50, once each)
+        """
         wish = await db_session.get(Wish, wish_id)
         if not wish:
             return None
         await mandarins.award(db_session, wish.author_id, mandarins.Reason.WISH_APPROVED, wish_id)
         author = await db_session.get(User, wish.author_id)
-        if author and author.referrer_id:
-            await mandarins.award(
-                db_session, author.referrer_id, mandarins.Reason.FRIEND_WISH, author.id
-            )
+        if author and author.referrer_id and not author.deleted_at:
+            for reason in (mandarins.Reason.FRIEND_JOINED, mandarins.Reason.FRIEND_WISH):
+                await mandarins.award(db_session, author.referrer_id, reason, author.id)

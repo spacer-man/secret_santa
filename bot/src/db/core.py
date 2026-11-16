@@ -19,7 +19,10 @@ USER_COLUMNS = (
     "google_id VARCHAR(64)",
     "name VARCHAR(64)",
     "notify VARCHAR(32)",
+    "sessions_after TIMESTAMP WITH TIME ZONE",
+    "deleted_at TIMESTAMP WITH TIME ZONE",
 )
+DELIVERY_COLUMNS = ("wish_erased BOOLEAN NOT NULL DEFAULT FALSE",)
 EMAILCODE_COLUMNS = (
     "day_start TIMESTAMP WITH TIME ZONE",
     "day_sends INTEGER NOT NULL DEFAULT 0",
@@ -43,6 +46,7 @@ MIGRATIONS = (
     *(f'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS {c}' for c in USER_COLUMNS),
     *USER_INDEXES,
     *(f"ALTER TABLE emailcode ADD COLUMN IF NOT EXISTS {c}" for c in EMAILCODE_COLUMNS),
+    *(f"ALTER TABLE delivery ADD COLUMN IF NOT EXISTS {c}" for c in DELIVERY_COLUMNS),
 )
 
 
@@ -86,6 +90,7 @@ async def _sqlite_user_identities(conn: AsyncConnection) -> None:
         await conn.execute(text('ALTER TABLE user_new RENAME TO "user"'))
     await _sqlite_add_columns(conn, "user", USER_COLUMNS)
     await _sqlite_add_columns(conn, "emailcode", EMAILCODE_COLUMNS)
+    await _sqlite_add_columns(conn, "delivery", DELIVERY_COLUMNS)
     for statement in USER_INDEXES:
         await conn.execute(text(statement))
 

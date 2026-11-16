@@ -60,6 +60,9 @@ class Principal(BaseModel):
     via_tma: bool = False
     # When the person proved who they are (unix time; 0: unknown, an old token)
     issued_at: int = 0
+    # When this session token was made, unix milliseconds (a re-issued token is newer than
+    # the sign-in); tokens made before "sign out everywhere" don't work
+    minted_at: int = 0
 
     def is_fresh(self, now: float | None = None) -> bool:
         age = (now or time.time()) - self.issued_at
@@ -176,6 +179,7 @@ def make_session(principal: Principal, bot_token: str) -> str:
             "fn": principal.first_name,
             # The moment of the sign-in, not of this token: a re-issued token stays as fresh
             "iat": principal.issued_at or int(time.time()),
+            "t": time.time_ns() // 1_000_000,
             "exp": int(time.time()) + SESSION_MAX_AGE,
         },
         bot_token,
@@ -192,6 +196,7 @@ def read_session(token: str, bot_token: str) -> Principal:
         key=payload["v"],
         first_name=payload.get("fn"),
         issued_at=int(payload.get("iat", 0)),
+        minted_at=int(payload.get("t", int(payload.get("iat", 0)) * 1000)),
     )
 
 

@@ -36,6 +36,16 @@ export const ru = {
     starfall: 'Звездопад',
     meteor: 'Метеоры',
   } as Record<string, string>,
+  daytime: 'Время суток',
+  daytimeModes: {
+    auto: 'Как у меня',
+    morning: 'Утро',
+    day: 'День',
+    evening: 'Вечер',
+    night: 'Ночь',
+  } as Record<string, string>,
+  daytimeNow: 'У тебя сейчас %s: двор живёт по твоим часам.',
+  daytimeFixed: 'Двор застыл в выбранном времени. Фонари и окна загораются, когда стемнеет.',
   snowLocked: 'Такой снегопад стоит %s 🍊',
   snowModes: { clear: 'Ясно', light: 'Лёгкий', snowfall: 'Снегопад', blizzard: 'Метель' } as Record<
     string,

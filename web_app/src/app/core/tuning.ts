@@ -14,6 +14,8 @@ export const TUNING = {
   // ====== Scene (components/tree3d) ====== //
   /** Change of the weather (clear sky ↔ snow ↔ blizzard), ms */
   weatherMs: 2500,
+  /** Change of the time of day chosen by hand (night ↔ morning ↔ day ↔ evening), ms */
+  daytimeMs: 3000,
   /** Tappable objects of the scene grow under the mouse: strength (1 = as designed, 0 = off) */
   sceneHover: 1,
   /** …and give under the finger / mouse button, bouncing back on release: strength */

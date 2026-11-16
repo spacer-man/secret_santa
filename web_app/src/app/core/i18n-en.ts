@@ -37,6 +37,16 @@ export const en: Dict = {
     starfall: 'Starfall',
     meteor: 'Meteors',
   } as Record<string, string>,
+  daytime: 'Time of day',
+  daytimeModes: {
+    auto: 'My clock',
+    morning: 'Morning',
+    day: 'Day',
+    evening: 'Evening',
+    night: 'Night',
+  } as Record<string, string>,
+  daytimeNow: 'It is %s for you: the yard follows your clock.',
+  daytimeFixed: 'The yard stays at the chosen time. Lanterns and windows light up after dark.',
   snowLocked: 'This snowfall costs %s 🍊',
   snowModes: {
     clear: 'Clear',

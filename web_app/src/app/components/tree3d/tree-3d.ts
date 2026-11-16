@@ -177,6 +177,8 @@ export class Tree3d implements OnDestroy {
   readonly preview = input<{ item: string; pad: number } | null>(null);
   /** 0 clear (starry sky), 1 light, 2 snowfall, 3 blizzard */
   readonly snowfall = input(1);
+  /** Time of day, hour 0..24 */
+  readonly daytime = input(0);
   /** Fringe lights under the cabin roof */
   readonly cabinLights = input<string | null>(null);
   readonly cabinClick = output<void>();
@@ -206,6 +208,7 @@ export class Tree3d implements OnDestroy {
   /** The world being built (not yet given the inputs) */
   private pending?: TreeWorld;
   private destroyed = false;
+  private shownHour = 0;
 
   constructor() {
     afterNextRender(() => this.init());
@@ -223,6 +226,13 @@ export class Tree3d implements OnDestroy {
     effect(() => {
       const level = this.snowfall();
       this.world?.setSnowfall(level);
+    });
+    effect(() => {
+      const hour = this.daytime();
+      // The clock ticking on in the auto mode: no transition, a choice by hand: a smooth one
+      const gap = Math.abs(hour - this.shownHour);
+      this.shownHour = hour;
+      this.world?.setDaytime(hour, Math.min(gap, 24 - gap) < 0.25);
     });
     effect(() => {
       const skin = this.cabinLights() as LightSkin | null;
@@ -256,6 +266,8 @@ export class Tree3d implements OnDestroy {
       this.world = world;
       world.setDecorMode(this.decorMode(), this.preview());
       world.setSnowfall(this.snowfall(), true);
+      this.shownHour = this.daytime();
+      world.setDaytime(this.shownHour, true);
       world.setCabinLights(this.cabinLights() as LightSkin | null);
       // For screenshots/tests only: ?debug exposes the scene
       if (new URLSearchParams(location.search).has('debug'))

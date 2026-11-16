@@ -86,6 +86,18 @@ const SKINS: Record<LightSkin, SkinDef> = {
     palette: [0xffffff, 0xbfe6ff, 0xffe9a8],
     programs: ['sparkle', 'drip', 'wave'],
   },
+  starbow: {
+    shape: 'rainbow',
+    bulb: 5,
+    palette: RAINBOW,
+    programs: ['cascade', 'lines', 'roll', 'breathe'],
+  },
+  starfall: {
+    shape: 'meteor',
+    bulb: 4,
+    palette: [0xffffff, 0xbfe6ff],
+    programs: ['meteorWave', 'meteor'],
+  },
   meteor: {
     shape: 'meteor',
     palette: [0xe8f6ff, 0x9fd4ff],
@@ -319,7 +331,7 @@ export class CabinLights {
     this.star = rays
       ? {
           rays,
-          size: rays === 4 ? 0.085 : 0.068,
+          size: (rays === 4 ? 0.085 : 0.068) * (shape === 'meteor' ? 0.62 : 1),
           roll: this.bulbs.map((b) => (rand(b.seed + 3) - 0.5) * 0.7),
         }
       : null;
@@ -662,7 +674,8 @@ export class CabinLights {
       this.mat4.makeTranslation(b.pos.x, b.pos.y, b.pos.z);
     } else {
       const r = rand(b.seed + 7);
-      const swing = Math.sin(t * (1.1 + r * 0.8) + r * 6) * 0.22 * (0.4 + b.depth * 0.25);
+      const swing =
+        Math.sin(t * (1.1 + r * 0.8) + r * 6) * 0.22 * Math.min(1, 0.4 + b.depth * 0.25);
       this.q.setFromUnitVectors(this.z, b.out);
       this.spin.setFromAxisAngle(this.z, this.star.roll[i] + swing);
       this.q.multiply(this.spin);

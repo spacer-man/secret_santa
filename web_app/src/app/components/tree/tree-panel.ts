@@ -441,6 +441,8 @@ export class TreePanel {
     rainbow: '🌈',
     stars: '⭐',
     sparks: '💫',
+    starbow: '🌠',
+    starfall: '🌌',
     meteor: '☄️',
   };
   private readonly storedLights = signal<string | null>(readStored(LIGHTS_KEY));

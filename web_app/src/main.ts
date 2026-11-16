@@ -3,9 +3,14 @@ import { bootstrapApplication } from '@angular/platform-browser';
 import { appConfig } from './app/app.config';
 import { App } from './app/app';
 import { loadTelegram } from './app/core/tg-bridge';
+import { loadLanguage, preloadLanguage } from './app/core/i18n';
 
-// Telegram's script must be in place before the app reads it (and before the router touches the hash)
+// The texts of one language only: start downloading the browser's guess right away
+preloadLanguage();
+// Telegram's script must be in place before the app reads it (and before the router touches the hash);
+// it also tells the person's real language
 loadTelegram()
+  .then(() => loadLanguage())
   .then(() => bootstrapApplication(App, appConfig))
   .catch((err) => console.error(err));
 

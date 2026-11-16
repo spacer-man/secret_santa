@@ -3253,8 +3253,8 @@ export class TreeWorld {
 
     const pos = this.snow.geometry.attributes['position'] as THREE.BufferAttribute;
     this.updateWeather();
-    // The time of day is changing: the sky and the light follow
-    if (performance.now() - this.daylightStart < TUNING.daytimeMs + 100) this.updateDaytime();
+    // The time of day is changing: the sky and the light follow (to the end, even after a pause)
+    if (this.daylight !== this.daylightTo) this.updateDaytime();
     const fall = this.weather;
     const count = this.snow.geometry.drawRange.count;
     // Gusts: in a blizzard the wind comes in waves

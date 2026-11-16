@@ -50,6 +50,23 @@ export const en: Dict = {
   daytimePolarNight: 'The sun does not rise today: polar night, only blue twilight at noon.',
   daytimePolarDay: 'The sun does not set today: polar day.',
   daytimeFixed: 'The yard stays at the chosen time. Lanterns and windows light up after dark.',
+  placeSources: {
+    zone: 'by your timezone',
+    offset: 'roughly, by your timezone',
+    city: 'city picked',
+    geo: 'by geolocation',
+  } as Record<string, string>,
+  placeChange: 'Set my place',
+  placeSearch: 'City, e.g. Tromso',
+  placeNotFound: 'This city is not on the list. Geolocation can find your place.',
+  placeGeo: 'Use geolocation',
+  placeLocating: 'Locating…',
+  placeGeoErrors: {
+    denied: 'Location access is blocked. You can pick a city from the list.',
+    unavailable: 'Could not find your place. You can pick a city from the list.',
+  } as Record<string, string>,
+  placeReset: 'Back to my timezone',
+  placePrivate: 'Your place stays in this browser and is never sent anywhere.',
   snowLocked: 'This snowfall costs %s 🍊',
   snowModes: {
     clear: 'Clear',

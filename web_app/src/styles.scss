@@ -2958,3 +2958,24 @@ svg.hm.hm-free {
     animation: none;
   }
 }
+
+/* Time of day: where the sun is counted for */
+.place-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.place-row small {
+  display: block;
+}
+.place-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.place-input {
+  min-height: 0;
+  resize: none;
+}

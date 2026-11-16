@@ -107,6 +107,8 @@ DEFAULT_CATALOG: list[dict] = [
     _item("lights-candy", "lights", "common", 150, "lights"),
     _item("lights-flakes", "lights", "rare", 250, "lights"),
     _item("lights-rainbow", "lights", "epic", 350, "lights"),
+    _item("lights-stars", "lights", "rare", 250, "lights"),
+    _item("lights-sparks", "lights", "rare", 250, "lights"),
     _item("lights-meteor", "lights", "rare", 250, "lights"),
     # Heavy snowfall modes
     _item("snow-snowfall", "weather", "rare", 150),

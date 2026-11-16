@@ -39,7 +39,11 @@ interface SkinDef {
   programs: Program[];
   /** Colour of the snowflakes (flakes shape) */
   flake?: number;
+  /** Shape of a bulb: a round one (default) or a puffy star with 4 / 5 rays */
+  bulb?: Bulb4or5;
 }
+
+type Bulb4or5 = 4 | 5;
 
 const SKINS: Record<LightSkin, SkinDef> = {
   multi: {
@@ -69,6 +73,18 @@ const SKINS: Record<LightSkin, SkinDef> = {
     shape: 'rainbow',
     palette: RAINBOW,
     programs: ['lines', 'cascade', 'roll', 'breathe'],
+  },
+  stars: {
+    shape: 'fringe',
+    bulb: 5,
+    palette: [0xffd34a, 0xff4b5c, 0x45e08f, 0x4d9bff, 0xffffff],
+    programs: ['twinkle', 'chase', 'fill', 'breathe'],
+  },
+  sparks: {
+    shape: 'fringe',
+    bulb: 4,
+    palette: [0xffffff, 0xbfe6ff, 0xffe9a8],
+    programs: ['sparkle', 'drip', 'wave'],
   },
   meteor: {
     shape: 'meteor',
@@ -103,6 +119,8 @@ interface Bulb {
   /** Rainbow line, 0 at the top */
   line: number;
   seed: number;
+  /** Away from the wall: stars face this way */
+  out: THREE.Vector3;
 }
 
 interface Flake {
@@ -165,6 +183,34 @@ function flakeGeometry(): THREE.BufferGeometry {
   return g;
 }
 
+/**
+ * A puffy star facing +Z, outer radius 1: rays in the XY plane, the middle
+ * pushed out front and back, so it reads as a star from the side too.
+ */
+function starGeometry(rays: number): THREE.BufferGeometry {
+  const inner = rays === 4 ? 0.3 : 0.45;
+  const depth = rays === 4 ? 0.28 : 0.35;
+  const ring: [number, number][] = [];
+  for (let k = 0; k < rays * 2; k++) {
+    const a = Math.PI / 2 + (k / (rays * 2)) * Math.PI * 2;
+    const r = k % 2 ? inner : 1;
+    ring.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  const pos: number[] = [];
+  for (const z of [depth, -depth]) {
+    for (let k = 0; k < ring.length; k++) {
+      const [x0, y0] = ring[k];
+      const [x1, y1] = ring[(k + 1) % ring.length];
+      if (z > 0) pos.push(0, 0, z, x0, y0, 0, x1, y1, 0);
+      else pos.push(0, 0, z, x1, y1, 0, x0, y0, 0);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
 /** Horizontal direction away from the cabin, across the edge */
 function outwards(a: THREE.Vector3, b: THREE.Vector3): THREE.Vector3 {
   const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3(0, 1, 0));
@@ -187,7 +233,9 @@ export class CabinLights {
   private glows: THREE.Sprite[] = [];
   private readonly light = new THREE.PointLight(0xffd9a0, 0, 7, FACING_DECAY);
   private skin: LightSkin | null = null;
-  private shape: Shape | null = null;
+  private shape: string | null = null;
+  /** Star bulbs: rays, size; their turn on the wire (null: round bulbs, no turning) */
+  private star: { rays: Bulb4or5; size: number; roll: number[] } | null = null;
   private colors: THREE.Color[] = [];
   private readonly tmp = new THREE.Color();
   private readonly tmp2 = new THREE.Color();
@@ -242,9 +290,10 @@ export class CabinLights {
 
   // ---------- Shapes ----------
 
-  private build(shape: Shape): void {
-    if (this.shape === shape) return;
-    this.shape = shape;
+  private build(shape: Shape, rays?: Bulb4or5): void {
+    const key = shape + (rays ?? '');
+    if (this.shape === key) return;
+    this.shape = key;
     this.parts.children.forEach((o) => {
       const m = o as THREE.Mesh;
       m.geometry?.dispose();
@@ -267,15 +316,21 @@ export class CabinLights {
     this.wire = new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({ color: 0x1d2a20 }));
 
     const r = shape === 'meteor' ? 0.036 : shape === 'rainbow' ? 0.04 : 0.045;
+    this.star = rays
+      ? {
+          rays,
+          size: rays === 4 ? 0.085 : 0.068,
+          roll: this.bulbs.map((b) => (rand(b.seed + 3) - 0.5) * 0.7),
+        }
+      : null;
     this.mesh = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(r, 8, 6),
+      rays ? starGeometry(rays) : new THREE.SphereGeometry(r, 8, 6),
       new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
       this.bulbs.length,
     );
     const black = new THREE.Color(0x333333);
     this.bulbs.forEach((b, i) => {
-      this.mat4.makeTranslation(b.pos.x, b.pos.y, b.pos.z);
-      this.mesh!.setMatrixAt(i, this.mat4);
+      this.placeBulb(i, 0);
       this.mesh!.setColorAt(i, black);
     });
     this.colors = this.bulbs.map(() => new THREE.Color());
@@ -325,7 +380,15 @@ export class CabinLights {
         }
         // Meteors hang from a plain wire: no bulb on the line
         if (shape !== 'meteor' || count) {
-          this.bulbs.push({ pos: p, along, depth: 0, len: count, line: 0, seed: along * 1.7 + e });
+          this.bulbs.push({
+            pos: p,
+            along,
+            depth: 0,
+            len: count,
+            line: 0,
+            seed: along * 1.7 + e,
+            out,
+          });
         }
         for (let d = 1; d <= count; d++) {
           const q = p.clone().add(new THREE.Vector3(0, -d * drop, 0));
@@ -336,6 +399,7 @@ export class CabinLights {
             len: count,
             line: 0,
             seed: along * 1.7 + d * 13 + e,
+            out,
           });
         }
         let bottom = p.y - count * drop;
@@ -408,6 +472,7 @@ export class CabinLights {
             len: 0,
             line,
             seed: idx * 1.7 + line * 31 + e,
+            out,
           });
         }
         edgeAlong = Math.max(edgeAlong, n + 1);
@@ -424,7 +489,7 @@ export class CabinLights {
     this.group.visible = !!skin;
     if (!skin) return;
     const def = SKINS[skin];
-    this.build(def.shape);
+    this.build(def.shape, def.bulb);
     const palette = def.palette;
     this.bulbs.forEach((b, i) => {
       let idx: number;
@@ -560,6 +625,10 @@ export class CabinLights {
       this.mesh!.setColorAt(i, this.shade(c, k));
     });
     this.mesh.instanceColor!.needsUpdate = true;
+    if (this.star) {
+      for (let i = 0; i < this.bulbs.length; i++) this.placeBulb(i, t);
+      this.mesh.instanceMatrix.needsUpdate = true;
+    }
 
     if (this.flakeMesh) {
       const fc = new THREE.Color(def.flake ?? 0xffffff);
@@ -584,6 +653,22 @@ export class CabinLights {
       (g, k) => (g.material.opacity = (many ? 0.35 + 0.25 * Math.sin(t * 4 - k) : 0.45) * breathe),
     );
     this.light.intensity = 3.5 * breathe;
+  }
+
+  /** A bulb in place; stars face away from the wall and swing on the wire a little */
+  private placeBulb(i: number, t: number): void {
+    const b = this.bulbs[i];
+    if (!this.star) {
+      this.mat4.makeTranslation(b.pos.x, b.pos.y, b.pos.z);
+    } else {
+      const r = rand(b.seed + 7);
+      const swing = Math.sin(t * (1.1 + r * 0.8) + r * 6) * 0.22 * (0.4 + b.depth * 0.25);
+      this.q.setFromUnitVectors(this.z, b.out);
+      this.spin.setFromAxisAngle(this.z, this.star.roll[i] + swing);
+      this.q.multiply(this.spin);
+      this.mat4.compose(b.pos, this.q, this.one.setScalar(this.star.size));
+    }
+    this.mesh!.setMatrixAt(i, this.mat4);
   }
 
   private shade(c: THREE.Color, k: number): THREE.Color {

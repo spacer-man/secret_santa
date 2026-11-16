@@ -29,6 +29,11 @@ export interface Me {
   push_devices?: number;
   /** Signed in recently enough to link, unlink and merge (else: confirm first) */
   fresh?: boolean;
+  /** Friends who came by the link but don't count yet (no approved wish) */
+  invited_pending?: number;
+  /** The account is deleted: it can be restored until `purge_at`, then it's erased */
+  deleted?: boolean;
+  purge_at?: string;
 }
 
 export type IdentityKind = 'telegram' | 'email' | 'google';
@@ -204,6 +209,8 @@ export interface Delivery {
   reaction: string | null;
   reply: string | null;
   wish: { text: string; media: MediaItem[] } | null;
+  /** The wish was erased with its author's account */
+  erased?: boolean;
 }
 
 export type Gift =
@@ -303,6 +310,21 @@ export class Api {
       merge_token: mergeToken,
       choices,
     });
+  /** Signs out every other device; this one gets a new token */
+  logoutAll = async () => {
+    const r = await this.request<{ token?: string; me: Me }>('POST', '/me/logout-all');
+    if (r.token) this.session = r.token;
+    return r.me;
+  };
+  /** Deletes the account (restorable for 30 days); other devices are signed out */
+  deleteAccount = async () => {
+    const r = await this.request<{ token?: string; me: Me }>('DELETE', '/me');
+    if (r.token) this.session = r.token;
+    return r.me;
+  };
+  restoreAccount = () => this.request<Me>('POST', '/me/restore');
+  /** Erases a deleted account now, for good */
+  eraseAccount = () => this.request<void>('POST', '/me/erase');
   /** Confirms it's the owner with one of the account's ways in: a fresh session */
   reauth = async (proof: LinkProof) => {
     const { token, me } = await this.request<{ token: string; me: Me }>(

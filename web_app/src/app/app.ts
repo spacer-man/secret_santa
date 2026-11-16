@@ -28,7 +28,7 @@ import { Snow } from './components/fx/snow';
           >
             {{ themeIcon() }}
           </button>
-          @if (store.registered()) {
+          @if (store.registered() && !store.me()?.deleted) {
             <a
               class="theme-toggle icon-btn"
               routerLink="/settings"
@@ -94,7 +94,10 @@ export class App {
 
     this.router.events.pipe(filter((e) => e instanceof NavigationEnd)).subscribe((e) => {
       const path = (e as NavigationEnd).urlAfterRedirects.split('?')[0];
-      this.showTabs.set(!['/login', '/register'].includes(path) || this.store.registered());
+      this.showTabs.set(
+        !this.store.me()?.deleted &&
+          (!['/login', '/register', '/deleted'].includes(path) || this.store.registered()),
+      );
       this.hideBack();
       this.hideBack =
         path === '/' ? () => {} : this.tg.backButton(() => this.router.navigateByUrl('/'));

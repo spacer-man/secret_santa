@@ -244,7 +244,7 @@ export const en: Dict = {
       'Spend them in the decoration shop: yard figures, house lights, snowfall and blizzard.',
     friendsTitle: 'Friends',
     friendsText:
-      'Invite friends with your link from the home page. Every friend is a light on the garland and mandarins, and for 1, 3, 5 and 10 friends you get a figure that can’t be bought:',
+      'Invite friends with your link from the home page. Every friend is a light on the garland and mandarins, and for 1, 3, 5 and 10 friends you get a figure that can’t be bought. A friend counts once their first greeting passes moderation:',
     friendsFor: 'for %s',
     fairTitle: 'Fair and anonymous',
     fair1: 'A greeting goes to a random person — not to you and not to a chosen friend.',
@@ -459,4 +459,26 @@ export const en: Dict = {
   pushThisDevice: 'turn on for this device',
   pushOtherDevices: 'on for other devices:',
   logout: 'Sign out',
+  accountTitle: 'Account',
+  logoutAll: 'Sign out on all devices',
+  logoutAllHint:
+    'Every sign-in on other phones and computers ends, this one stays. The Telegram app signs in by Telegram itself — it can’t be signed out this way.',
+  loggedOutAll: 'Done: other devices are signed out',
+  deleteAccount: 'Delete the account',
+  deleteWarn:
+    'The account disappears at once: greetings aren’t delivered, friends, mandarins and decorations are hidden. For 30 days it can be restored just by signing in again, then it’s erased for good with the greetings.',
+  deleteConfirm: 'Yes, delete',
+  deleteNeedsReauth: 'To delete the account, confirm the sign-in first — see above.',
+  deletedTitle: 'The account is deleted',
+  deletedText:
+    'Until %s it can be restored — with all greetings, mandarins and decorations. Then it is erased for good.',
+  restoreBtn: 'Restore the account',
+  restored: 'The account is restored 🎄',
+  eraseBtn: 'Erase now',
+  eraseWarn: 'The account and the greetings are erased for good, there’s no way back.',
+  eraseConfirm: 'Yes, erase for good',
+  erased: 'The account is erased',
+  erasedGift:
+    'The author of this greeting deleted the account, and the greeting is gone. But Santa still wishes you a magical year!',
+  invitedPending: '%s more — they count once their first greeting passes moderation',
 };

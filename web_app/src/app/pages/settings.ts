@@ -207,6 +207,31 @@ const PUSH_HINT: Partial<Record<string, Key>> = {
       }
     </section>
 
+    <section class="card">
+      <h2>{{ i18n.t('accountTitle') }}</h2>
+      <button class="btn btn-secondary" [disabled]="busy()" (click)="logoutAll()">
+        {{ i18n.t('logoutAll') }}
+      </button>
+      <p class="muted small">{{ i18n.t('logoutAllHint') }}</p>
+      @if (!confirmDelete()) {
+        <button class="link danger" (click)="confirmDelete.set(true)">
+          {{ i18n.t('deleteAccount') }}
+        </button>
+      } @else if (!fresh()) {
+        <p class="small">{{ i18n.t('deleteNeedsReauth') }}</p>
+      } @else {
+        <p class="small error">{{ i18n.t('deleteWarn') }}</p>
+        <div class="row">
+          <button class="btn btn-secondary" [disabled]="busy()" (click)="deleteAccount()">
+            {{ i18n.t('deleteConfirm') }}
+          </button>
+          <button class="btn btn-ghost" (click)="confirmDelete.set(false)">
+            {{ i18n.t('cancel') }}
+          </button>
+        </div>
+      }
+    </section>
+
     @if (!tg.isMiniApp) {
       <button class="btn btn-ghost" (click)="logout()">{{ i18n.t('logout') }}</button>
     }
@@ -240,6 +265,7 @@ export class SettingsPage {
   protected readonly pushState = this.push.state;
   protected readonly busy = signal(false);
   protected readonly merge = signal<PendingMerge | null>(null);
+  protected readonly confirmDelete = signal(false);
 
   protected readonly linkedKinds = computed(() => KINDS.filter((k) => this.linked(k)));
   protected readonly notLinkedKinds = computed(() => KINDS.filter((k) => !this.linked(k)));
@@ -459,6 +485,18 @@ export class SettingsPage {
 
   protected async unlink(kind: IdentityKind): Promise<void> {
     await this.save(() => this.api.unlink(kind));
+  }
+
+  protected async logoutAll(): Promise<void> {
+    if (await this.save(() => this.api.logoutAll())) {
+      this.store.showToast(this.i18n.t('loggedOutAll'));
+    }
+  }
+
+  protected async deleteAccount(): Promise<void> {
+    if (!(await this.save(() => this.api.deleteAccount()))) return;
+    await this.push.disable().catch(() => {});
+    this.router.navigateByUrl('/deleted');
   }
 
   protected async logout(): Promise<void> {

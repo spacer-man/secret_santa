@@ -51,7 +51,7 @@ const RULES: [selector: string, kind: Kind][] = [
   ['.page', 'sheet-frame'],
   ['.card > h2, .label, .page-title', 'title'],
   ['.number, .stats b, .tabs a.active, .step-no', 'underline'],
-  ['.sheet h3, .earn li, .card.row, .steps li, .facts li', 'rule'],
+  ['.sheet h3, .earn li, .card.row, li.session, .steps li, .facts li', 'rule'],
   ['.tabs, .sheet', 'top-rule'],
   ['.tree-card', 'picture'],
   ['.seal', 'seal'],

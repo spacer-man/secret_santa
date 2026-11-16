@@ -3184,3 +3184,16 @@ svg.hm.hm-free {
 .reauth p {
   margin: 0;
 }
+.identities > li.session {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0.15rem 0.6rem;
+}
+.session-meta {
+  grid-column: 1 / -1;
+}
+/* Parts of the details move to the next line whole, never split inside */
+.session-meta > span {
+  white-space: nowrap;
+}

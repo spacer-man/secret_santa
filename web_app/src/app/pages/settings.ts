@@ -213,26 +213,26 @@ const PUSH_HINT: Partial<Record<string, Key>> = {
       <h3>{{ i18n.t('sessionsTitle') }}</h3>
       <ul class="identities sessions">
         @for (s of sessions(); track s.id) {
-          <li class="card row between">
-            <span>
-              <b>{{ s.device || i18n.t(kindLabel[s.kind]) }}</b>
+          <!-- Name and the button on top; the details take the whole width below -->
+          <li class="card session">
+            <b class="session-device">
+              {{ s.device || i18n.t(kindLabel[s.kind]) }}
               @if (s.current) {
                 <span class="badge">{{ i18n.t('sessionThis') }}</span>
               }
-              <br />
-              <span class="muted small">
-                {{ i18n.t(kindLabel[s.kind]) }}
-                @if (s.ip) {
-                  · {{ s.ip }}
-                }
-                · {{ seen(s.last_seen_at) }}
-              </span>
-            </span>
+            </b>
             @if (!s.current) {
               <button class="link danger" [disabled]="busy()" (click)="endSession(s.id)">
                 {{ i18n.t('sessionEnd') }}
               </button>
             }
+            <span class="session-meta muted small">
+              <span>{{ i18n.t(kindLabel[s.kind]) }}</span>
+              @if (s.ip) {
+                <span> · {{ s.ip }}</span>
+              }
+              <span> · {{ seen(s.last_seen_at) }}</span>
+            </span>
           </li>
         } @empty {
           <li class="muted small">{{ i18n.t('sessionsNone') }}</li>

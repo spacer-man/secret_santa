@@ -823,41 +823,15 @@ const BUTTONS =
 const PAD = 18;
 
 /**
- * A tile of pencil grain as a CSS mask: `holes` of the pixels are faint (`hole` of the
- * colour is left), the rest keep `min`..1
+ * The tooth of the paper: several layers of smooth noise of different scale (fractal noise,
+ * as Perlin's) and a little fine grain. A pencil leaves colour on the bumps of the paper and
+ * skips the pits, and bumps come in patches, not as separate points — that is what makes a
+ * line look like pencil and not like sand. The field repeats seamlessly (every layer is a
+ * lattice that wraps around). Values: 0 in the pits .. 1 on the bumps, `size` x `size` of them.
  */
-function grainTile(holes: number, min: number, hole = 0): string {
-  const size = 160;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return 'none';
-  const image = ctx.createImageData(size, size);
-  for (let i = 0; i < size * size; i++) {
-    const v = hash(i * 0.731 + holes * 97);
-    image.data[i * 4 + 3] = Math.round(255 * (v < holes ? hole : min + (1 - min) * hash(i * 1.37)));
-  }
-  ctx.putImageData(image, 0, 0);
-  return `url(${canvas.toDataURL()})`;
-}
-
-/**
- * The tooth of the paper as a CSS mask: several layers of smooth noise of different scale
- * (fractal noise, as Perlin's) and a little fine grain. A pencil leaves colour on the bumps
- * of the paper and skips the pits, and bumps come in patches, not as separate points —
- * that is what makes it look like pencil and not like sand. The tile repeats seamlessly
- * (every layer is a lattice that wraps around), is 160 px wide and has `scale` points per CSS pixel.
- *
- * @param min what is left of the colour in the deepest pits
- */
-function toothTile(scale: number, min: number): string {
-  const size = Math.round(160 * scale);
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return 'none';
+function toothField(size: number): Float32Array {
   // Cells of each layer across the tile (bumps of 1.5, 2, 3 and 4.5 px) and its share.
-  // Bigger patches read as dirt on light fills (the beard).
+  // Bigger patches read as dirt on light fills (the beard of the mascot).
   const layers: [cells: number, weight: number][] = [
     [107, 0.38],
     [80, 0.3],
@@ -868,30 +842,56 @@ function toothTile(scale: number, min: number): string {
     Float32Array.from({ length: cells * cells }, (_, i) => hash(i * 0.917 + k * 53.3)),
   );
   const ease = (t: number): number => t * t * (3 - 2 * t);
-  const image = ctx.createImageData(size, size);
+  const field = new Float32Array(size * size);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       let n = 0;
-      layers.forEach(([cells, weight], k) => {
+      for (let k = 0; k < layers.length; k++) {
+        const [cells, weight] = layers[k];
         const fx = (x / size) * cells;
         const fy = (y / size) * cells;
-        const [x0, y0] = [Math.floor(fx), Math.floor(fy)];
-        const [x1, y1] = [(x0 + 1) % cells, (y0 + 1) % cells];
-        const [tx, ty] = [ease(fx - x0), ease(fy - y0)];
+        const x0 = Math.floor(fx);
+        const y0 = Math.floor(fy);
+        const x1 = (x0 + 1) % cells;
+        const y1 = (y0 + 1) % cells;
+        const tx = ease(fx - x0);
+        const ty = ease(fy - y0);
         const g = lattices[k];
         const top = g[y0 * cells + x0] * (1 - tx) + g[y0 * cells + x1] * tx;
         const bottom = g[y1 * cells + x0] * (1 - tx) + g[y1 * cells + x1] * tx;
         n += weight * (top * (1 - ty) + bottom * ty);
-      });
+      }
       const i = y * size + x;
       n = n * 0.82 + hash(i * 1.37) * 0.18;
-      // Pits (low noise) keep little colour, bumps keep it all; a soft edge between them
-      const t = Math.min(1, Math.max(0, (n - 0.36) / 0.22));
-      image.data[i * 4 + 3] = Math.round(255 * (min + (1 - min) * ease(t)));
+      // A soft edge between the pits (low noise) and the bumps
+      field[i] = ease(Math.min(1, Math.max(0, (n - 0.36) / 0.22)));
     }
   }
+  return field;
+}
+
+/**
+ * The tooth as a CSS mask tile (shown 160 px wide), put into the custom property `name`.
+ * The image goes through a blob URL: a data URL of this size in a property that hundreds
+ * of drawings use would be a heavy string.
+ *
+ * @param min what is left of the colour in the deepest pits: the lower, the rougher
+ */
+function toothMask(name: string, field: Float32Array, min: number): void {
+  const size = Math.sqrt(field.length);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const image = ctx.createImageData(size, size);
+  for (let i = 0; i < field.length; i++) {
+    image.data[i * 4 + 3] = Math.round(255 * (min + (1 - min) * field[i]));
+  }
   ctx.putImageData(image, 0, 0);
-  return `url(${canvas.toDataURL()})`;
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    document.documentElement.style.setProperty(name, `url(${URL.createObjectURL(blob)})`);
+  });
 }
 
 @Injectable({ providedIn: 'root' })
@@ -906,16 +906,17 @@ export class Handmade {
   private boilFrame = 0;
 
   start(): void {
-    // Grain of the pencil lead: masks made once and tiled (much cheaper than an SVG filter per drawing)
-    const root = document.documentElement.style;
-    root.setProperty('--hm-grain', grainTile(0.3, 0.55));
-    root.setProperty('--hm-grain-soft', grainTile(0.05, 0.86, 0.62));
-    // The mascot: the tooth of the paper (layers of smooth noise), a point per screen pixel
-    // (at most 3 per CSS pixel)
+    // Texture of pencil on paper: masks made once from one noise field and tiled (much
+    // cheaper than an SVG filter per drawing). A point per screen pixel, at most 3 per CSS pixel.
     const dense = Math.min(3, Math.max(1, Math.round(window.devicePixelRatio || 1)));
-    root.setProperty('--m-grain', toothTile(dense, 0.56));
-    // On the dark sheet the dark paper shows through the pits: there the tooth is shallower
-    root.setProperty('--m-grain-dark', toothTile(dense, 0.76));
+    const tooth = toothField(160 * dense);
+    // Rough for lines, light for hatching (the text on a button must stay readable)
+    toothMask('--hm-grain', tooth, 0.3);
+    toothMask('--hm-grain-soft', tooth, 0.72);
+    // The mascot; on the dark sheet the dark paper shows through the pits of his white
+    // beard as dirt, so there the tooth is shallower
+    toothMask('--m-grain', tooth, 0.56);
+    toothMask('--m-grain-dark', tooth, 0.76);
     this.listen();
     new MutationObserver(() => this.schedule()).observe(document.body, {
       childList: true,

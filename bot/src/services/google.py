@@ -25,6 +25,20 @@ class GoogleUser(BaseModel):
     email: str | None = None
     email_verified: bool = False
     name: str | None = None
+    # Google Workspace domain: its addresses are Google's own
+    hd: str | None = None
+
+    @property
+    def trusted_email(self) -> str | None:
+        """
+        The address, if Google vouches for it: verified AND managed by Google (Gmail or a
+        Workspace domain). A Google account can be made on any address, and the address can
+        later pass to someone else: such an e-mail must not open an account found by it.
+        """
+        if not (self.email and self.email_verified):
+            return None
+        domain = self.email.rsplit("@", 1)[-1].lower()
+        return self.email if (self.hd or domain in ("gmail.com", "googlemail.com")) else None
 
 
 def client_id() -> str | None:
@@ -55,4 +69,5 @@ async def verify(credential: str) -> GoogleUser:
         email=claims.get("email"),
         email_verified=bool(claims.get("email_verified")),
         name=claims.get("given_name") or claims.get("name"),
+        hd=claims.get("hd"),
     )

@@ -33,3 +33,18 @@ async def registered_user(principal: CurrentPrincipal) -> User:
 
 
 RegisteredUser = Annotated[User, Depends(registered_user)]
+
+
+async def fresh_user(user: RegisteredUser, principal: CurrentPrincipal) -> User:
+    """
+    A registered user who signed in recently: needed to change the ways into the account
+    (link, unlink, merge). 403 ``reauth_required`` — confirm with any linked way to sign in
+    (``POST /api/me/reauth``); ``reopen_required`` — the Mini App must be opened again.
+    """
+    if not principal.is_fresh():
+        detail = "reopen_required" if principal.via_tma else "reauth_required"
+        raise HTTPException(status_code=403, detail=detail)
+    return user
+
+
+FreshUser = Annotated[User, Depends(fresh_user)]

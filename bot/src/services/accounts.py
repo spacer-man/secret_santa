@@ -17,8 +17,9 @@ from uuid import UUID
 
 from pydantic import BaseModel
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import col, select, update
+from sqlmodel import col, delete, select, update
 
 from api.auth import IdentityKind, Principal
 from db import new_db_session
@@ -28,6 +29,7 @@ from db.models import (
     MandarinTx,
     PushSubscription,
     ShopItem,
+    UsedProof,
     User,
     UserItem,
     Wish,
@@ -40,6 +42,11 @@ CODE_TTL = timedelta(minutes=10)
 RESEND_AFTER = timedelta(seconds=60)
 MAX_ATTEMPTS = 5
 CODE_LENGTH = 6
+# An address a day: letters (no mail bombing) and wrong codes in all (no guessing: with a
+# fresh code every minute 5 tries each would give a 6-digit code ~0.7% a day)
+DAY = timedelta(days=1)
+DAY_SENDS = 10
+DAY_FAILS = 15
 
 
 # Identity kind -> User column
@@ -60,6 +67,14 @@ class TooSoon(AccountError):
     pass
 
 
+class TooMany(AccountError):
+    """The address's limit for the day is spent"""
+
+
+class ProofUsed(AccountError):
+    """A proof of identity that was already used once"""
+
+
 class LastIdentity(AccountError):
     pass
 
@@ -73,9 +88,50 @@ def _aware(moment: datetime) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
 
+GMAIL = ("gmail.com", "googlemail.com")
+
+
 def normalize_email(raw: str) -> str | None:
+    """
+    Lower case; Gmail without dots and "+tag" (Gmail ignores them: a.b+1@gmail.com is
+    ab@gmail.com), so one mailbox can't make many accounts
+    """
     email = raw.strip().lower()
-    return email if len(email) <= 254 and _EMAIL.match(email) else None
+    if len(email) > 254 or not _EMAIL.match(email):
+        return None
+    local, domain = email.rsplit("@", 1)
+    if domain in GMAIL:
+        local = local.split("+", 1)[0].replace(".", "")
+        if not local:
+            return None
+        email = f"{local}@gmail.com"
+    return email
+
+
+def mask_email(email: str | None) -> str | None:
+    """a***@g***.com: enough for the owner to recognise, not to learn someone's address"""
+    if not email or "@" not in email:
+        return email
+    local, domain = email.rsplit("@", 1)
+    name, _, tld = domain.rpartition(".")
+    return f"{local[:1]}***@{(name or domain)[:1]}***" + (f".{tld}" if name else "")
+
+
+async def consume_proof(digest: str, ttl: timedelta) -> None:
+    """
+    Remember a proof of identity as used; ``ProofUsed`` if it was. ``ttl``: how long the proof
+    itself is valid (after that it's refused anyway, the row can go)
+    """
+    now = utc_now()
+    async with new_db_session() as session:
+        if await session.get(UsedProof, digest):
+            raise ProofUsed("This sign-in was already used")
+        await session.execute(delete(UsedProof).where(col(UsedProof.expires_at) < now))
+        session.add(UsedProof(digest=digest, expires_at=now + ttl))
+        try:
+            await session.commit()
+        except IntegrityError as err:  # The same proof at the same moment
+            raise ProofUsed("This sign-in was already used") from err
 
 
 def _value(principal: Principal) -> int | str:
@@ -120,39 +176,60 @@ def _code_hash(email: str, code: str, secret: str) -> str:
     return hmac.new(secret.encode(), f"{email}:{code}".encode(), hashlib.sha256).hexdigest()
 
 
+def _new_day(row: EmailCode, now: datetime) -> None:
+    if row.day_start is None or now - _aware(row.day_start) > DAY:
+        row.day_start, row.day_sends, row.day_fails = now, 0, 0
+
+
 async def new_email_code(email: str, secret: str) -> str:
     """
     A new one-time code for the e-mail (the previous one stops working).
-    ``TooSoon`` if a code was sent less than a minute ago.
+    ``TooSoon``: a code was sent less than a minute ago; ``TooMany``: the day's limit is spent.
     """
     async with new_db_session() as session:
         row = await session.get(EmailCode, email)
         now = utc_now()
-        if row and now - _aware(row.sent_at) < RESEND_AFTER:
+        # A minute between letters while a code is waiting (a used one doesn't hold the next)
+        if row and row.code_hash and now - _aware(row.sent_at) < RESEND_AFTER:
             raise TooSoon("A code was sent less than a minute ago")
-        code = "".join(secrets.choice("0123456789") for _ in range(CODE_LENGTH))
         row = row or EmailCode(email=email, code_hash="")
+        _new_day(row, now)
+        if row.day_sends >= DAY_SENDS or row.day_fails >= DAY_FAILS:
+            raise TooMany("Too many codes for this address today")
+        code = "".join(secrets.choice("0123456789") for _ in range(CODE_LENGTH))
         row.code_hash, row.attempts, row.sent_at = _code_hash(email, code, secret), 0, now
+        row.day_sends += 1
         session.add(row)
         await session.commit()
     return code
 
 
 async def check_email_code(email: str, code: str, secret: str) -> bool:
-    """The code is right (it can be used once, after 5 wrong tries it's gone)"""
+    """
+    The code is right: it works once; 5 wrong tries end it, 15 wrong tries a day close the
+    address until the day is over
+    """
     async with new_db_session() as session:
         row = await session.get(EmailCode, email)
-        if not row:
+        if not row or not row.code_hash:
             return False
-        if utc_now() - _aware(row.sent_at) > CODE_TTL or row.attempts >= MAX_ATTEMPTS:
-            await session.delete(row)
-            await session.commit()
-            return False
-        if hmac.compare_digest(row.code_hash, _code_hash(email, code.strip(), secret)):
-            await session.delete(row)
+        now = utc_now()
+        _new_day(row, now)
+        if (
+            now - _aware(row.sent_at) > CODE_TTL
+            or row.attempts >= MAX_ATTEMPTS
+            or row.day_fails >= DAY_FAILS
+        ):
+            row.code_hash = ""
+        elif hmac.compare_digest(row.code_hash, _code_hash(email, code.strip(), secret)):
+            # Used: gone, but the day's counters stay
+            row.code_hash = ""
+            session.add(row)
             await session.commit()
             return True
-        row.attempts += 1
+        else:
+            row.attempts += 1
+            row.day_fails += 1
         session.add(row)
         await session.commit()
         return False
@@ -368,6 +445,13 @@ async def _merge_deliveries(
             loser = delivery if (ours.opened_at or not delivery.opened_at) else ours
         else:
             loser = None
+        if loser is not None and loser.opened_at:
+            # The reward for opening a gift that doesn't stay goes too: one gift, one reward
+            await session.execute(
+                delete(MandarinTx)
+                .where(col(MandarinTx.reason) == mandarins.Reason.GIFT_OPENED)
+                .where(col(MandarinTx.ref) == str(loser.id))
+            )
         if loser is delivery:
             await session.delete(delivery)
             continue

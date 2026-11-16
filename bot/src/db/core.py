@@ -20,6 +20,11 @@ USER_COLUMNS = (
     "name VARCHAR(64)",
     "notify VARCHAR(32)",
 )
+EMAILCODE_COLUMNS = (
+    "day_start TIMESTAMP WITH TIME ZONE",
+    "day_sends INTEGER NOT NULL DEFAULT 0",
+    "day_fails INTEGER NOT NULL DEFAULT 0",
+)
 USER_INDEXES = (
     'CREATE UNIQUE INDEX IF NOT EXISTS ix_user_email ON "user" (email)',
     'CREATE UNIQUE INDEX IF NOT EXISTS ix_user_google_id ON "user" (google_id)',
@@ -37,6 +42,7 @@ MIGRATIONS = (
     'ALTER TABLE "user" ALTER COLUMN telegram_id DROP NOT NULL',
     *(f'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS {c}' for c in USER_COLUMNS),
     *USER_INDEXES,
+    *(f"ALTER TABLE emailcode ADD COLUMN IF NOT EXISTS {c}" for c in EMAILCODE_COLUMNS),
 )
 
 
@@ -78,12 +84,19 @@ async def _sqlite_user_identities(conn: AsyncConnection) -> None:
         await conn.execute(text('INSERT INTO user_new SELECT * FROM "user"'))
         await conn.execute(text('DROP TABLE "user"'))
         await conn.execute(text('ALTER TABLE user_new RENAME TO "user"'))
-    columns = {row[1] for row in await conn.execute(text('PRAGMA table_info("user")'))}
-    for column in USER_COLUMNS:
-        if column.split()[0] not in columns:
-            await conn.execute(text(f'ALTER TABLE "user" ADD COLUMN {column}'))
+    await _sqlite_add_columns(conn, "user", USER_COLUMNS)
+    await _sqlite_add_columns(conn, "emailcode", EMAILCODE_COLUMNS)
     for statement in USER_INDEXES:
         await conn.execute(text(statement))
+
+
+async def _sqlite_add_columns(conn: AsyncConnection, table: str, wanted: tuple[str, ...]) -> None:
+    columns = {row[1] for row in await conn.execute(text(f'PRAGMA table_info("{table}")'))}
+    if not columns:
+        return  # No table yet: create_all makes it whole
+    for column in wanted:
+        if column.split()[0] not in columns:
+            await conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN {column}'))
 
 
 _db_url = DBConfig().url.get_secret_value()

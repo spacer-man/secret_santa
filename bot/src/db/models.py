@@ -144,12 +144,30 @@ class UserItem(SQLModel, table=True):
 
 
 class EmailCode(SQLModel, table=True):
-    """One-time code sent to an e-mail to sign in or to link it (``services/accounts.py``)"""
+    """
+    One-time code sent to an e-mail to sign in or to link it (``services/accounts.py``), and
+    the day's counters of the address: letters sent and wrong codes (no guessing, no spamming)
+    """
 
     email: str = Field(primary_key=True, max_length=254)
     code_hash: str = Field(max_length=64)
     attempts: int = Field(default=0)
     sent_at: datetime = Field(default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True)))
+    day_start: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), nullable=True)
+    )
+    day_sends: int = Field(default=0)
+    day_fails: int = Field(default=0)
+
+
+class UsedProof(SQLModel, table=True):
+    """
+    A proof of identity already used (Telegram Login Widget data, a Google token): each works
+    once, so one that leaked (a log, a shared screen) can't sign in or link again
+    """
+
+    digest: str = Field(primary_key=True, max_length=64)
+    expires_at: datetime = Field(sa_column=Column(TIMESTAMP(timezone=True)))
 
 
 class PushSubscription(SQLModel, table=True):

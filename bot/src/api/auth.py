@@ -23,8 +23,14 @@ from urllib.parse import parse_qsl
 from pydantic import BaseModel
 
 INIT_DATA_MAX_AGE = 7 * 24 * 3600
-LOGIN_MAX_AGE = 24 * 3600
+# Telegram Login Widget data: a fresh click only (it can't be replayed later: see api/accounts.py)
+LOGIN_MAX_AGE = 10 * 60
 SESSION_MAX_AGE = 30 * 24 * 3600
+# Changing the ways to sign in (link, unlink, merge) needs a recent sign-in: a session left open
+# on someone else's device, or a stolen token, can't plant another way in
+FRESH_SESSION_S = 15 * 60
+# The Mini App: since it was opened (Telegram's auth_date)
+FRESH_MINI_APP_S = 60 * 60
 
 
 class AuthError(Exception):
@@ -33,6 +39,7 @@ class AuthError(Exception):
 
 class TgUser(BaseModel):
     id: int
+    auth_date: int = 0
     first_name: str | None = None
     language_code: str | None = None
     start_param: str | None = None
@@ -51,6 +58,12 @@ class Principal(BaseModel):
     start_param: str | None = None
     # Signed in by the Mini App (initData): the session can't be replaced by our token
     via_tma: bool = False
+    # When the person proved who they are (unix time; 0: unknown, an old token)
+    issued_at: int = 0
+
+    def is_fresh(self, now: float | None = None) -> bool:
+        age = (now or time.time()) - self.issued_at
+        return age <= (FRESH_MINI_APP_S if self.via_tma else FRESH_SESSION_S)
 
     @property
     def telegram_id(self) -> int | None:
@@ -64,6 +77,7 @@ class Principal(BaseModel):
             first_name=user.first_name,
             language_code=user.language_code,
             start_param=user.start_param,
+            issued_at=user.auth_date,
         )
 
 
@@ -93,6 +107,7 @@ def check_init_data(init_data: str, bot_token: str, now: float | None = None) ->
         raise AuthError("No user in initData")
     return TgUser(
         id=user["id"],
+        auth_date=int(fields.get("auth_date", 0)),
         first_name=user.get("first_name"),
         language_code=user.get("language_code"),
         start_param=fields.get("start_param"),
@@ -110,7 +125,11 @@ def check_login_widget(data: dict, bot_token: str, now: float | None = None) -> 
     now = now or time.time()
     if now - int(fields.get("auth_date", 0)) > LOGIN_MAX_AGE:
         raise AuthError("Login data is too old")
-    return TgUser(id=int(fields["id"]), first_name=fields.get("first_name"))
+    return TgUser(
+        id=int(fields["id"]),
+        first_name=fields.get("first_name"),
+        auth_date=int(fields.get("auth_date", 0)),
+    )
 
 
 # ====== Our own signed tokens ====== #
@@ -155,6 +174,8 @@ def make_session(principal: Principal, bot_token: str) -> str:
             "k": principal.kind,
             "v": principal.key,
             "fn": principal.first_name,
+            # The moment of the sign-in, not of this token: a re-issued token stays as fresh
+            "iat": principal.issued_at or int(time.time()),
             "exp": int(time.time()) + SESSION_MAX_AGE,
         },
         bot_token,
@@ -166,7 +187,12 @@ def read_session(token: str, bot_token: str) -> Principal:
     payload = unsign(token, bot_token, "session")
     if "id" in payload:  # Tokens made when Telegram was the only way in
         return Principal(kind="telegram", key=str(payload["id"]), first_name=payload.get("fn"))
-    return Principal(kind=payload["k"], key=payload["v"], first_name=payload.get("fn"))
+    return Principal(
+        kind=payload["k"],
+        key=payload["v"],
+        first_name=payload.get("fn"),
+        issued_at=int(payload.get("iat", 0)),
+    )
 
 
 def parse_authorization(header: str | None, bot_token: str) -> Principal:

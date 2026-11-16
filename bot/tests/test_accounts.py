@@ -3,7 +3,10 @@ Accounts without Telegram: e-mail codes, Google, linking, merging, notification 
 """
 
 import asyncio
+import hashlib
+import hmac
 import re
+import time
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -60,7 +63,9 @@ def bearer(token: str) -> dict[str, str]:
 
 
 def code_of(letters: list, email: str) -> str:
-    _to, _, text = [letter for letter in letters if letter[0] == email.strip().lower()][-1]
+    _to, _, text = [letter for letter in letters if letter[0] == accounts.normalize_email(email)][
+        -1
+    ]
     match = re.search(r"\b(\d{6})\b", text)
     assert match
     return match.group(1)
@@ -142,17 +147,31 @@ def test_email_ip_limit(mail):
 
 # ====== Google ====== #
 def test_google_sign_in_finds_the_email_account(mail):
-    token = email_login(mail, "gina@example.com")
+    token = email_login(mail, "gina.santa@gmail.com")
     client.put("/api/me", headers=bearer(token), json={"timezone": "UTC+2"})
 
-    who = google.GoogleUser(sub="g-123", email="Gina@example.com", email_verified=True, name="Gina")
+    # Gmail: Google manages the address, so it's the same person
+    who = google.GoogleUser(
+        sub="g-123", email="Gina.Santa+x@gmail.com", email_verified=True, name="Gina"
+    )
     with patch("services.google.verify", AsyncMock(return_value=who)):
         r = client.post("/api/auth/google", json={"credential": "jwt"})
+        # The same token again: refused (a leaked one can't sign in twice)
+        assert client.post("/api/auth/google", json={"credential": "jwt"}).status_code == 401
     g_token = r.json()["token"]
     me = client.get("/api/me", headers=bearer(g_token)).json()
     assert me["registered"] is True
-    assert me["identities"]["email"] == "gina@example.com" and me["identities"]["google"]
+    assert me["identities"]["email"] == "ginasanta@gmail.com" and me["identities"]["google"]
     assert me["first_name"] == "Gina"
+
+    # Another domain: anyone could have made a Google account on that address
+    token = email_login(mail, "victim@example.com")
+    client.put("/api/me", headers=bearer(token), json={"timezone": "UTC+2"})
+    who = google.GoogleUser(sub="g-evil", email="victim@example.com", email_verified=True)
+    with patch("services.google.verify", AsyncMock(return_value=who)):
+        r = client.post("/api/auth/google", json={"credential": "jwt-2"})
+    me = client.get("/api/me", headers=bearer(r.json()["token"])).json()
+    assert me["registered"] is False  # not let into the victim's account
 
     with patch("services.google.verify", AsyncMock(side_effect=google.GoogleError("bad"))):
         assert client.post("/api/auth/google", json={"credential": "x"}).status_code == 401
@@ -169,6 +188,9 @@ def test_link_free_identity(mail):
     ).json()
     assert r["status"] == "linked"
     assert r["me"]["identities"]["email"] == "free@example.com"
+    # The owner hears of it (here: by the e-mail just linked; Telegram goes by the bot)
+    notices = [m for m in mail if m[0] == "free@example.com" and "🔐" in m[1]]
+    assert notices and "f***@e***.com" in notices[-1][2]
 
     # The e-mail now signs in to the Telegram account
     token = email_login(mail, "free@example.com")
@@ -286,7 +308,9 @@ def test_merge_two_accounts(mail):
     assert merged["figures"] == 5 + 1
     assert merged["mandarins"] == balance_before + lantern_price
     # What was promised is what happened
-    assert again["result"] == merged
+    # The other account's e-mail is masked in what is shown before the merge
+    assert again["result"]["email"] == "m***@e***.com" == r["other"]["email"]
+    assert {**again["result"], "email": "merge@example.com"} == merged
     shop_items = {i["key"]: i for i in client.get("/api/shop", headers=tg(4001)).json()["items"]}
     assert shop_items["lantern"]["count"] == 5
     assert shop_items["lantern"]["pads"] == [0]  # one figure on a place, the other put away
@@ -351,8 +375,14 @@ def test_merge_asks_whose_email_and_gift(mail):
 
     async def gifts() -> None:
         async with new_db_session() as session:
-            session.add(Delivery(recipient_id=a.id, year=2027, opened_at=opened, reaction="🔥"))
-            session.add(Delivery(recipient_id=b.id, year=2027, opened_at=opened, reaction="❤️"))
+            mine = Delivery(recipient_id=a.id, year=2027, opened_at=opened, reaction="🔥")
+            theirs = Delivery(recipient_id=b.id, year=2027, opened_at=opened, reaction="❤️")
+            session.add_all([mine, theirs])
+            # Each was rewarded for opening
+            for d, owner in ((mine, a), (theirs, b)):
+                session.add(
+                    MandarinTx(user_id=owner.id, amount=50, reason="gift_opened", ref=str(d.id))
+                )
             await session.commit()
 
     run(gifts())
@@ -367,7 +397,8 @@ def test_merge_asks_whose_email_and_gift(mail):
     assert r["preview"]["report"]["conflicts"] == ["email", "gifts"]
     assert r["locked"] == []
     dropped = r["preview"]["report"]["identities_dropped"]
-    assert dropped == [{"kind": "email", "side": "other", "email": "b@example.com"}]
+    # The other account's address is shown masked
+    assert dropped == [{"kind": "email", "side": "other", "email": "b***@e***.com"}]
 
     choices = {"email": "other", "gifts": "other"}
     preview = client.post(
@@ -375,8 +406,8 @@ def test_merge_asks_whose_email_and_gift(mail):
         headers=bearer(a_token),
         json={"merge_token": r["merge_token"], "choices": choices},
     ).json()
-    assert preview["result"]["email"] == "b@example.com"
-    assert preview["report"]["identities_dropped"][0]["email"] == "a@example.com"
+    assert preview["result"]["email"] == "b***@e***.com"
+    assert preview["report"]["identities_dropped"][0]["email"] == "a@example.com"  # own one
 
     done = client.post(
         "/api/me/merge",
@@ -394,6 +425,129 @@ def test_merge_asks_whose_email_and_gift(mail):
             return [d.reaction for d in rows]
 
     assert run(reactions()) == ["❤️"]  # the other account's gift, as chosen
+
+    async def opening_rewards() -> int:
+        async with new_db_session() as session:
+            rows = await session.scalars(
+                select(MandarinTx)
+                .where(MandarinTx.user_id == a.id)
+                .where(MandarinTx.reason == "gift_opened")
+            )
+            return len(rows.all())
+
+    assert run(opening_rewards()) == 1  # one gift a year, one reward for it
+
+
+# ====== Security ====== #
+def widget(user_id: int, age_s: int = 0) -> dict:
+    """Telegram Login Widget data signed like Telegram does"""
+    from helpers import TOKEN
+
+    fields = {"id": str(user_id), "first_name": "W", "auth_date": str(int(time.time()) - age_s)}
+    check = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
+    secret = hashlib.sha256(TOKEN.encode()).digest()
+    sign = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+    return {**fields, "id": user_id, "auth_date": int(fields["auth_date"]), "hash": sign}
+
+
+def test_widget_data_works_once_and_fresh():
+    data = widget(8001)
+    assert client.post("/api/auth/telegram", json=data).status_code == 200
+    # Replayed (a leaked payload): refused
+    assert client.post("/api/auth/telegram", json=data).status_code == 401
+    # Older than 10 minutes: refused
+    assert client.post("/api/auth/telegram", json=widget(8001, age_s=11 * 60)).status_code == 401
+    # Forged: refused
+    forged = {**widget(8002), "id": 8003}
+    assert client.post("/api/auth/telegram", json=forged).status_code == 401
+
+
+def test_old_session_must_confirm_before_changing_sign_in(mail):
+    """A session left open somewhere (or a stolen token) can't plant another way in"""
+    from api import auth
+    from api.deps import BOT_TOKEN
+
+    fresh = email_login(mail, "owner@example.com")
+    client.put("/api/me", headers=bearer(fresh), json={"timezone": "UTC+3"})
+    old = auth.make_session(
+        auth.Principal(kind="email", key="owner@example.com", issued_at=int(time.time()) - 3600),
+        BOT_TOKEN,
+    )
+    # Reading is fine, changing the ways in is not
+    assert client.get("/api/me", headers=bearer(old)).json()["registered"]
+    r = client.post("/api/me/link", headers=bearer(old), json={"telegram": widget(8101)})
+    assert r.status_code == 403 and r.json()["detail"] == "reauth_required"
+    assert client.delete("/api/me/link/google", headers=bearer(old)).status_code == 403
+
+    # Confirming with another account's way in: refused
+    stranger = email_login(mail, "stranger@example.com")
+    client.put("/api/me", headers=bearer(stranger), json={"timezone": "UTC+3"})
+    accounts_api._email_sends.clear()
+    client.post("/api/auth/email/start", json={"email": "stranger@example.com"})
+    code = code_of(mail, "stranger@example.com")
+    r = client.post(
+        "/api/me/reauth",
+        headers=bearer(old),
+        json={"email": {"email": "stranger@example.com", "code": code}},
+    )
+    assert r.status_code == 403
+
+    # Confirming with its own: a fresh session, and linking works
+    client.post("/api/auth/email/start", json={"email": "owner@example.com"})
+    code = code_of(mail, "owner@example.com")
+    r = client.post(
+        "/api/me/reauth",
+        headers=bearer(old),
+        json={"email": {"email": "owner@example.com", "code": code}},
+    )
+    renewed = r.json()["token"]
+    r = client.post("/api/me/link", headers=bearer(renewed), json={"telegram": widget(8101)})
+    assert r.json()["status"] == "linked"
+
+
+def test_email_code_day_limits(mail):
+    email = "guess@example.com"
+    # Guessing: 15 wrong codes a day close the address, even for the right code later
+    for _ in range(3):
+        row_reset_sent(email)
+        assert client.post("/api/auth/email/start", json={"email": email}).status_code == 200
+        for _ in range(accounts.MAX_ATTEMPTS):
+            client.post("/api/auth/email/verify", json={"email": email, "code": "000000x"[:6]})
+    row_reset_sent(email)
+    assert client.post("/api/auth/email/start", json={"email": email}).status_code == 429
+
+    # Mail bombing: 10 letters a day to one address
+    email = "bomb@example.com"
+    for _ in range(accounts.DAY_SENDS):
+        row_reset_sent(email)
+        accounts_api._email_sends.clear()
+        assert client.post("/api/auth/email/start", json={"email": email}).status_code == 200
+    row_reset_sent(email)
+    assert client.post("/api/auth/email/start", json={"email": email}).status_code == 429
+
+
+def row_reset_sent(email: str) -> None:
+    """Moves the last letter a minute back (instead of waiting)"""
+    from datetime import timedelta
+
+    from db.models import EmailCode
+
+    async def go() -> None:
+        async with new_db_session() as session:
+            row = await session.get(EmailCode, email)
+            if row:
+                row.sent_at = row.sent_at - timedelta(minutes=2)
+                session.add(row)
+                await session.commit()
+
+    accounts_api._email_sends.clear()
+    run(go())
+
+
+def test_gmail_aliases_are_one_address():
+    assert accounts.normalize_email("A.Na+santa@GoogleMail.com") == "ana@gmail.com"
+    assert accounts.normalize_email("a.na+x@example.com") == "a.na+x@example.com"
+    assert accounts.mask_email("anna@gmail.com") == "a***@g***.com"
 
 
 def principal(kind, key):

@@ -156,6 +156,8 @@ async def me_payload(principal: auth.Principal, user: User | None) -> dict:
             "google": user.google_id is not None,
         },
         "notify": accounts.channels(user),
+        # Signed in recently enough to change the ways into the account (api/deps.py FreshUser)
+        "fresh": principal.is_fresh(),
         "push_devices": await push.count(user.id),
     }
 

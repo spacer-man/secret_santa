@@ -7,12 +7,16 @@ to every chosen channel; reactions and moderation results only by push (no lette
 """
 
 import logging
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from configs.webapp import WebAppConfig
 from db import new_db_session
 from db.models import User, ValidStatus
 from services import email, push
+
+if TYPE_CHECKING:
+    from aiogram import Bot
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +43,16 @@ TEXTS: dict[str, dict[str, str]] = {
             "Код действует 10 минут. Если код просил не ты, просто удали это письмо."
         ),
         "title": "Тайный Санта",
+        "sec_title": "🔐 Тайный Санта: вход в аккаунт",
+        "sec_linked": "К твоему аккаунту привязан новый способ входа: {what}.",
+        "sec_unlinked": "От твоего аккаунта отвязан способ входа: {what}.",
+        "sec_merged": "К твоему аккаунту присоединён другой аккаунт (вход через {what}).",
+        "sec_dropped": "Способ входа {what} больше не связан с аккаунтом Тайного Санты: при "
+        "объединении аккаунтов оставили другой.",
+        "sec_advice": "Если это не ты — открой настройки и убери лишнее, а потом напиши нам.",
+        "id_telegram": "Telegram",
+        "id_google": "Google",
+        "id_email": "почта {email}",
     },
     "en": {
         "gift_title": "🎄 Happy New Year!",
@@ -60,6 +74,17 @@ TEXTS: dict[str, dict[str, str]] = {
             "It works for 10 minutes. If you didn't ask for it, just delete this letter."
         ),
         "title": "Secret Santa",
+        "sec_title": "🔐 Secret Santa: signing in",
+        "sec_linked": "A new way to sign in was linked to your account: {what}.",
+        "sec_unlinked": "A way to sign in was unlinked from your account: {what}.",
+        "sec_merged": "Another account was merged into yours (it signed in with {what}).",
+        "sec_dropped": "The sign-in {what} is no longer linked to a Secret Santa account: "
+        "another one was kept when accounts were merged.",
+        "sec_advice": "If it wasn't you, open the settings, remove what you don't know and "
+        "write to us.",
+        "id_telegram": "Telegram",
+        "id_google": "Google",
+        "id_email": "e-mail {email}",
     },
 }
 
@@ -133,3 +158,51 @@ async def telegram_wanted(user_id: UUID) -> bool:
     async with new_db_session() as session:
         user = await session.get(User, user_id)
     return bool(user and user.telegram_id and wants(user.notify, "telegram"))
+
+
+# ====== Security notices ====== #
+def identity_label(language: str | None, kind: str, email_masked: str | None = None) -> str:
+    if kind == "email":
+        return text(language, "id_email", email=email_masked or "")
+    return text(language, f"id_{kind}")
+
+
+async def security(
+    bot: "Bot | None",
+    user_id: UUID,
+    key: str,
+    kind: str,
+    email_masked: str | None = None,
+    also_telegram: tuple[int, ...] = (),
+    also_email: tuple[str, ...] = (),
+) -> None:
+    """
+    Tell the owner that the ways into the account changed: by Telegram, e-mail and push at once,
+    whatever channels they chose (a takeover must be noticed). ``also_*``: ways that just left
+    the account (the old owner hears it there). Never fails the request.
+    """
+    async with new_db_session() as session:
+        user = await session.get(User, user_id)
+    if not user:
+        return None
+    language = user.language
+    body = (
+        text(language, key, what=identity_label(language, kind, email_masked))
+        + "\n\n"
+        + text(language, "sec_advice")
+    )
+    title = text(language, "sec_title")
+    chats = {*also_telegram, *([user.telegram_id] if user.telegram_id else [])}
+    mails = {*also_email, *([user.email] if user.email else [])}
+    for chat in chats:
+        if bot:
+            try:
+                await bot.send_message(chat_id=chat, text=f"{title}\n\n{body}", parse_mode=None)
+            except Exception:
+                log.info("Security notice not sent to Telegram %s", chat)
+    for address in mails:
+        await email.send(address, title, body)
+    try:
+        await push.send(user_id, title, body, url="/settings", tag="security")
+    except Exception:
+        log.warning("Security push failed for %s", user_id, exc_info=True)

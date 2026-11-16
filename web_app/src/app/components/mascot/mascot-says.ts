@@ -71,6 +71,7 @@ export class MascotSays {
       const topic = this.topic();
       this.mascot.hero();
       this.mascot.mood();
+      if (!this.mascot.ready()) return;
       untracked(() => this.show(this.mascot.say(topic)));
     });
     inject(DestroyRef).onDestroy(() => clearInterval(this.timer));

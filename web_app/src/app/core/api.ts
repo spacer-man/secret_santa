@@ -70,8 +70,13 @@ export interface ShopItem {
   /** > 0: a milestone gift, granted for this many invited friends (cannot be bought) */
   friends: number;
   owned: boolean;
-  /** Courtyard place of an owned figure (null: not placed) */
+  /** Courtyard place of an owned figure (null: not placed); the first one if there are copies */
   pad: number | null;
+  /** Copies owned, and how many can be owned at most (figures: several, the rest: 1) */
+  count: number;
+  max: number;
+  /** Courtyard places of the copies standing in the yard */
+  pads: number[];
 }
 
 export interface ShopSet {
@@ -218,8 +223,9 @@ export class Api {
 
   shop = () => this.request<ShopData>('GET', '/shop');
   buy = (item: string) => this.request<ShopData & { bonus: number }>('POST', '/shop/buy', { item });
-  place = (item: string, pad: number | null) =>
-    this.request<ShopData>('PUT', '/shop/place', { item, pad });
+  /** @param fromPad which copy: the one standing on this place (absent: a spare copy) */
+  place = (item: string, pad: number | null, fromPad?: number) =>
+    this.request<ShopData>('PUT', '/shop/place', { item, pad, from_pad: fromPad ?? null });
 
   /** Development only: force the festive level (null = real) and set the balance */
   debug = (body: { level?: number | null; mandarins?: number }) =>

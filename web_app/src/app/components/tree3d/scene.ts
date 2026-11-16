@@ -2086,7 +2086,13 @@ export class TreeWorld {
   // ====== Courtyard figures & decorate mode ====== //
   private decorMode = false;
   /** Figure shown on free places; null = nothing chosen yet: arrows */
-  private previewItem: string | null = null;
+  /** What the last pass of placeCourtyard added: scene objects, tap targets and animations */
+  private courtyardParts: { objects: THREE.Object3D[]; refs: Set<unknown> } = {
+    objects: [],
+    refs: new Set(),
+  };
+  /** The figure tried on a free place: its translucent preview stands there instead of the arrow */
+  private preview: { item: string; pad: number } | null = null;
   private lastDecor: { item: string; pad: number }[] = [];
   private previews: THREE.Object3D[] = [];
   private readonly ghostMats = new Map<string, THREE.Material>();
@@ -2103,13 +2109,24 @@ export class TreeWorld {
     const objects = await Promise.all(
       items.map((d) => this.models.get(DECOR_KINDS[d.item].model).catch(() => null)),
     );
-    const previewKind = this.previewItem ? DECOR_KINDS[this.previewItem] : null;
+    const preview = this.preview;
+    const previewKind = preview ? DECOR_KINDS[preview.item] : null;
     const previewProto = previewKind
       ? await this.models.get(previewKind.model, false).catch(() => null)
       : null;
     // The heaps' real size matters: wait until they are built
     await Promise.race([this.heapsReady, new Promise((r) => setTimeout(r, 5000))]);
     if (version !== this.version) return;
+    // From here on everything is synchronous. The yard may be built again for the same tree
+    // (another preview): what the previous pass added is taken away first
+    const old = this.courtyardParts;
+    old.objects.forEach((o) => this.dynamic.remove(o));
+    for (const list of [this.clickables, this.animated] as unknown[][]) {
+      const kept = list.filter((x) => !old.refs.has(x));
+      list.length = 0;
+      list.push(...kept);
+    }
+    const from = [this.dynamic.children.length, this.clickables.length, this.animated.length];
 
     // Figures are placed one by one; each tries its allowed poses and keeps
     // the one that moves it least, the placed ones become obstacles
@@ -2142,13 +2159,14 @@ export class TreeWorld {
       this.dynamic.add(obj);
     });
 
-    // Previews on free places, by the same rules, between the placed figures
+    // Free places: a floating arrow over each; the place where a figure is tried on
+    // shows its translucent preview instead (by the same rules, between the placed figures)
     this.previews = [];
-    if (!previewKind || !previewProto) {
+    const previewPad = preview && previewKind && previewProto ? preview.pad : -1;
+    {
       const small: THREE.Object3D[][] = CORNERS.map(() => []);
-      // Nothing chosen yet: a floating arrow over every free place
       DECOR_PADS.forEach((home, i) => {
-        if (placedPads.has(i)) return;
+        if (placedPads.has(i) || i === previewPad) return;
         const b = makeBody(home.pos.x, home.pos.z, [{ dx: 0, dz: 0, r: 0.45 }]);
         resolve([b], obstacles, COURTYARD_RING);
         // Big enough to be tapped with a finger from the corner view
@@ -2206,9 +2224,9 @@ export class TreeWorld {
           },
         });
       });
-    } else {
-      DECOR_PADS.forEach((_, i) => {
-        if (placedPads.has(i)) return;
+    }
+    if (previewKind && previewProto && previewPad >= 0 && !placedPads.has(previewPad)) {
+      [previewPad].forEach((i) => {
         const ghost = this.ghost(previewProto);
         ghost.scale.setScalar(previewKind.scale);
         const { b, yaw } = this.fit(ghost, previewKind, i, obstacles);
@@ -2230,14 +2248,18 @@ export class TreeWorld {
         this.previews.push(marker);
         this.dynamic.add(marker);
       });
-      // All previews breathe together: clearly "not real yet"
+      // The preview breathes: clearly "not real yet"
       this.animated.push({
         update: (t) => {
           const o = 0.7 + 0.08 * Math.sin(t * 2.2);
-          this.ghostMats.forEach((m) => (m.opacity = o));
+          this.ghostMats.forEach((m, key) => key !== 'arrow' && (m.opacity = o));
         },
       });
     }
+    this.courtyardParts = {
+      objects: this.dynamic.children.slice(from[0]),
+      refs: new Set<unknown>([...this.clickables.slice(from[1]), ...this.animated.slice(from[2])]),
+    };
     this.renderOnce();
   }
 
@@ -2383,6 +2405,10 @@ export class TreeWorld {
     const depth = new THREE.Mesh(this.arrowGeo, this.depthOnly);
     depth.renderOrder = 10;
     arrow.add(depth);
+    // Outlined like the rest of the scene. Drawn after the depth pre-pass: inside the silhouette
+    // the arrow's own depth hides the dark shell, so it does not show through the translucent arrow
+    withOutline(arrow);
+    arrow.children[arrow.children.length - 1].renderOrder = 12;
     const glow = this.glow(0x5a9bff, 1.2 * size, 0.8);
     glow.material.blending = THREE.NormalBlending;
     glow.position.y = 0.05;
@@ -2463,13 +2489,12 @@ export class TreeWorld {
     return copy;
   }
 
-  /** Decorate mode; `previewItem` is the figure to place (null: arrows on free places) */
-  setDecorMode(on: boolean, previewItem: string | null = null): void {
+  /** Decorate mode: arrows on free places; `preview` is a figure tried on one of them */
+  setDecorMode(on: boolean, preview: { item: string; pad: number } | null = null): void {
     this.decorMode = on;
-    if (previewItem && !DECOR_KINDS[previewItem]) previewItem = null;
-    if (previewItem !== this.previewItem) {
-      this.previewItem = previewItem;
-      this.previews.forEach((p) => this.dynamic.remove(p));
+    if (preview && !DECOR_KINDS[preview.item]) preview = null;
+    if (preview?.item !== this.preview?.item || preview?.pad !== this.preview?.pad) {
+      this.preview = preview;
       this.placeCourtyard(this.lastDecor, this.version);
     }
     this.previews.forEach((m) => (m.visible = on));
@@ -2573,6 +2598,7 @@ export class TreeWorld {
   }
 
   clearFocus(): void {
+    this.zoomOutOfFocus = 0;
     if (this.focusTo === 1) this.callbacks.focusLost();
     this.focusTo = 0;
     this.start();
@@ -2981,7 +3007,17 @@ export class TreeWorld {
   private zoomTarget = ZOOM_DEFAULT;
 
   /** Zoom in (negative) or out (positive) */
+  /** How far the user has zoomed out while the camera is at a corner */
+  private zoomOutOfFocus = 0;
+
   zoomBy(delta: number): void {
+    // Zooming out of a corner (or the cabin) is the way back to the whole yard.
+    // Not on the first pixel: a pinch trembles, the wheel may tick by accident
+    if (this.focusTo === 1) {
+      this.zoomOutOfFocus = Math.max(0, this.zoomOutOfFocus + delta);
+      if (this.zoomOutOfFocus > 0.08) this.clearFocus();
+      return;
+    }
     this.zoomTarget = THREE.MathUtils.clamp(this.zoomTarget + delta, 0, 1);
     this.lastInteraction = this.clock.getElapsedTime();
     this.start();

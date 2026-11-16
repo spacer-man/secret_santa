@@ -145,7 +145,7 @@ async def build_tree(
         garland=min(friends, MAX_GARLAND),
         mandarins=balance,
         decor=[Decor(item=u.item_key, pad=u.pad) for u, _ in owned if u.pad is not None],
-        owned=[u.item_key for u, _ in owned],
+        owned=list(dict.fromkeys(u.item_key for u, _ in owned)),
         level=level,
         points=points,
         level_from=level_from,

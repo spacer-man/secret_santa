@@ -20,7 +20,7 @@ export const TUNING = {
   scenePress: 1,
 
   // ====== Shop (components/tree/shop-sheet.ts) ====== //
-  /** A page of the shop turns over when the tab changes, ms */
+  /** The pages of the shop swipe sideways when the tab changes, ms */
   shopPageMs: 380,
   /** The hatched mark of the active tab crawls to the new one, ms */
   shopTabMs: 420,

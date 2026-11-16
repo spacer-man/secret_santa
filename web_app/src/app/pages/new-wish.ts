@@ -40,7 +40,7 @@ interface Picked {
               <button
                 class="swatch"
                 [class.selected]="c === color()"
-                [style.background]="swatch(c)"
+                [style.background-image]="swatch(c)"
                 (click)="color.set(c)"
                 [attr.aria-label]="c"
               ></button>
@@ -54,7 +54,7 @@ interface Picked {
                 (click)="pattern.set(p)"
                 [attr.aria-label]="p"
               >
-                <svg viewBox="-12 -14 24 26">
+                <svg class="pattern-art" viewBox="-12 -14 24 26">
                   <defs ballDefs></defs>
                   <g ballArt [color]="color()" [pattern]="p"></g>
                 </svg>
@@ -155,7 +155,8 @@ export class NewWishPage {
 
   swatch(color: string): string {
     const [main, dark] = BALL_COLORS[color] ?? ['#888', '#444'];
-    return `radial-gradient(circle at 35% 30%, #fff 0, ${main} 25%, ${dark} 100%)`;
+    // Sized by the circle, not by the square of the button: the shading follows the round edge
+    return `radial-gradient(circle farthest-side at 35% 30%, #fff 0, ${main} 30%, ${dark} 100%)`;
   }
 
   nextIdea(): void {

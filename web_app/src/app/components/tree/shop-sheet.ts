@@ -72,17 +72,29 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
                   <span class="rarity">{{ rarityText(it.rarity) }}</span>
                   <div class="card-action">
                     @if (it.owned) {
-                      <span class="mark">{{
-                        i18n.t(it.friends ? 'receivedMark' : 'ownedMark')
-                      }}</span>
-                      @if (it.category === 'figure' && canPlace()) {
-                        @if (it.pad !== null) {
-                          <span class="small muted">{{ i18n.t('inYard') }}</span>
+                      <span class="mark"
+                        >{{ i18n.t(it.friends ? 'receivedMark' : 'ownedMark') }}
+                        @if (it.count > 1) {
+                          ×{{ it.count }}
                         }
-                        <button class="card-btn" (click)="placeFigure.emit(it.key)">
-                          {{ i18n.t(it.pad === null ? 'placeFigure' : 'moveFigure') }}
-                        </button>
-                        @if (it.pad !== null) {
+                      </span>
+                      @if (it.category === 'figure' && canPlace()) {
+                        @if (it.pads.length) {
+                          <span class="small muted">{{
+                            it.count > 1
+                              ? f('inYardCount', it.pads.length) + '/' + it.count
+                              : i18n.t('inYard')
+                          }}</span>
+                        }
+                        @if (shop.spareCount(it) > 0) {
+                          <button class="card-btn" (click)="placeFigure.emit(it.key)">
+                            {{ i18n.t('placeFigure') }}
+                          </button>
+                        } @else if (it.count === 1) {
+                          <!-- The only copy stands in the yard: move it or take it off -->
+                          <button class="card-btn" (click)="placeFigure.emit(it.key)">
+                            {{ i18n.t('moveFigure') }}
+                          </button>
                           <button
                             class="card-btn quiet"
                             [disabled]="shop.busy()"
@@ -92,8 +104,34 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
                           </button>
                         }
                       }
+                      @if (it.count < it.max) {
+                        <!-- Figures can be bought again: one more copy -->
+                        @if (confirming() === it.key) {
+                          <span class="confirm-q">{{ f('buyConfirm', it.price) }}</span>
+                          <div class="confirm-row">
+                            <button
+                              class="card-btn primary"
+                              [disabled]="shop.busy()"
+                              (click)="buy(it)"
+                            >
+                              {{ i18n.t('buyYes') }}
+                            </button>
+                            <button class="card-btn quiet" (click)="confirming.set(null)">
+                              {{ i18n.t('buyNo') }}
+                            </button>
+                          </div>
+                        } @else {
+                          <button
+                            class="card-btn price"
+                            [disabled]="lack(it) > 0"
+                            (click)="ask(it)"
+                          >
+                            {{ f('buyMore', it.price) }}
+                          </button>
+                        }
+                      }
                     } @else if (it.friends > 0) {
-                      <span class="gift">{{ giftText(it.friends) }}</span>
+                      <span class="friends-gift">{{ giftText(it.friends) }}</span>
                       <div class="friends-bar">
                         <span [style.width.%]="friendsPercent(it)"></span>
                       </div>
@@ -223,7 +261,6 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     }
     .shop-pages {
       display: grid;
-      perspective: 1400px;
     }
     .shop-page {
       grid-area: 1 / 1;
@@ -231,13 +268,16 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       flex-direction: column;
       gap: 0.6rem;
       min-width: 0;
-      transform-origin: 0 50%;
     }
-    .page-in {
-      animation: page-in var(--page-ms) cubic-bezier(0.2, 0.7, 0.3, 1) both;
+    /* A swipe between screens, as on a phone: both pages move side by side, flat, with the same
+       easing (the sheet clips them at its edges) */
+    .page-in,
+    .page-out {
+      --swipe: calc(100% + 2.5rem);
+      animation: page-in var(--page-ms) cubic-bezier(0.25, 0.8, 0.25, 1) both;
     }
     .page-out {
-      animation: page-out var(--page-ms) cubic-bezier(0.5, 0, 0.8, 0.4) both;
+      animation-name: page-out;
       pointer-events: none;
     }
     .back .page-in {
@@ -246,29 +286,25 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
     .back .page-out {
       animation-name: page-out-back;
     }
-    /* Forward: the old page is turned over to the left, the new one lies down from the right */
+    /* Forward (a tab on the right): the content goes to the left, the new one comes from the right */
     @keyframes page-in {
       from {
-        transform: translateX(35%) rotateY(-28deg);
-        opacity: 0;
+        transform: translateX(var(--swipe));
       }
     }
     @keyframes page-out {
       to {
-        transform: translateX(-35%) rotateY(28deg);
-        opacity: 0;
+        transform: translateX(calc(-1 * var(--swipe)));
       }
     }
     @keyframes page-in-back {
       from {
-        transform: translateX(-35%) rotateY(28deg);
-        opacity: 0;
+        transform: translateX(calc(-1 * var(--swipe)));
       }
     }
     @keyframes page-out-back {
       to {
-        transform: translateX(35%) rotateY(-28deg);
-        opacity: 0;
+        transform: translateX(var(--swipe));
       }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -391,7 +427,7 @@ const rank = (it: ShopItem): number => (it.friends ? 1e6 + it.friends : 0);
       font-weight: 700;
       font-size: 0.88rem;
     }
-    .gift {
+    .friends-gift {
       font-weight: 700;
       font-size: 0.85rem;
       color: var(--gold-color);

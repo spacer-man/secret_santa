@@ -340,6 +340,9 @@
   - линт — **ESLint** + angular-eslint (`bun run lint`, конфиг `eslint.config.js`);
   - типы — `bun run typecheck` (tsc, strict) + `ng build` (strictTemplates проверяет шаблоны);
   - `bun run check` — всё сразу.
+  - Бюджет начальной загрузки 500 КБ (`angular.json`). Тяжёлое и не нужное сразу — лениво: реплики маскота
+    (`import('./mascot-lines')` в mascot.ts, сигнал `ready`), лавка и отладочная панель (`@defer` в tree-panel.ts),
+    three.js и страницы. Проверка: `npx ng build --stats-json` → состав `main-*.js` и чанков из modulepreload.
 - Скрипты — `shellcheck scripts/*.sh`.
 
 ## Настройки «на глаз» и отладка

@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { I18n } from './i18n';
 import { Store } from './store';
-import { LINES, Mood, Topic } from './mascot-lines';
+import type { LINES, Mood, Topic } from './mascot-lines';
 
 export type { Mood, Topic } from './mascot-lines';
 /** Ded Moroz (the Russian Father Frost) or Santa Claus */
@@ -35,6 +35,15 @@ export class Mascot {
 
   readonly name = computed(() => this.i18n.dict.mascot.heroes[this.hero()]);
 
+  /** The lines are a lazy chunk (~27 KB of text): not in the first download */
+  private readonly lines = signal<typeof LINES | null>(null);
+  /** The lines have arrived (read it in an effect to speak once they are here) */
+  readonly ready = computed(() => !!this.lines());
+
+  constructor() {
+    void import('./mascot-lines').then((m) => this.lines.set(m.LINES));
+  }
+
   /** Index of the next line per topic: lines go in turn, starting at a random one */
   private readonly next = new Map<string, number>();
 
@@ -50,7 +59,9 @@ export class Mascot {
 
   /** The next line on the topic (in the given character, or the chosen one) */
   say(topic: Topic, mood: Mood = this.mood(), hero: Hero = this.hero()): string {
-    const lines = LINES[this.i18n.lang()][mood][topic];
+    const all = this.lines();
+    if (!all) return '';
+    const lines = all[this.i18n.lang()][mood][topic];
     const key = `${mood}:${topic}`;
     const i = this.next.get(key) ?? Math.floor(Math.random() * lines.length);
     this.next.set(key, (i + 1) % lines.length);
@@ -59,7 +70,8 @@ export class Mascot {
 
   /** The first line of a topic, always the same (for samples in the settings) */
   sample(topic: Topic, mood: Mood, hero: Hero = this.hero()): string {
-    return this.fill(LINES[this.i18n.lang()][mood][topic][0], hero);
+    const all = this.lines();
+    return all ? this.fill(all[this.i18n.lang()][mood][topic][0], hero) : '';
   }
 
   private fill(line: string, hero: Hero): string {

@@ -62,7 +62,9 @@ function readSeen(): Record<string, string> | null {
     @if (tree(); as t) {
       <section class="tree-card">
         @if (debugTools()) {
-          <debug-panel [tree]="t" (changed)="debugChanged($event)" />
+          @defer (on immediate) {
+            <debug-panel [tree]="t" (changed)="debugChanged($event)" />
+          }
         }
         <div class="hud">
           <span class="hud-title">🎄 {{ i18n.t('myTree') }}</span>
@@ -328,11 +330,14 @@ function readSeen(): Record<string, string> | null {
             }
           }
           @case ('shop') {
-            <shop-sheet
-              [canPlace]="!scene3d()?.is2d()"
-              (changed)="load()"
-              (placeFigure)="startPlacing($event)"
-            />
+            <!-- A lazy chunk: the shop is not in the first download -->
+            @defer (on immediate) {
+              <shop-sheet
+                [canPlace]="!scene3d()?.is2d()"
+                (changed)="load()"
+                (placeFigure)="startPlacing($event)"
+              />
+            }
           }
           @case ('wallet') {
             <div class="sheet-emoji">🍊</div>

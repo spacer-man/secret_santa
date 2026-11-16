@@ -5,6 +5,7 @@ Run from bot/:  .venv/bin/python -m pytest tests
 """
 
 import asyncio
+import time
 from datetime import UTC, datetime
 from typing import ClassVar
 from unittest.mock import patch
@@ -58,8 +59,11 @@ def test_init_data_auth():
 
 
 def test_session_token():
-    token = auth.make_session(auth.TgUser(id=7), TOKEN)
-    assert auth.read_session(token, TOKEN).id == 7
+    token = auth.make_session(auth.Principal(kind="telegram", key="7"), TOKEN)
+    assert auth.read_session(token, TOKEN).telegram_id == 7
+    # Tokens made when Telegram was the only way in still work
+    old = auth.sign({"id": 8, "exp": int(time.time()) + 60}, TOKEN, "session")
+    assert auth.read_session(old, TOKEN).telegram_id == 8
     with pytest.raises(auth.AuthError):
         auth.read_session(token + "x", TOKEN)
 

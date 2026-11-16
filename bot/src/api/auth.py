@@ -3,8 +3,10 @@ Authentication of Telegram users.
 
 * Telegram Mini App: every request carries ``Authorization: tma <initData>``,
   signed by Telegram with the bot token.
-* Website: Telegram Login Widget data is checked once and exchanged for
-  our own signed session token (``Authorization: Bearer <token>``).
+* Website / PWA: a way to sign in (Telegram Login Widget, a code sent to an e-mail,
+  Google) is checked once and exchanged for our own signed session token
+  (``Authorization: Bearer <token>``). The token names the identity, not the account:
+  an identity moved to another account by a merge keeps working.
 
 Docs: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
       https://core.telegram.org/widgets/login#checking-authorization
@@ -15,6 +17,7 @@ import hashlib
 import hmac
 import json
 import time
+from typing import Literal
 from urllib.parse import parse_qsl
 
 from pydantic import BaseModel
@@ -33,6 +36,33 @@ class TgUser(BaseModel):
     first_name: str | None = None
     language_code: str | None = None
     start_param: str | None = None
+
+
+IdentityKind = Literal["telegram", "email", "google"]
+
+
+class Principal(BaseModel):
+    """Who is calling: one identity (Telegram id, e-mail or Google account id)"""
+
+    kind: IdentityKind
+    key: str
+    first_name: str | None = None
+    language_code: str | None = None
+    start_param: str | None = None
+
+    @property
+    def telegram_id(self) -> int | None:
+        return int(self.key) if self.kind == "telegram" else None
+
+    @classmethod
+    def telegram(cls, user: TgUser) -> "Principal":
+        return cls(
+            kind="telegram",
+            key=str(user.id),
+            first_name=user.first_name,
+            language_code=user.language_code,
+            start_param=user.start_param,
+        )
 
 
 def _hmac(key: bytes, msg: bytes) -> bytes:
@@ -117,26 +147,33 @@ def unsign(token: str, bot_token: str, purpose: str, now: float | None = None) -
     return payload
 
 
-def make_session(user: TgUser, bot_token: str) -> str:
+def make_session(principal: Principal, bot_token: str) -> str:
     return sign(
-        {"id": user.id, "fn": user.first_name, "exp": int(time.time()) + SESSION_MAX_AGE},
+        {
+            "k": principal.kind,
+            "v": principal.key,
+            "fn": principal.first_name,
+            "exp": int(time.time()) + SESSION_MAX_AGE,
+        },
         bot_token,
         "session",
     )
 
 
-def read_session(token: str, bot_token: str) -> TgUser:
+def read_session(token: str, bot_token: str) -> Principal:
     payload = unsign(token, bot_token, "session")
-    return TgUser(id=payload["id"], first_name=payload.get("fn"))
+    if "id" in payload:  # Tokens made when Telegram was the only way in
+        return Principal(kind="telegram", key=str(payload["id"]), first_name=payload.get("fn"))
+    return Principal(kind=payload["k"], key=payload["v"], first_name=payload.get("fn"))
 
 
-def parse_authorization(header: str | None, bot_token: str) -> TgUser:
+def parse_authorization(header: str | None, bot_token: str) -> Principal:
     if not header:
         raise AuthError("No Authorization header")
     scheme, _, value = header.partition(" ")
     match scheme.lower():
         case "tma":
-            return check_init_data(value, bot_token)
+            return Principal.telegram(check_init_data(value, bot_token))
         case "bearer":
             return read_session(value, bot_token)
     raise AuthError("Unknown auth scheme")

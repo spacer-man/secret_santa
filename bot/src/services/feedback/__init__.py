@@ -2,6 +2,7 @@ import logging
 
 from aiogram import Bot
 
+from services import notifier
 from services.delivery import ReactionResult
 
 log = logging.getLogger(__name__)
@@ -13,7 +14,15 @@ NEW_REPLY = "💌 Анонимный ответ на твоё поздравле
 
 async def notify_author(bot: Bot, result: ReactionResult) -> None:
     """Tell the wish author that the recipient reacted / replied"""
-    if not result.author_telegram_id:
+    if result.author_id and (result.is_new_reply or result.is_new_reaction):
+        await notifier.reaction(
+            result.author_id,
+            result.reaction if result.is_new_reaction else None,
+            result.reply if result.is_new_reply else None,
+        )
+    if not result.author_telegram_id or not (
+        result.author_id and await notifier.telegram_wanted(result.author_id)
+    ):
         return None
 
     text = None

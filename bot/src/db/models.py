@@ -25,8 +25,20 @@ class ValidStatus(enum.StrEnum):
 
 
 class User(SQLModel, table=True):
+    """
+    A participant. Ways to sign in (at least one is set): Telegram, e-mail, Google.
+    Any of them can be linked later; two accounts of one person can be merged
+    (``services/accounts.py``).
+    """
+
     id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
-    telegram_id: int = Field(unique=True, sa_type=BigInteger)
+    telegram_id: int | None = Field(default=None, unique=True, sa_type=BigInteger)
+    email: str | None = Field(default=None, unique=True, index=True, max_length=254)
+    google_id: str | None = Field(default=None, unique=True, index=True, max_length=64)
+    # Name to greet a user who signed in without Telegram (Telegram gives it on every request)
+    name: str | None = Field(default=None, max_length=64)
+    # Channels of notifications, comma separated (telegram,push,email); None: all available
+    notify: str | None = Field(default=None, max_length=32)
     timezone: str = Field(max_length=16)
     language: str | None = Field(default=None, max_length=8)
     referrer_id: UUID | None = Field(default=None, foreign_key="user.id", sa_type=Uuid)
@@ -127,5 +139,27 @@ class UserItem(SQLModel, table=True):
     # Courtyard place of a figure (None: owned but not placed)
     pad: int | None = Field(default=None)
     acquired_at: datetime = Field(
+        default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True))
+    )
+
+
+class EmailCode(SQLModel, table=True):
+    """One-time code sent to an e-mail to sign in or to link it (``services/accounts.py``)"""
+
+    email: str = Field(primary_key=True, max_length=254)
+    code_hash: str = Field(max_length=64)
+    attempts: int = Field(default=0)
+    sent_at: datetime = Field(default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True)))
+
+
+class PushSubscription(SQLModel, table=True):
+    """Web Push subscription of a browser (``services/push.py``)"""
+
+    id: UUID = Field(default_factory=uuid7, primary_key=True, sa_type=Uuid)
+    user_id: UUID = Field(foreign_key="user.id", index=True)
+    endpoint: str = Field(unique=True, max_length=1024)
+    p256dh: str = Field(max_length=256)
+    auth: str = Field(max_length=64)
+    created_at: datetime = Field(
         default_factory=utc_now, sa_column=Column(TIMESTAMP(timezone=True))
     )

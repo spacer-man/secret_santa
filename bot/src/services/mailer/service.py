@@ -10,7 +10,8 @@ from aiogram.types import FSInputFile, InlineKeyboardMarkup
 import timezones
 from configs.labels import LabelsConfig
 from handlers import keyboards as common_keyboards
-from services.delivery import DeliveryService
+from services import notifier
+from services.delivery import DeliveryService, Recipient
 
 from . import messages
 
@@ -58,16 +59,28 @@ class MailerService:
         for recipient in recipients:
             # Mark first: a user must never get two gifts
             await self.delivery_service.mark_notified(recipient.user_id, year)
+            await self.send_telegram(recipient)
             try:
-                await self.send_gift(reciever=recipient.telegram_id)
-            except TelegramRetryAfter as err:
-                await asyncio.sleep(err.retry_after)
-                await self.send_gift(reciever=recipient.telegram_id)
-            except TelegramForbiddenError:
-                log.info(f"Bot is blocked by user {recipient.telegram_id}")
+                await notifier.gift(
+                    recipient.user_id, recipient.email, recipient.language, recipient.notify
+                )
             except Exception:
-                log.warning(f"Failed to send gift to user {recipient.telegram_id}", exc_info=True)
+                log.warning(f"Failed to notify user {recipient.user_id}", exc_info=True)
             await asyncio.sleep(SEND_INTERVAL)
+
+    async def send_telegram(self, recipient: Recipient) -> None:
+        chat_id = recipient.telegram_id
+        if not chat_id or not notifier.wants(recipient.notify, "telegram"):
+            return None
+        try:
+            await self.send_gift(reciever=chat_id)
+        except TelegramRetryAfter as err:
+            await asyncio.sleep(err.retry_after)
+            await self.send_gift(reciever=chat_id)
+        except TelegramForbiddenError:
+            log.info(f"Bot is blocked by user {chat_id}")
+        except Exception:
+            log.warning(f"Failed to send gift to user {chat_id}", exc_info=True)
 
     async def check_ny_and_send_wishes(self, now: datetime | None = None) -> None:
         if self._lock.locked():

@@ -36,7 +36,8 @@ class MediaDTO(BaseModel):
 class WishDTO(BaseModel):
     id: UUID
     author_id: UUID
-    author_telegram_id: int
+    # None: the author signed in without Telegram
+    author_telegram_id: int | None = None
     text: str = Field(min_length=8, max_length=4096)
     text_entities: list[MessageEntity] | None = Field(default=None)
     effect_id: str | None = Field(default=None)
@@ -53,7 +54,9 @@ class WishMediaData(TypedDict):
 
 
 class NewWishArgs(TypedDict):
-    author_telegram_id: Required[int]
+    # The author: Telegram id (the bot) or account id (the app)
+    author_telegram_id: NotRequired[int | None]
+    author_id: NotRequired[UUID]
     ball_color: NotRequired[str | None]
     ball_pattern: NotRequired[str | None]
     text: Required[str]
@@ -90,12 +93,14 @@ class WishService:
             wish_repo = self.wish_repo_type(session=db_session)
             media_repo = self.media_repo_type(session=db_session)
 
-            author_telegram_id = kwargs["author_telegram_id"]
-            author = await user_repo.get_one(filter_by={"telegram_id": author_telegram_id})
-            if not author:
-                raise WishAuthorNotFoundError(
-                    f"User with telegram_id={author_telegram_id} not found"
+            if author_id := kwargs.get("author_id"):
+                author = await user_repo.get_one(filter_by={"id": author_id})
+            else:
+                author = await user_repo.get_one(
+                    filter_by={"telegram_id": kwargs.get("author_telegram_id")}
                 )
+            if not author:
+                raise WishAuthorNotFoundError("Wish author not found")
 
             author_id = author.id
             text_entities = kwargs.get("text_entities")

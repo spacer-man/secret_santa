@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker, create_async_engine
@@ -13,6 +14,17 @@ from .models import *  # noqa: F403 (registers all tables in SQLModel.metadata)
 log = logging.getLogger(__name__)
 
 
+USER_COLUMNS = (
+    "email VARCHAR(254)",
+    "google_id VARCHAR(64)",
+    "name VARCHAR(64)",
+    "notify VARCHAR(32)",
+)
+USER_INDEXES = (
+    'CREATE UNIQUE INDEX IF NOT EXISTS ix_user_email ON "user" (email)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS ix_user_google_id ON "user" (google_id)',
+)
+
 MIGRATIONS = (
     'ALTER TABLE "user" ALTER COLUMN timezone TYPE VARCHAR(16)',
     'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS language VARCHAR(8)',
@@ -21,6 +33,10 @@ MIGRATIONS = (
     "ALTER TABLE wish ADD COLUMN IF NOT EXISTS ball_pattern VARCHAR(16)",
     # Several copies of one figure: the "one of each" constraint is gone
     "ALTER TABLE useritem DROP CONSTRAINT IF EXISTS useritem_user_id_item_key_key",
+    # Sign in without Telegram: e-mail / Google, notification channels
+    'ALTER TABLE "user" ALTER COLUMN telegram_id DROP NOT NULL',
+    *(f'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS {c}' for c in USER_COLUMNS),
+    *USER_INDEXES,
 )
 
 
@@ -43,6 +59,31 @@ async def _sqlite_allow_copies(conn: AsyncConnection) -> None:
         )
     )
     await conn.execute(text("DROP TABLE useritem_old"))
+
+
+async def _sqlite_user_identities(conn: AsyncConnection) -> None:
+    """
+    SQLite (local development): the user table made when Telegram was the only way in gets
+    the new columns, and ``telegram_id`` stops being required (the table is rebuilt for it)
+    """
+    sql = await conn.scalar(text("SELECT sql FROM sqlite_master WHERE name = 'user'"))
+    if not sql:
+        return
+    if "telegram_id BIGINT NOT NULL" in sql:
+        log.info("Rebuilding user: telegram_id becomes optional")
+        new_sql = re.sub(r'^CREATE TABLE "?user"?', "CREATE TABLE user_new", sql, count=1).replace(
+            "telegram_id BIGINT NOT NULL", "telegram_id BIGINT"
+        )
+        await conn.execute(text(new_sql))
+        await conn.execute(text('INSERT INTO user_new SELECT * FROM "user"'))
+        await conn.execute(text('DROP TABLE "user"'))
+        await conn.execute(text('ALTER TABLE user_new RENAME TO "user"'))
+    columns = {row[1] for row in await conn.execute(text('PRAGMA table_info("user")'))}
+    for column in USER_COLUMNS:
+        if column.split()[0] not in columns:
+            await conn.execute(text(f'ALTER TABLE "user" ADD COLUMN {column}'))
+    for statement in USER_INDEXES:
+        await conn.execute(text(statement))
 
 
 _db_url = DBConfig().url.get_secret_value()
@@ -84,6 +125,7 @@ async def setup_relations(drop_if_exist: bool = False) -> None:
 
         if conn.dialect.name == "sqlite":
             await _sqlite_allow_copies(conn)
+            await _sqlite_user_identities(conn)
 
         log.debug("Creating database relations")
         await conn.run_sync(SQLModel.metadata.create_all)

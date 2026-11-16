@@ -80,6 +80,11 @@ class UserService:
             repo = self.repo_type(session=db_session)
             return await repo.get_one(filter_by={"id": user_id})
 
+    async def edit_timezone(self, user_id: UUID, timezone: str) -> None:
+        async with new_db_session() as db_session:
+            await self.repo_type(session=db_session).edit(id=user_id, timezone=timezone)
+            await db_session.commit()
+
     async def edit_user(
         self,
         **kwargs: Unpack[EditUserTZArgs],

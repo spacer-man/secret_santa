@@ -22,6 +22,9 @@ import { Snow } from './components/fx/snow';
         <button class="theme-toggle" (click)="theme.cycle()">
           {{ themeIcon() }} {{ i18n.t(themeLabel()) }}
         </button>
+        @if (store.registered()) {
+          <a class="theme-toggle" routerLink="/settings">⚙ {{ i18n.t('settings') }}</a>
+        }
       </footer>
     </main>
 

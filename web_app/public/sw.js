@@ -1,5 +1,6 @@
 // v2: files without a hash in the name are no longer served from the cache first
-const CACHE = 'secret-santa-v2';
+// v3: push notifications
+const CACHE = 'secret-santa-v3';
 const STATIC_RE = /\.(?:js|css|png|svg|ico|webp|webmanifest|woff2?)$/i;
 // A content hash in the name (main-AB12CD34.js): the file never changes, the cache is enough.
 // Anything else (and everything of `ng serve`, where names have no hash) is asked from the
@@ -71,3 +72,36 @@ self.addEventListener('fetch', (event) => {
     );
   }
 });
+
+// Web Push (bot/src/services/push.py): {title, body, url, tag}
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : '' };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Secret Santa', {
+      body: data.body || '',
+      tag: data.tag || 'santa',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      data: { url: data.url || '/' },
+    })
+  );
+});
+
+// A tap on the notification: an open window of the app goes there, else a new one opens
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      const win = wins.find((w) => new URL(w.url).origin === self.location.origin);
+      if (win) return win.focus().then((w) => w.navigate(url)).catch(() => self.clients.openWindow(url));
+      return self.clients.openWindow(url);
+    })
+  );
+});
+

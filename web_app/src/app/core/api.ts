@@ -19,7 +19,39 @@ export interface Me {
   invited?: number;
   /** The debug panel on the tree: DEBUG_TOOLS=1 on the server and an admin */
   debug?: boolean;
+  /** How this session signed in */
+  signed_in_with?: IdentityKind;
+  /** Ways to sign in linked to the account (email: the address) */
+  identities?: { telegram: boolean; email: string | null; google: boolean };
+  /** Chosen notification channels */
+  notify?: Channel[];
+  /** Browsers subscribed to push notifications */
+  push_devices?: number;
 }
+
+export type IdentityKind = 'telegram' | 'email' | 'google';
+export type Channel = 'telegram' | 'push' | 'email';
+
+/** What an account has: shown before merging two accounts */
+export interface AccountSummary {
+  registered_at: string;
+  timezone: string;
+  identities: IdentityKind[];
+  wishes: number;
+  mandarins: number;
+  figures: number;
+  gifts: number;
+}
+
+/** A proof of another way to sign in, to link it to the account */
+export type LinkProof =
+  | { telegram: Record<string, unknown> }
+  | { email: { email: string; code: string } }
+  | { google: { credential: string } };
+
+export type LinkResult =
+  | { status: 'linked' | 'same' | 'replace'; me: Me }
+  | { status: 'taken'; merge_token: string; mine: AccountSummary; other: AccountSummary };
 
 export interface Config {
   bot_username: string;
@@ -28,6 +60,11 @@ export interface Config {
   ball_colors: string[];
   ball_patterns: string[];
   rewards: Record<string, number>;
+  /** Ways to sign in besides Telegram: absent / false = hidden */
+  google_client_id?: string | null;
+  email_login?: boolean;
+  /** Web Push key (absent: push notifications are off on the server) */
+  vapid_public_key?: string | null;
 }
 
 export type BallState = 'box' | 'hung' | 'lit';
@@ -196,14 +233,31 @@ export class Api {
   config = () => this.request<Config>('GET', '/config');
   stats = () => this.request<Stats>('GET', '/stats');
   me = () => this.request<Me>('GET', '/me');
-  saveProfile = (timezone: string, ref?: string | null) =>
-    this.request<Me>('PUT', '/me', { timezone, ref: ref ?? null });
+  saveProfile = (timezone: string, ref?: string | null, language?: string) =>
+    this.request<Me>('PUT', '/me', { timezone, ref: ref ?? null, language: language ?? null });
 
-  login = async (widgetData: Record<string, unknown>) => {
-    const { token } = await this.request<{ token: string }>('POST', '/auth/telegram', widgetData);
+  private signIn = async (path: string, body: unknown) => {
+    const { token } = await this.request<{ token: string }>('POST', path, body);
     this.session = token;
   };
+  login = (widgetData: Record<string, unknown>) => this.signIn('/auth/telegram', widgetData);
+  loginGoogle = (credential: string) => this.signIn('/auth/google', { credential });
+  /** Sends a 6-digit code to the e-mail (to sign in or to link it) */
+  emailStart = (email: string, language: string) =>
+    this.request<{ sent: boolean; resend_after: number }>('POST', '/auth/email/start', {
+      email,
+      language,
+    });
+  loginEmail = (email: string, code: string) => this.signIn('/auth/email/verify', { email, code });
   logout = () => (this.session = null);
+
+  link = (proof: LinkProof) => this.request<LinkResult>('POST', '/me/link', proof);
+  merge = (mergeToken: string, timezone: 'mine' | 'other') =>
+    this.request<Me>('POST', '/me/merge', { merge_token: mergeToken, timezone });
+  unlink = (kind: IdentityKind) => this.request<Me>('DELETE', `/me/link/${kind}`);
+  setNotify = (channels: Channel[]) => this.request<Me>('PUT', '/me/notify', { channels });
+  pushSubscribe = (sub: PushSubscriptionJSON) => this.request<void>('POST', '/push', sub);
+  pushRemove = (endpoint: string) => this.request<void>('POST', '/push/remove', { endpoint });
 
   wishes = () => this.request<MyWish[]>('GET', '/wishes');
   newWish = (text: string, files: File[], look?: { color: string; pattern: string }) => {

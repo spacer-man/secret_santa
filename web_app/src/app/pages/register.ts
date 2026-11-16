@@ -55,7 +55,9 @@ export class RegisterPage {
     this.saving.set(true);
     this.error.set('');
     try {
-      this.store.me.set(await this.api.saveProfile(this.timezone(), this.store.ref));
+      this.store.me.set(
+        await this.api.saveProfile(this.timezone(), this.store.ref, this.i18n.lang()),
+      );
       await this.store.refreshGift();
       this.tg.haptic('success');
       this.router.navigateByUrl('/');

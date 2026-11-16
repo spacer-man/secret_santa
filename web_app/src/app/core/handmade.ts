@@ -152,8 +152,17 @@ function ribbon(raw: Pt[], pen: Pen): string {
   return out;
 }
 
+/**
+ * Points of the drawn line per point of the hand: dense enough for an uneven edge
+ * (about one every 2.5 px); the noise along the line is counted in the old, sparser points
+ */
+const DENSE = 6;
+const SPARSE = 4 / DENSE;
 /** Points of the line in one piece of even pressure */
-const PIECE = 4;
+const PIECE = 6;
+/** How much the edge of a line wanders: a share of its half-width and a bit in px on top */
+const EDGE = 0.34;
+const EDGE_PX = 0.22;
 
 function pencilPass(raw: Pt[], pen: Pen, offset: number, alpha: number): string {
   const { w, seed, jit = 1.2, taper = 0.7 } = pen;
@@ -162,10 +171,13 @@ function pencilPass(raw: Pt[], pen: Pen, offset: number, alpha: number): string 
       x + (hash(seed * 91.7 + i * 7.13) - 0.5) * 2 * jit,
       y + (hash(seed * 53.3 + i * 11.9) - 0.5) * 2 * jit,
     ]),
+    DENSE,
   );
   const n = pts.length;
   const left: string[] = [];
   const right: string[] = [];
+  /** Half the width of the line at every point (the radius of a round end there) */
+  const radius: number[] = [];
   for (let i = 0; i < n; i++) {
     const a = pts[Math.max(0, i - 1)];
     const b = pts[Math.min(n - 1, i + 1)];
@@ -175,23 +187,40 @@ function pencilPass(raw: Pt[], pen: Pen, offset: number, alpha: number): string 
     const s = i / (n - 1);
     // The pencil comes down over the first 14% of the line and lifts over the last 16%
     const env = Math.min(1, s / 0.14, (1 - s) / 0.16);
-    const press = noise1(i * 0.21 + seed * 1.9);
+    const press = noise1(i * SPARSE * 0.21 + seed * 1.9);
     const half = (w / 2) * (1 - taper + taper * env) * (0.85 + 0.3 * press);
+    // The edge of a pencil line is never even: the lead crumbles on the paper.
+    // Each side wanders on its own, point by point.
+    const edge = (side: number): number => {
+      const v = hash(seed * 13.7 + i * 3.31 + side * 57.7) * 2 - 1;
+      return Math.max(0.12, half * (1 + EDGE * v) + EDGE_PX * v);
+    };
+    const [hl, hr] = [edge(0), edge(1)];
     const cx = pts[i][0] + nx * offset;
     const cy = pts[i][1] + ny * offset;
-    left.push(`${r1(cx + nx * half)} ${r1(cy + ny * half)}`);
-    right.push(`${r1(cx - nx * half)} ${r1(cy - ny * half)}`);
+    left.push(`${r1(cx + nx * hl)} ${r1(cy + ny * hl)}`);
+    right.push(`${r1(cx - nx * hr)} ${r1(cy - ny * hr)}`);
+    radius.push((hl + hr) / 2);
   }
+  // Pressure of a piece: light pieces fade, the lightest are gaps
+  const pressAt = (i0: number): number =>
+    0.7 * noise1(i0 * SPARSE * 0.085 + seed * 2.7) + 0.3 * noise1(i0 * SPARSE * 0.45 + seed * 6.1);
+  const drawn = (i0: number): boolean => i0 >= 0 && i0 < n - 1 && pressAt(i0) >= -0.5;
   let out = '';
   for (let i0 = 0; i0 < n - 1; i0 += PIECE) {
+    if (!drawn(i0)) continue;
     const i1 = Math.min(n - 1, i0 + PIECE);
-    // Pressure of this piece: light pieces fade, the lightest are gaps
-    const press = 0.7 * noise1(i0 * 0.085 + seed * 2.7) + 0.3 * noise1(i0 * 0.45 + seed * 6.1);
-    if (press < -0.5) continue;
-    const opacity = alpha * Math.max(0.16, Math.min(1, 0.62 + 0.75 * press));
+    const opacity = alpha * Math.max(0.16, Math.min(1, 0.62 + 0.75 * pressAt(i0)));
     const l = left.slice(i0, i1 + 1);
     const r = right.slice(i0, i1 + 1).reverse();
-    out += `<path class="hm-fill" opacity="${opacity.toFixed(2)}" d="M${l.join('L')}L${r.join('L')}Z"/>`;
+    // Where the pencil came down or lifted the end is round (a lead has no corners);
+    // between two pieces it stays flat, or they would overlap into a darker spot
+    const arc = (i: number): string => `A${r1(radius[i])} ${r1(radius[i])} 0 0 0 `;
+    const end = drawn(i0 + PIECE) ? 'L' : arc(i1);
+    const start = drawn(i0 - PIECE) ? '' : arc(i0) + l[0];
+    out +=
+      `<path class="hm-fill" opacity="${opacity.toFixed(2)}" ` +
+      `d="M${l.join('L')}${end}${r.join('L')}${start}Z"/>`;
   }
   return out;
 }
@@ -416,9 +445,37 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
     const press = noise1(piece * 2.3 + o.seed * 1.3);
     const opacity = o.alpha * Math.max(0.78, Math.min(1, 0.9 + 0.14 * press));
     const width = o.lw * (0.8 + 0.4 * hash(o.seed * 4.1 + piece * 5.9));
+    // The body of the stroke is a bit thinner; over it lies the same line, wider and cut into
+    // tiny dashes: only their ends stick out, and the edge of the stroke is ragged, as lead
+    // crumbling on paper. One group, so that the two do not darken each other.
+    const dashes = Array.from({ length: 10 }, (_, k) =>
+      r1((k % 2 ? 1.1 : 0.7) + hash(o.seed * 3.3 + piece * 7.9 + k * 1.7) * (k % 2 ? 2.6 : 1.9)),
+    ).join(' ');
+    // The two free ends of the whole line are round (the pieces in between join flat)
+    const body = Math.max(1, width - 1.1);
+    let caps = '';
+    const cap = (at: Pt, toward: Pt, sweep: number): void => {
+      const len = Math.hypot(toward[0] - at[0], toward[1] - at[1]) || 1;
+      const [ex, ey] = [
+        (-(toward[1] - at[1]) / len) * (body / 2),
+        ((toward[0] - at[0]) / len) * (body / 2),
+      ];
+      caps +=
+        `<path class="hm-fill hm-cap" style="--i:${seq}" ` +
+        `d="M${p([at[0] + ex, at[1] + ey])}A${r1(body / 2)} ${r1(body / 2)} 0 0 ${sweep} ` +
+        `${p([at[0] - ex, at[1] - ey])}Z"/>`;
+    };
+    if (piece === 0) cap(ends(0)[0], strokes[0][1], 1);
+    if (last) cap(a1, [2 * a1[0] - bend[0], 2 * a1[1] - bend[1]], 0);
     out +=
-      `<path class="hm-stroke hm-seq" pathLength="1" style="--i:${seq++}" ` +
-      `opacity="${opacity.toFixed(2)}" stroke-width="${r1(width)}" d="${d}"/>`;
+      `<g opacity="${opacity.toFixed(2)}">` +
+      `<path class="hm-stroke hm-seq" pathLength="1" style="--i:${seq}" ` +
+      `stroke-width="${r1(body)}" d="${d}"/>` +
+      `<path class="hm-stroke hm-fringe" style="--i:${seq}" stroke-width="${r1(width + 0.5)}" ` +
+      `stroke-dasharray="${dashes}" d="${d}"/>` +
+      caps +
+      `</g>`;
+    seq++;
     // The next piece starts where this one ended: at the beginning of a stroke, heading along it
     d = `M${p(next)}`;
   });

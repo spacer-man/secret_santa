@@ -1864,6 +1864,20 @@ svg.hm-anim .hm-v .hm-seq {
   animation: hm-scribble var(--each, 40ms) linear forwards;
   animation-delay: calc(var(--i) * var(--each, 40ms));
 }
+/* The ragged edge and the round ends of a hatching piece appear when the piece is drawn */
+.hm-fringe {
+  stroke-linecap: butt;
+}
+svg.hm-anim .hm-v :is(.hm-fringe, .hm-cap) {
+  opacity: 0;
+  animation: hm-appear 1ms linear forwards;
+  animation-delay: calc((var(--i) + 1) * var(--each, 40ms));
+}
+@keyframes hm-appear {
+  to {
+    opacity: 1;
+  }
+}
 .hm-old {
   animation: hm-fade var(--dur, 300ms) ease-in forwards;
 }

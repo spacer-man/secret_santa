@@ -18,6 +18,8 @@ export const TUNING = {
   sceneHover: 1,
   /** …and give under the finger / mouse button, bouncing back on release: strength */
   scenePress: 1,
+  /** Lights under the cabin roof: how long one animation program plays before the next, s */
+  lightsProgramS: 10,
 
   // ====== Shop (components/tree/shop-sheet.ts) ====== //
   /** The pages of the shop swipe sideways when the tab changes, ms */

@@ -427,11 +427,14 @@ export class TreePanel {
   // Fringe lights under the cabin roof: skins from the shop (locked = try-on)
   protected readonly lightSkins = LIGHT_SKINS;
   protected readonly lightIcons: Record<string, string> = {
-    multi: '🌈',
+    multi: '🎨',
     warm: '🤍',
     gold: '✨',
     icy: '🧊',
     candy: '🍭',
+    flakes: '❄️',
+    rainbow: '🌈',
+    meteor: '☄️',
   };
   private readonly storedLights = signal<string | null>(readStored(LIGHTS_KEY));
   private readonly ownLights = computed(() => {

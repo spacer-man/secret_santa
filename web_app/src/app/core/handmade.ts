@@ -856,12 +856,13 @@ function toothTile(scale: number, min: number): string {
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
   if (!ctx) return 'none';
-  // Cells of each layer across the tile (bumps of 2, 4, 8 and 20 px) and its share
+  // Cells of each layer across the tile (bumps of 1.5, 2, 3 and 4.5 px) and its share.
+  // Bigger patches read as dirt on light fills (the beard).
   const layers: [cells: number, weight: number][] = [
-    [80, 0.34],
-    [40, 0.32],
-    [20, 0.24],
-    [8, 0.1],
+    [107, 0.38],
+    [80, 0.3],
+    [53, 0.2],
+    [36, 0.12],
   ];
   const lattices = layers.map(([cells], k) =>
     Float32Array.from({ length: cells * cells }, (_, i) => hash(i * 0.917 + k * 53.3)),
@@ -912,7 +913,9 @@ export class Handmade {
     // The mascot: the tooth of the paper (layers of smooth noise), a point per screen pixel
     // (at most 3 per CSS pixel)
     const dense = Math.min(3, Math.max(1, Math.round(window.devicePixelRatio || 1)));
-    root.setProperty('--m-grain', toothTile(dense, 0.5));
+    root.setProperty('--m-grain', toothTile(dense, 0.56));
+    // On the dark sheet the dark paper shows through the pits: there the tooth is shallower
+    root.setProperty('--m-grain-dark', toothTile(dense, 0.76));
     this.listen();
     new MutationObserver(() => this.schedule()).observe(document.body, {
       childList: true,

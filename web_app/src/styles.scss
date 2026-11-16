@@ -2177,7 +2177,9 @@ svg.hm-field {
 :root[data-theme='dark'] .mascot-art {
   --m-line: #121318;
   --m-coat: #d8493c;
-  --m-fur-base: color-mix(in srgb, var(--m-fur) 62%, var(--paper-3));
+  --m-fur-base: color-mix(in srgb, var(--m-fur) 80%, var(--paper-3));
+  /* A shallower tooth: the dark paper showing through reads as dirt on the white fur */
+  --m-grain: var(--m-grain-dark);
 }
 :root[data-theme='dark'] .mascot-art.moroz {
   --m-coat: #4a7fc6;

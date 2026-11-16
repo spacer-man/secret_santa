@@ -160,9 +160,13 @@ const DENSE = 6;
 const SPARSE = 4 / DENSE;
 /** Points of the line in one piece of even pressure */
 const PIECE = 6;
-/** How much the edge of a line wanders: a share of its half-width and a bit in px on top */
-const EDGE = 0.34;
-const EDGE_PX = 0.22;
+/**
+ * How much the edge of a line wanders (a share of its half-width, and a bit in px on top) and
+ * how slowly: the edge is a gentle wave, not teeth — a pencil line is soft, not torn
+ */
+const EDGE = 0.2;
+const EDGE_PX = 0.12;
+const EDGE_WAVE = 0.55;
 
 function pencilPass(raw: Pt[], pen: Pen, offset: number, alpha: number): string {
   const { w, seed, jit = 1.2, taper = 0.7 } = pen;
@@ -189,10 +193,9 @@ function pencilPass(raw: Pt[], pen: Pen, offset: number, alpha: number): string 
     const env = Math.min(1, s / 0.14, (1 - s) / 0.16);
     const press = noise1(i * SPARSE * 0.21 + seed * 1.9);
     const half = (w / 2) * (1 - taper + taper * env) * (0.85 + 0.3 * press);
-    // The edge of a pencil line is never even: the lead crumbles on the paper.
-    // Each side wanders on its own, point by point.
+    // The edge of a pencil line is never even: each side wanders on its own, smoothly
     const edge = (side: number): number => {
-      const v = hash(seed * 13.7 + i * 3.31 + side * 57.7) * 2 - 1;
+      const v = noise1(i * EDGE_WAVE + seed * 13.7 + side * 57.7);
       return Math.max(0.12, half * (1 + EDGE * v) + EDGE_PX * v);
     };
     const [hl, hr] = [edge(0), edge(1)];
@@ -219,7 +222,7 @@ function pencilPass(raw: Pt[], pen: Pen, offset: number, alpha: number): string 
     const end = drawn(i0 + PIECE) ? 'L' : arc(i1);
     const start = drawn(i0 - PIECE) ? '' : arc(i0) + l[0];
     out +=
-      `<path class="hm-fill" opacity="${opacity.toFixed(2)}" ` +
+      `<path class="hm-fill hm-pencil" opacity="${opacity.toFixed(2)}" ` +
       `d="M${l.join('L')}${end}${r.join('L')}${start}Z"/>`;
   }
   return out;
@@ -445,14 +448,8 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
     const press = noise1(piece * 2.3 + o.seed * 1.3);
     const opacity = o.alpha * Math.max(0.78, Math.min(1, 0.9 + 0.14 * press));
     const width = o.lw * (0.8 + 0.4 * hash(o.seed * 4.1 + piece * 5.9));
-    // The body of the stroke is a bit thinner; over it lies the same line, wider and cut into
-    // tiny dashes: only their ends stick out, and the edge of the stroke is ragged, as lead
-    // crumbling on paper. One group, so that the two do not darken each other.
-    const dashes = Array.from({ length: 10 }, (_, k) =>
-      r1((k % 2 ? 1.1 : 0.7) + hash(o.seed * 3.3 + piece * 7.9 + k * 1.7) * (k % 2 ? 2.6 : 1.9)),
-    ).join(' ');
     // The two free ends of the whole line are round (the pieces in between join flat)
-    const body = Math.max(1, width - 1.1);
+    const body = Math.max(1, width - 1.4);
     let caps = '';
     const cap = (at: Pt, toward: Pt, sweep: number): void => {
       const len = Math.hypot(toward[0] - at[0], toward[1] - at[1]) || 1;
@@ -467,12 +464,16 @@ function hatch(w0: number, h0: number, round: boolean, o: Hatch): string {
     };
     if (piece === 0) cap(ends(0)[0], strokes[0][1], 1);
     if (last) cap(a1, [2 * a1[0] - bend[0], 2 * a1[1] - bend[1]], 0);
+    // The tone of a pencil stroke weakens towards its edge: around the body lie two wider
+    // and fainter copies of the same line. One group, so that pieces do not darken each other.
+    const layer = (w: number, tone: number): string =>
+      `<path class="hm-stroke hm-seq" pathLength="1" style="--i:${seq}" ` +
+      `opacity="${tone}" stroke-width="${r1(w)}" d="${d}"/>`;
     out +=
       `<g opacity="${opacity.toFixed(2)}">` +
-      `<path class="hm-stroke hm-seq" pathLength="1" style="--i:${seq}" ` +
-      `stroke-width="${r1(body)}" d="${d}"/>` +
-      `<path class="hm-stroke hm-fringe" style="--i:${seq}" stroke-width="${r1(width + 0.5)}" ` +
-      `stroke-dasharray="${dashes}" d="${d}"/>` +
+      layer(width + 0.4, 0.2) +
+      layer(width - 0.5, 0.42) +
+      layer(body, 1) +
       caps +
       `</g>`;
     seq++;

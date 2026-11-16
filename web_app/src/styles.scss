@@ -1864,11 +1864,15 @@ svg.hm-anim .hm-v .hm-seq {
   animation: hm-scribble var(--each, 40ms) linear forwards;
   animation-delay: calc(var(--i) * var(--each, 40ms));
 }
-/* The ragged edge and the round ends of a hatching piece appear when the piece is drawn */
-.hm-fringe {
-  stroke-linecap: butt;
+/* A pencil line has a soft edge: a faint rim around every piece of it */
+.hm-pencil {
+  stroke: var(--hm);
+  stroke-width: 0.9px;
+  stroke-opacity: 0.32;
+  stroke-linejoin: round;
 }
-svg.hm-anim .hm-v :is(.hm-fringe, .hm-cap) {
+/* The round ends of a hatching line appear when its piece is drawn */
+svg.hm-anim .hm-v .hm-cap {
   opacity: 0;
   animation: hm-appear 1ms linear forwards;
   animation-delay: calc((var(--i) + 1) * var(--each, 40ms));

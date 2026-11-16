@@ -12,6 +12,7 @@ import { Tree3d } from '../tree3d/tree-3d';
 import { LIGHT_SKINS } from '../tree3d/skins';
 import { ShopSheet } from './shop-sheet';
 import { DebugPanel } from './debug-panel';
+import { DAYTIME_MODES, Daytime, DaytimeMode, PHASE_ICONS } from '../../core/daytime';
 
 const SEEN_KEY = 'santa.tree.seen';
 const SNOW_KEY = 'santa.snowfall.v2';
@@ -42,6 +43,7 @@ type Sheet =
   | { kind: 'wallet'; history?: MandarinTx[] }
   | { kind: 'pad'; pad: number; corner: string; item: string | null }
   | { kind: 'snow' }
+  | { kind: 'daytime' }
   | { kind: 'lights' }
   | { kind: 'shop' }
   | null;
@@ -86,6 +88,7 @@ function readSeen(): Record<string, string> | null {
             [decorMode]="decorMode()"
             [preview]="preview()"
             [snowfall]="shownSnow()"
+            [daytime]="daytime.hour()"
             [cabinLights]="shownLights()"
             (cabinClick)="openLights()"
             (padClick)="openPad($event)"
@@ -127,6 +130,13 @@ function readSeen(): Record<string, string> | null {
           }
           <button class="snow-btn" (click)="openSnow()" [attr.aria-label]="i18n.t('snowfall')">
             {{ snowModes[snowfall()].icon }}
+          </button>
+          <button
+            class="snow-btn daytime-btn"
+            (click)="sheet.set({ kind: 'daytime' })"
+            [attr.aria-label]="i18n.t('daytime')"
+          >
+            {{ phaseIcons[daytime.phase()] }}
           </button>
         </div>
         <div class="level">
@@ -284,6 +294,29 @@ function readSeen(): Record<string, string> | null {
               }
             }
           }
+          @case ('daytime') {
+            <div class="sheet-emoji">{{ phaseIcons[daytime.phase()] }}</div>
+            <h2>{{ i18n.t('daytime') }}</h2>
+            <div class="snow-modes daytime-modes">
+              @for (m of daytimeModes; track m) {
+                <button
+                  class="snow-mode"
+                  [class.selected]="daytime.mode() === m"
+                  (click)="daytime.set(m)"
+                >
+                  <span class="snow-icon">{{ phaseIcons[m] }}</span>
+                  <span>{{ i18n.dict.daytimeModes[m] }}</span>
+                </button>
+              }
+            </div>
+            <p class="small muted">
+              {{
+                daytime.mode() === 'auto'
+                  ? i18n.t('daytimeNow').replace('%s', clockText())
+                  : i18n.t('daytimeFixed')
+              }}
+            </p>
+          }
           @case ('lights') {
             <h3 class="compact-title">🏠 {{ i18n.t('cabinLights') }}</h3>
             <div class="skin-strip">
@@ -400,6 +433,16 @@ export class TreePanel {
   private readonly owned = computed(
     () => new Set([...(this.tree()?.owned ?? []), ...this.shop.ownedKeys()]),
   );
+
+  // Time of day: as on the user's clock or picked by hand (free)
+  protected readonly daytime = inject(Daytime);
+  protected readonly daytimeModes: DaytimeMode[] = DAYTIME_MODES;
+  protected readonly phaseIcons = PHASE_ICONS;
+  protected readonly clockText = computed(() => {
+    const h = this.daytime.clockHour();
+    const minutes = Math.round(h * 60);
+    return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
+  });
 
   // Snowfall strength: dense modes are bought in the shop
   protected readonly snowModes = [

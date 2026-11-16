@@ -21,6 +21,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { HIDDEN_LAYER, emit, pushForward } from './glow';
+import { blendDaylight, daylightAt, sunAt } from './daytime';
 import { FACING_DECAY, LANTERN_LIGHT, Lanterns, facingLights, lanternFactory } from './lantern';
 import {
   Birds,
@@ -356,6 +357,7 @@ export class TreeWorld {
   /** Brightness of light sources: more than 1 only with the bloom */
   private readonly bloom = this.realLights ? BLOOM_POWER : 1;
   private composer?: EffectComposer;
+  private bloomPass?: UnrealBloomPass;
   /** Light of the lantern figure from the shop (always in the scene: adding lights recompiles shaders) */
   private readonly figureLight = this.realLights ? this.lampLight() : null;
   private readonly outlineMat = new THREE.MeshBasicMaterial({
@@ -400,7 +402,8 @@ export class TreeWorld {
       const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
       this.composer = new EffectComposer(this.renderer, target);
       this.composer.addPass(new RenderPass(this.scene, this.camera));
-      this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.45, 1.0));
+      this.bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.45, 1.0);
+      this.composer.addPass(this.bloomPass);
       this.composer.addPass(new OutputPass());
     }
 
@@ -569,11 +572,14 @@ export class TreeWorld {
         side: THREE.BackSide,
         depthWrite: false,
         fog: false,
-        uniforms: {},
+        uniforms: this.skyUniforms,
         vertexShader: `varying float h; void main(){ h = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-        fragmentShader: `varying float h; void main(){
-          vec3 top = vec3(0.005, 0.008, 0.05); vec3 mid = vec3(0.035, 0.03, 0.12); vec3 low = vec3(0.085, 0.065, 0.19);
+        fragmentShader: `varying float h;
+          uniform vec3 top; uniform vec3 mid; uniform vec3 low; uniform float overcast;
+          void main(){
           vec3 c = mix(low, mid, smoothstep(-0.05, 0.25, h)); c = mix(c, top, smoothstep(0.25, 0.9, h));
+          // Clouds of a snowfall: the sky turns grey and a little darker
+          c = mix(c, vec3(dot(c, vec3(0.3, 0.5, 0.2))) * vec3(0.92, 0.94, 1.0), overcast);
           gl_FragColor = vec4(c, 1.0);
           // The colours above are display (sRGB) values
  gl_FragColor = sRGBTransferEOTF( gl_FragColor );
@@ -587,13 +593,27 @@ export class TreeWorld {
 
     const moon = new THREE.Mesh(
       new THREE.CircleGeometry(4, 32),
-      new THREE.MeshBasicMaterial({ color: 0xfff4d6, fog: false }),
+      new THREE.MeshBasicMaterial({ color: 0xfff4d6, fog: false, transparent: true }),
     );
     moon.position.set(-40, 42, -60);
     moon.lookAt(0, 0, 0);
     const moonGlow = this.glow(0xbfc8ff, 26, 0.5);
     moonGlow.position.copy(moon.position);
     this.scene.add(moon, moonGlow);
+    this.moon = { disc: moon, glow: moonGlow };
+
+    // The low winter sun: a bright disc (glows through the bloom) with a warm halo
+    const sun = new THREE.Mesh(
+      new THREE.CircleGeometry(3.2, 32),
+      new THREE.MeshBasicMaterial({
+        color: emit(0xfff2d0, this.bloom * 1.4),
+        fog: false,
+        transparent: true,
+      }),
+    );
+    const sunGlow = this.glow(0xffd9a0, 30, 0.7);
+    this.scene.add(sun, sunGlow);
+    this.sun = { disc: sun, glow: sunGlow };
 
     this.shootingStar = buildShootingStar();
     this.scene.add(this.shootingStar.mesh);
@@ -603,6 +623,129 @@ export class TreeWorld {
   }
 
   private shootingStar?: ShootingStar;
+
+  // ====== Time of day ====== //
+  private readonly skyUniforms: Record<string, THREE.IUniform> = {
+    top: { value: new THREE.Vector3() },
+    mid: { value: new THREE.Vector3() },
+    low: { value: new THREE.Vector3() },
+    overcast: { value: 0 },
+  };
+  private moon?: { disc: THREE.Mesh; glow: THREE.Sprite };
+  private sun?: { disc: THREE.Mesh; glow: THREE.Sprite };
+  private hemiLight?: THREE.HemisphereLight;
+  private mainLight?: THREE.DirectionalLight;
+  private fillLight?: THREE.DirectionalLight;
+  private mountains?: { geo: THREE.BufferGeometry; night: Float32Array; day: Float32Array };
+  /** The hour shown (0..24) and the look of the sky now; a change goes smoothly */
+  private hour = 0;
+  private daylight = daylightAt(0);
+  private daylightFrom = this.daylight;
+  private daylightTo = this.daylight;
+  private daylightStart = 0;
+  private mountainDay = -1;
+
+  /**
+   * Time of day, 0..24: sky, sun or moon, light, lanterns.
+   * @param instant no transition (the first setting, or the clock ticking on in the auto mode)
+   */
+  setDaytime(hour: number, instant = false): void {
+    this.hour = hour;
+    this.daylightFrom = instant ? daylightAt(hour) : this.daylight;
+    this.daylightTo = daylightAt(hour);
+    this.daylightStart = performance.now();
+    this.updateDaytime();
+    this.renderOnce();
+    this.start();
+  }
+
+  /** One step of the change of the time of day (also follows the clouds of the weather) */
+  private updateDaytime(): void {
+    const k = Math.min(1, (performance.now() - this.daylightStart) / Math.max(1, TUNING.daytimeMs));
+    const e = k * k * (3 - 2 * k);
+    this.daylight = k >= 1 ? this.daylightTo : blendDaylight(this.daylightFrom, this.daylightTo, e);
+    const d = this.daylight;
+    const srgb = (c: THREE.Color, v: readonly number[]) =>
+      c.setRGB(v[0], v[1], v[2], THREE.SRGBColorSpace);
+
+    // Clouds come with the snow: no sun disc, softer and greyer light
+    const clear = this.weather.stars;
+    const overcast = (1 - clear) * 0.55 * (1 - d.dark * 0.6);
+    const u = this.skyUniforms;
+    (u['top'].value as THREE.Vector3).set(...d.skyTop);
+    (u['mid'].value as THREE.Vector3).set(...d.skyMid);
+    (u['low'].value as THREE.Vector3).set(...d.skyLow);
+    u['overcast'].value = overcast;
+    if (this.scene.fog instanceof THREE.Fog) {
+      srgb(this.scene.fog.color, d.fog);
+      // A light fog by day would wash the forest out: it thins with the light
+      this.scene.fog.far = lerp(70, 130, 1 - d.dark);
+    }
+
+    if (this.hemiLight) {
+      srgb(this.hemiLight.color, d.hemiSky);
+      srgb(this.hemiLight.groundColor, d.hemiGround);
+      this.hemiLight.intensity = d.hemi * (1 + overcast * 0.25);
+    }
+    // The sun and the moon: the main light comes from whichever rules the sky
+    const sun = sunAt(this.hour);
+    const sunDir = new THREE.Vector3(
+      Math.cos(sun.azimuth) * Math.cos(sun.elevation),
+      Math.sin(sun.elevation),
+      Math.sin(sun.azimuth) * Math.cos(sun.elevation),
+    );
+    if (this.mainLight) {
+      srgb(this.mainLight.color, d.sun);
+      this.mainLight.intensity = d.sunPower * (1 - overcast * 0.8);
+      // The light never comes from below the horizon: a low sun still lights from above a little
+      const lightDir = sunDir.clone().setY(Math.max(sunDir.y, 0.45)).normalize();
+      const moonDir = new THREE.Vector3(-8, 14, -6).normalize();
+      this.mainLight.position.copy(lightDir.lerp(moonDir, d.dark).normalize().multiplyScalar(18));
+    }
+    if (this.fillLight) {
+      srgb(this.fillLight.color, d.fill);
+      this.fillLight.intensity = d.fillPower;
+    }
+    if (this.sun) {
+      const seen = d.sunDisc * (1 - overcast * 1.6);
+      this.sun.disc.position.copy(sunDir).multiplyScalar(85);
+      this.sun.disc.lookAt(0, 0, 0);
+      this.sun.glow.position.copy(this.sun.disc.position);
+      (this.sun.disc.material as THREE.MeshBasicMaterial).opacity = Math.max(0, seen);
+      (this.sun.glow.material as THREE.SpriteMaterial).opacity = 0.7 * Math.max(0, seen);
+      this.sun.disc.visible = this.sun.glow.visible = seen > 0.01 && sunDir.y > -0.05;
+    }
+    if (this.moon) {
+      const seen = d.moon * (1 - overcast);
+      (this.moon.disc.material as THREE.MeshBasicMaterial).opacity = seen;
+      (this.moon.glow.material as THREE.SpriteMaterial).opacity = 0.5 * seen;
+      this.moon.disc.visible = this.moon.glow.visible = seen > 0.01;
+    }
+    if (this.bloomPass) {
+      this.bloomPass.strength = d.bloom;
+      // By day the sunlit snow is almost white: only the really bright things may glow
+      this.bloomPass.threshold = 1 + (1 - d.dark) * 0.35;
+    }
+
+    // Stars, northern lights and shooting stars: a clear dark sky only
+    if (this.starMat) this.starMat.uniforms['opacity'].value = clear * d.stars;
+    this.skyClear = clear * d.stars;
+
+    // Mountains: night colours turn into the hazy blue and white of the day
+    const day = Math.round((1 - d.dark) * 100) / 100;
+    if (this.mountains && day !== this.mountainDay) {
+      this.mountainDay = day;
+      const { geo, night, day: lit } = this.mountains;
+      const col = geo.attributes['color'] as THREE.BufferAttribute;
+      const arr = col.array as Float32Array;
+      for (let i = 0; i < arr.length; i++) arr[i] = night[i] + (lit[i] - night[i]) * day;
+      col.needsUpdate = true;
+    }
+
+    // Lanterns and windows light up when it gets dark
+    const lampsOn = this.level >= 3 && d.dark >= 0.5;
+    if (lampsOn !== this.lampsOn) this.applyLamps(lampsOn);
+  }
 
   private starMat!: THREE.ShaderMaterial;
 
@@ -681,13 +824,15 @@ export class TreeWorld {
   }
 
   private buildLights(): void {
-    this.scene.add(new THREE.HemisphereLight(0x5464be, 0x0d0a22, 0.48));
-    const moon = new THREE.DirectionalLight(0x93a6ff, 0.75);
-    moon.position.set(-8, 14, -6);
-    this.scene.add(moon);
-    const warm = new THREE.DirectionalLight(0xffb070, 0.18);
-    warm.position.set(6, 4, 8);
-    this.scene.add(warm);
+    // Colours and strengths are set by the time of day (updateDaytime)
+    this.hemiLight = new THREE.HemisphereLight(0x5464be, 0x0d0a22, 0.48);
+    this.scene.add(this.hemiLight);
+    this.mainLight = new THREE.DirectionalLight(0x93a6ff, 0.75);
+    this.mainLight.position.set(-8, 14, -6);
+    this.scene.add(this.mainLight);
+    this.fillLight = new THREE.DirectionalLight(0xffb070, 0.18);
+    this.fillLight.position.set(6, 4, 8);
+    this.scene.add(this.fillLight);
     this.treeLight.position.set(0, 2.6, 0);
     this.scene.add(this.treeLight);
     if (this.figureLight) this.scene.add(this.figureLight);
@@ -1240,6 +1385,13 @@ export class TreeWorld {
     const rock = new THREE.Color(0x191c48);
     const rockLow = new THREE.Color(0x100f2c);
     const snow = new THREE.Color(0x6a76b4);
+    // By day: hazy blue rock and white caps
+    const day: number[] = [];
+    const dayOf = new Map<THREE.Color, THREE.Color>([
+      [rock, new THREE.Color(0x6c80b4)],
+      [rockLow, new THREE.Color(0x5a6aa0)],
+      [snow, new THREE.Color(0xe8eeff)],
+    ]);
     const tri = (
       a: THREE.Vector3,
       b: THREE.Vector3,
@@ -1250,6 +1402,10 @@ export class TreeWorld {
     ) => {
       pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
       col.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
+      for (const c of [ca, cb, cc]) {
+        const d = dayOf.get(c)!;
+        day.push(d.r, d.g, d.b);
+      }
     };
     const COUNT = 16;
     for (let i = 0; i < COUNT; i++) {
@@ -1288,6 +1444,8 @@ export class TreeWorld {
     geo.computeVertexNormals();
     const mountains = new THREE.Mesh(geo, this.toon(0xffffff, { vertexColors: true, fog: false }));
     mountains.frustumCulled = false;
+    this.mountains = { geo, night: new Float32Array(col), day: new Float32Array(day) };
+    this.mountainDay = -1;
     this.scene.add(mountains);
   }
 
@@ -1406,10 +1564,8 @@ export class TreeWorld {
     this.snowMatUniforms['shown'].value = shown;
     this.snowMatUniforms['size'].value = now.size;
     this.glitter?.setStrength(now.glitter);
-    // Clouds come with the snow: fewer stars
-    if (this.starMat) this.starMat.uniforms['opacity'].value = now.stars;
-    // Northern lights need a clear sky too
-    this.skyClear = now.stars;
+    // Clouds come with the snow: fewer stars, a greyer sky (see updateDaytime)
+    this.updateDaytime();
   }
 
   private readonly snowMatUniforms: Record<string, THREE.IUniform> = {
@@ -2616,8 +2772,20 @@ export class TreeWorld {
     this.windowLights.forEach((l, i) => (l.intensity = WINDOW_LIGHT * fire(i + 20)));
   }
 
+  /** Festive level: lanterns from 3 (after dark), fence lights from 5, northern lights from 9 */
+  private level = 0;
+
   private applyLevel(level: number): void {
-    const lampsOn = level >= 3;
+    this.level = level;
+    this.applyLamps(level >= 3 && this.daylight.dark >= 0.5);
+    if (this.fenceBulbs) this.fenceBulbs.visible = level >= 5;
+
+    this.levelGroup.clear();
+    if (level >= 9) this.addAurora();
+  }
+
+  /** Lanterns, windows and their real lights: on or off */
+  private applyLamps(lampsOn: boolean): void {
     this.lampsOn = lampsOn;
     this.lanterns.setOn(lampsOn);
     this.windows.forEach((w) => {
@@ -2630,10 +2798,6 @@ export class TreeWorld {
     });
     this.cabinLights.forEach((l) => (l.material.opacity = lampsOn ? 0.7 : 0));
     this.windowLights.forEach((l) => (l.intensity = lampsOn ? WINDOW_LIGHT : 0));
-    if (this.fenceBulbs) this.fenceBulbs.visible = level >= 5;
-
-    this.levelGroup.clear();
-    if (level >= 9) this.addAurora();
   }
 
   /**
@@ -3089,6 +3253,8 @@ export class TreeWorld {
 
     const pos = this.snow.geometry.attributes['position'] as THREE.BufferAttribute;
     this.updateWeather();
+    // The time of day is changing: the sky and the light follow
+    if (performance.now() - this.daylightStart < TUNING.daytimeMs + 100) this.updateDaytime();
     const fall = this.weather;
     const count = this.snow.geometry.drawRange.count;
     // Gusts: in a blizzard the wind comes in waves

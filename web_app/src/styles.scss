@@ -1125,6 +1125,16 @@ blockquote {
 .snow-modes.lights {
   grid-template-columns: repeat(3, 1fr);
 }
+/* Time of day: above the snowfall button; "my clock" takes the whole first row */
+.snow-btn.daytime-btn {
+  bottom: 11.2rem;
+}
+.daytime-modes .snow-mode:first-child {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  justify-content: center;
+  gap: 0.5rem;
+}
 .sheet-backdrop.clear {
   background: transparent;
 }

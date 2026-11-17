@@ -359,6 +359,7 @@ export function buildPuff(material: THREE.Material): THREE.Mesh {
   }
   const puff = withOutline(new THREE.Mesh(puffGeo, material), 0.0022);
   puff.visible = false;
+  puff.userData['dynamic'] = true;
   return puff;
 }
 

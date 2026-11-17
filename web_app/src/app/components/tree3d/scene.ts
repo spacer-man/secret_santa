@@ -10,6 +10,7 @@ import type { TreeBall, TreeData } from '../../core/api';
 import { buildCabin } from './cabin';
 import { CabinLights, LightSkin } from './cabin-lights';
 import { instancedOutline, withOutline } from './outline';
+import { bakeStatic } from './bake';
 import { terrainGeometry, terrainHeight, terrainOutline } from './terrain';
 import { ModelName, Models } from './models';
 import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape } from './layout';
@@ -309,13 +310,16 @@ export class TreeWorld {
   private clock = new THREE.Clock();
   private observer?: IntersectionObserver;
   private readonly cleanup: (() => void)[] = [];
+  /** Static parts merged into a few meshes once built (see bake.ts) */
+  private readonly staticRoots: THREE.Object3D[] = [];
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly callbacks: SceneCallbacks,
   ) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'low-power' });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
+    this.pixelRatio = initialPixelRatio();
+    this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.scene.fog = new THREE.Fog(0x0b0c22, 22, 70);
@@ -329,6 +333,7 @@ export class TreeWorld {
     this.buildTree();
     this.buildSnowfall();
     this.scene.add(this.dynamic, this.levelGroup);
+    bakeStatic(this.staticRoots.splice(0), this.scene, new Set(this.staticClickables));
 
     this.bindInput();
     this.resize();
@@ -475,7 +480,7 @@ export class TreeWorld {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       fog: false,
-      uniforms: { time: { value: 0 }, opacity: { value: 1 }, pixel: { value: Math.min(devicePixelRatio || 1, 1.75) } },
+      uniforms: { time: { value: 0 }, opacity: { value: 1 }, pixel: { value: this.pixelRatio } },
       vertexShader: `
         attribute float size; attribute float phase;
         uniform float time; uniform float pixel;
@@ -694,6 +699,9 @@ export class TreeWorld {
       16,
     );
     const bulbPositions: THREE.Vector3[] = [];
+    const fence = new THREE.Group();
+    this.scene.add(fence);
+    this.staticRoots.push(fence);
 
     for (let i = 0; i < posts; i++) {
       const a = (i / posts) * Math.PI * 2;
@@ -701,19 +709,19 @@ export class TreeWorld {
       if (i === gapAt) continue; // entrance: no lonely post in front of the cabin
       const post = this.outline(new THREE.Mesh(postGeo, wood), 1.08);
       post.position.copy(p);
-      this.scene.add(post);
+      fence.add(post);
       if (i % 4 === 1) {
         // Lantern on the post
         const lantern = this.lanterns.build(1.15);
         lantern.group.position.set(p.x, 1.0, p.z);
         lantern.group.rotation.y = -a;
-        this.scene.add(lantern.group);
+        fence.add(lantern.group);
       } else {
         const cap = new THREE.Mesh(capGeo, snow);
         cap.position.set(p.x, 1.0, p.z);
         cap.rotation.y = a * 3;
         cap.scale.set(1 + rand(i) * 0.12, 0.85 + rand(i + 5) * 0.35, 1 + rand(i + 9) * 0.12);
-        this.scene.add(cap);
+        fence.add(cap);
         this.perches.push(new THREE.Vector3(p.x, 1.0 + 0.165 * cap.scale.y, p.z));
       }
 
@@ -725,7 +733,7 @@ export class TreeWorld {
         const rail = this.outline(new THREE.Mesh(new THREE.BoxGeometry(len, 0.12, 0.1), wood), 1.06);
         rail.position.set((p.x + q.x) / 2, h, (p.z + q.z) / 2);
         rail.rotation.y = -Math.atan2(q.z - p.z, q.x - p.x);
-        this.scene.add(rail);
+        fence.add(rail);
       }
       for (let k = 1; k < 6; k++) {
         const t = k / 6;
@@ -787,6 +795,7 @@ export class TreeWorld {
 
     // Fringe lights under the roof (a skin from the shop)
     this.fringe = new CabinLights(cabin.roofEdges, this.glowTex, new THREE.Vector3(0, 2.6, 3.4));
+    this.fringe.group.userData['noBake'] = true;
     cabin.group.add(this.fringe.group);
     this.staticAnimated.push({ update: (t) => this.fringe?.update(t) });
 
@@ -802,6 +811,7 @@ export class TreeWorld {
     cabin.group.position.set(Math.cos(a) * 12.5, terrainHeight(Math.cos(a) * 12.5, Math.sin(a) * 12.5), Math.sin(a) * 12.5);
     cabin.group.lookAt(0, 0, 0);
     this.scene.add(cabin.group);
+    this.staticRoots.push(cabin.group);
 
     // Footprints from the porch steps to the gate
     cabin.group.updateMatrixWorld(true);
@@ -857,6 +867,7 @@ export class TreeWorld {
         obj.scale.setScalar(scale);
         obj.rotation.y = rotY;
         this.scene.add(obj);
+        this.staticRoots.push(obj);
         this.renderOnce();
       } catch (err) {
         console.warn('Model failed', name, err);
@@ -869,6 +880,9 @@ export class TreeWorld {
     const heaps = CORNERS.map((_, ci) => this.buildHeap(ci));
     Promise.all(heaps).then(() => this.heapsDone());
     await Promise.all([...jobs, ...heaps]);
+    // Everything in the courtyard is placed: merge it
+    bakeStatic(this.staticRoots.splice(0), this.scene);
+    this.renderOnce();
   }
 
   /**
@@ -908,6 +922,7 @@ export class TreeWorld {
       bodies.forEach((b, k) => {
         objs[k].position.set(b.x, 0, b.z);
         this.scene.add(objs[k]);
+        this.staticRoots.push(objs[k]);
         // Boxes have corners sticking out of their circles: keep figures a bit further
         this.heapColliders.push(...circlesOf(b).map((c) => ({ ...c, r: c.r * 1.22 })));
       });
@@ -920,6 +935,7 @@ export class TreeWorld {
       top.rotation.y = rand(ci + 0.5) * Math.PI;
       top.position.set(base.position.x, baseBox.max.y - 0.02, base.position.z);
       this.scene.add(top);
+      this.staticRoots.push(top);
       this.heapColliders.push(...circlesOf(makeBody(top.position.x, top.position.z, shape(top, top.rotation.y))));
       this.renderOnce();
     } catch (err) {
@@ -1065,7 +1081,7 @@ export class TreeWorld {
         spots.push(v.x, v.y, v.z);
       }
     }
-    this.glitter = buildGlitter(spots, Math.min(devicePixelRatio || 1, 1.75));
+    this.glitter = buildGlitter(spots, this.pixelRatio);
     this.scene.add(this.glitter.points);
     this.staticAnimated.push(this.glitter);
   }
@@ -1098,6 +1114,10 @@ export class TreeWorld {
     map: { value: null },
     size: { value: 0.16 },
     scale: { value: 400 },
+    // Falling and wind are integrated on the CPU (two numbers per frame), the
+    // flakes move in the vertex shader: no per-flake work or upload per frame
+    fall: { value: 0 },
+    drift: { value: 0 },
     time: { value: 0 },
   };
 
@@ -1166,7 +1186,9 @@ export class TreeWorld {
     const n = TreeWorld.SNOWFALL[TreeWorld.SNOWFALL.length - 1].count;
     const pos = new Float32Array(n * 3);
     const flake = new Float32Array(n * 3);
+    const motion = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
+      motion.set([0.5 + (i % 5) * 0.08, 0.7 + (i % 3) * 0.3, i % 628], i * 3);
       pos.set([(rand(i) - 0.5) * 26, rand(i + 0.3) * 14, (rand(i + 0.6) - 0.5) * 26], i * 3);
       // Mostly small soft flakes; every third one is a bigger crystal
       const crystal = i % 3 === 0 ? 1 + Math.floor(rand(i * 5.7) * 3) : 0;
@@ -1176,6 +1198,7 @@ export class TreeWorld {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('flake', new THREE.BufferAttribute(flake, 3));
+    geo.setAttribute('motion', new THREE.BufferAttribute(motion, 3));
     this.snowMatUniforms['map'].value = this.flakeAtlas();
     this.snow = new THREE.Points(
       geo,
@@ -1184,11 +1207,14 @@ export class TreeWorld {
         depthWrite: false,
         uniforms: this.snowMatUniforms,
         vertexShader: `
-          attribute vec3 flake;
-          uniform float size; uniform float scale; uniform float time;
+          attribute vec3 flake; attribute vec3 motion;
+          uniform float size; uniform float scale; uniform float time; uniform float fall; uniform float drift;
           varying float vAlpha; varying float vKind; varying vec2 vSpin;
           void main() {
-            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            vec3 p = position;
+            p.y = mod(p.y - fall * motion.x, 14.0);
+            p.x = mod(p.x + 13.0 - 0.08 * cos(time + motion.z) + drift * motion.y, 26.0) - 13.0;
+            vec4 mv = modelViewMatrix * vec4(p, 1.0);
             gl_Position = projectionMatrix * mv;
             gl_PointSize = size * flake.x * scale / max(-mv.z, 0.5);
             vKind = flake.z;
@@ -1486,20 +1512,75 @@ export class TreeWorld {
     const count = 64;
     const litCount = Math.min(count, friends * 7);
     const colors = [0xffd36b, 0xff4d6d, 0x4dd2ff, 0x7dff9a, 0xff9ef0];
+    // One instanced mesh for the bulbs and one point cloud for the glows
+    // (was a mesh + a sprite per bulb: ~90 draw calls)
+    const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }), count);
+    const m = new THREE.Matrix4();
+    const c = new THREE.Color();
+    const glowPos: number[] = [];
+    const glowTint: number[] = [];
+    const glowPhase: number[] = [];
     for (let k = 0; k < count; k++) {
       const p = curve.getPointAt(k / count);
       const lit = k < litCount;
       const color = colors[k % colors.length];
-      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshBasicMaterial({ color: lit ? color : 0x1d3a2c }));
-      bulb.position.copy(p);
-      this.dynamic.add(bulb);
+      bulbs.setMatrixAt(k, m.makeTranslation(p.x, p.y, p.z));
+      bulbs.setColorAt(k, c.set(lit ? color : 0x1d3a2c));
       if (lit) {
-        const g = this.glow(color, 0.45, 0.8);
-        g.position.copy(p);
-        this.dynamic.add(g);
-        this.animated.push({ update: (t) => (g.material.opacity = 0.45 + 0.45 * Math.abs(Math.sin(t * 1.8 + k * 0.7))) });
+        c.set(color);
+        glowPos.push(p.x, p.y, p.z);
+        glowTint.push(c.r, c.g, c.b);
+        glowPhase.push(k * 0.7);
       }
     }
+    this.dynamic.add(bulbs);
+    if (glowPos.length) this.dynamic.add(this.glowCloud(glowPos, glowTint, glowPhase, 0.45));
+  }
+
+  /**
+   * Many twinkling glows in one draw call: like `glow()` sprites (additive,
+   * world size), the twinkle is computed in the shader.
+   */
+  private glowCloud(pos: number[], tint: number[], phase: number[], size: number): THREE.Points {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('tint', new THREE.Float32BufferAttribute(tint, 3));
+    geo.setAttribute('phase', new THREE.Float32BufferAttribute(phase, 1));
+    // A sprite of world size s covers s / (2 tan(fov/2) d) of the view height
+    const k = 1 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        map: { value: this.glowTex },
+        time: this.snowMatUniforms['time'],
+        scale: this.snowMatUniforms['scale'],
+        size: { value: size * k },
+      },
+      vertexShader: `
+        attribute vec3 tint; attribute float phase;
+        uniform float time; uniform float scale; uniform float size;
+        varying vec3 vTint; varying float vAlpha;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mv;
+          gl_PointSize = size * scale / max(-mv.z, 0.1);
+          vTint = tint;
+          vAlpha = 0.45 + 0.45 * abs(sin(time * 1.8 + phase));
+        }`,
+      fragmentShader: `
+        uniform sampler2D map;
+        varying vec3 vTint; varying float vAlpha;
+        void main() {
+          vec4 tx = texture2D(map, gl_PointCoord);
+          gl_FragColor = vec4(tx.rgb * vTint, tx.a * vAlpha);
+          #include <colorspace_fragment>
+        }`,
+    });
+    const points = new THREE.Points(geo, mat);
+    points.frustumCulled = false;
+    return points;
   }
 
   private addStar(on: boolean): void {
@@ -2320,12 +2401,65 @@ export class TreeWorld {
     if (this.running || !this.visible || document.hidden) return;
     this.running = true;
     this.clock.getDelta();
-    const loop = () => {
+    this.perfLast = 0;
+    const loop = (now: number) => {
       if (!this.running) return;
-      this.tick();
       this.frame = requestAnimationFrame(loop);
+      // Weak phone: every other display frame (30 fps is smooth enough for the idle scene)
+      if (this.halfRate && (this.skipFrame = !this.skipFrame)) return;
+      this.tick();
+      this.watchPerf(now);
     };
     this.frame = requestAnimationFrame(loop);
+  }
+
+  // ====== Adaptive quality ====== //
+  private pixelRatio = 1;
+  private halfRate = false;
+  private skipFrame = false;
+  private perfLast = 0;
+  private perfWarmup = 2;
+  private readonly perfGaps: number[] = [];
+
+  /**
+   * Watches the real frame rate and lowers the render resolution step by step
+   * when the phone can't keep up (fill rate is what the snow shaders cost),
+   * then halves the frame rate. The median ignores single hiccups
+   * (model loading, a GC pause).
+   */
+  private watchPerf(now: number): void {
+    const gap = now - this.perfLast;
+    this.perfLast = now;
+    if (gap <= 0 || gap > 250) return; // was paused
+    this.perfGaps.push(gap);
+    if (this.perfGaps.length < 60) return;
+    const median = this.perfGaps.sort((a, b) => a - b)[30];
+    this.perfGaps.length = 0;
+    if (this.perfWarmup > 0) {
+      this.perfWarmup--; // shaders compile and models load during the first seconds
+      return;
+    }
+    const slow = this.halfRate ? median > 1000 / 24 : median > 1000 / 45;
+    if (!slow) return;
+    if (this.pixelRatio > 1 || (this.halfRate && this.pixelRatio > MIN_PIXEL_RATIO)) {
+      this.setPixelRatio(Math.max(this.halfRate ? MIN_PIXEL_RATIO : 1, this.pixelRatio - 0.25));
+    } else if (!this.halfRate) {
+      this.halfRate = true;
+    }
+  }
+
+  private setPixelRatio(pr: number): void {
+    if (pr === this.pixelRatio) return;
+    this.pixelRatio = pr;
+    this.renderer.setPixelRatio(pr);
+    if (this.starMat) this.starMat.uniforms['pixel'].value = pr;
+    if (this.glitter) (this.glitter.points.material as THREE.ShaderMaterial).uniforms['pixel'].value = pr;
+    this.resize();
+  }
+
+  /** For tests and the ?debug overlay */
+  get quality(): { pixelRatio: number; halfRate: boolean } {
+    return { pixelRatio: this.pixelRatio, halfRate: this.halfRate };
   }
 
   private stop(): void {
@@ -2351,19 +2485,11 @@ export class TreeWorld {
       if (t - this.lastInteraction > 3) this.azimuth += dt * 0.12;
     }
 
-    const pos = this.snow.geometry.attributes['position'] as THREE.BufferAttribute;
     const fall = TreeWorld.SNOWFALL[this.snowLevel];
     // Gusts: in a blizzard the wind comes in waves
     const gust = fall.wind * (0.6 + 0.4 * Math.sin(t * 0.7));
-    for (let i = 0; i < fall.count; i++) {
-      let y = pos.getY(i) - dt * (0.5 + (i % 5) * 0.08) * fall.speed;
-      let x = pos.getX(i) + Math.sin(t + i) * dt * 0.08 + gust * dt * (0.7 + (i % 3) * 0.3);
-      if (y < 0) y += 14;
-      if (x > 13) x -= 26;
-      pos.setX(i, x);
-      pos.setY(i, y);
-    }
-    pos.needsUpdate = true;
+    this.snowMatUniforms['fall'].value += dt * fall.speed;
+    this.snowMatUniforms['drift'].value += dt * gust;
     this.snowMatUniforms['time'].value = t;
 
     this.flicker(t);
@@ -2393,6 +2519,20 @@ export class TreeWorld {
     this.patternCache.forEach((t) => t.dispose());
     this.renderer.dispose();
   }
+}
+
+const MIN_PIXEL_RATIO = 0.75;
+
+/**
+ * Starting resolution: phones have 2-3x screens, but the toon scene with
+ * outlines looks the same at 1.5x and costs half as much. Weak devices start
+ * lower; the frame-rate watcher goes further down if needed.
+ */
+function initialPixelRatio(): number {
+  const dpr = devicePixelRatio || 1;
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  const weak = (nav.hardwareConcurrency || 8) <= 4 || (nav.deviceMemory ?? 8) <= 3;
+  return Math.min(dpr, weak ? 1.25 : 1.5);
 }
 
 export function webglSupported(): boolean {

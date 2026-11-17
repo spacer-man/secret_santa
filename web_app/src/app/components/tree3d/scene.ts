@@ -12,6 +12,7 @@ import { buildCabin } from './cabin';
 import { CabinLights, LightSkin } from './cabin-lights';
 import { instancedOutline, withOutline } from './outline';
 import { bakeStatic } from './bake';
+import { PerfHud } from './perf-hud';
 import { terrainGeometry, terrainHeight, terrainOutline } from './terrain';
 import { ModelName, Models } from './models';
 import { Body, Circle, FREE, circlesOf, displacement, makeBody, resolve, shape } from './layout';
@@ -398,7 +399,7 @@ export class TreeWorld {
       antialias: true,
       powerPreference: 'low-power',
     });
-    this.pixelRatio = initialPixelRatio(this.realLights);
+    this.pixelRatio = this.startRatio = initialPixelRatio(this.realLights);
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     if (this.realLights) {
@@ -408,6 +409,13 @@ export class TreeWorld {
       this.composer = new EffectComposer(this.renderer, target);
       this.composer.addPass(new RenderPass(this.scene, this.camera));
       this.bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.45, 1.0);
+      // The glow can be blurred at a lower resolution than the frame (see watchPerf)
+      const bloomSize = this.bloomPass.setSize.bind(this.bloomPass);
+      this.bloomPass.setSize = (w: number, h: number) =>
+        bloomSize(
+          Math.max(1, Math.round(w * this.bloomScale)),
+          Math.max(1, Math.round(h * this.bloomScale)),
+        );
       this.composer.addPass(this.bloomPass);
       this.composer.addPass(new OutputPass());
     }
@@ -489,6 +497,12 @@ export class TreeWorld {
 
   /** Input, size and the loop: once the world is there */
   private started(): void {
+    // ?perf: frame rate, quality and long tasks over the scene (for checks on a phone)
+    if (new URLSearchParams(location.search).has('perf') && this.canvas.parentElement) {
+      this.hud = new PerfHud(this.canvas.parentElement);
+      this.renderer.info.autoReset = false;
+      this.cleanup.push(() => this.hud?.dispose());
+    }
     this.bindInput();
     this.resize();
     const ro = new ResizeObserver(() => this.resize());
@@ -3333,14 +3347,22 @@ export class TreeWorld {
       this.frame = requestAnimationFrame(loop);
       // A weak phone: every other display frame (30 fps is smooth enough for this scene)
       if (this.halfRate && (this.skipFrame = !this.skipFrame)) return;
+      if (this.hud) this.renderer.info.reset();
       this.tick();
       this.watchPerf(now);
+      this.hud?.frame(now, () => ({
+        calls: this.renderer.info.render.calls,
+        triangles: this.renderer.info.render.triangles,
+        quality: this.quality,
+      }));
     };
     this.frame = requestAnimationFrame(loop);
   }
 
   // ====== Adaptive quality ====== //
   private pixelRatio = 1;
+  /** Resolution of the bloom relative to the frame */
+  private bloomScale = 1;
   private halfRate = false;
   private skipFrame = false;
   private perfLast = 0;
@@ -3348,9 +3370,10 @@ export class TreeWorld {
   private readonly perfGaps: number[] = [];
 
   /**
-   * Watches the real frame rate and, when the device can't keep up, lowers the
-   * render resolution step by step (the pixels — snow shaders, bloom — are most of
-   * the cost), down to 1x; then halves the frame rate; then goes a bit below 1x.
+   * Watches the real frame rate and, when the device can't keep up, gives up what is
+   * least visible first: the bloom is blurred at half the resolution (it is a blur
+   * anyway), then the scene goes to 30 fps, and only then the resolution goes down a
+   * little (not below 1.25x: lower, the outlines and the snow look pixelated).
    * The median of a window of frames ignores single hiccups (a model loading, GC).
    * Only down: going back up and down again would make the picture "breathe".
    */
@@ -3369,11 +3392,16 @@ export class TreeWorld {
     }
     const slow = this.halfRate ? median > 1000 / 24 : median > 1000 / 45;
     if (!slow) return;
-    if (this.pixelRatio > 1) this.setPixelRatio(Math.max(1, this.pixelRatio - 0.25));
-    else if (!this.halfRate) this.halfRate = true;
-    else if (this.pixelRatio > MIN_PIXEL_RATIO)
-      this.setPixelRatio(Math.max(MIN_PIXEL_RATIO, this.pixelRatio - 0.25));
+    const floor = Math.min(MIN_PIXEL_RATIO, this.startRatio);
+    if (this.bloomPass && this.bloomScale === 1) {
+      this.bloomScale = 0.5;
+      this.resize();
+    } else if (!this.halfRate) this.halfRate = true;
+    else if (this.pixelRatio > floor) this.setPixelRatio(Math.max(floor, this.pixelRatio - 0.25));
   }
+
+  private startRatio = 1;
+  private hud?: PerfHud;
 
   private setPixelRatio(pr: number): void {
     if (pr === this.pixelRatio) return;
@@ -3387,8 +3415,18 @@ export class TreeWorld {
   }
 
   /** For the debug panel and screenshots: what the quality watcher has chosen */
-  get quality(): { pixelRatio: number; halfRate: boolean } {
-    return { pixelRatio: this.pixelRatio, halfRate: this.halfRate };
+  get quality(): {
+    pixelRatio: number;
+    halfRate: boolean;
+    bloomScale: number;
+    realLights: boolean;
+  } {
+    return {
+      pixelRatio: this.pixelRatio,
+      halfRate: this.halfRate,
+      bloomScale: this.bloomScale,
+      realLights: this.realLights,
+    };
   }
 
   private stop(): void {
@@ -3480,15 +3518,16 @@ function realLightsWanted(): boolean {
   return (navigator.hardwareConcurrency ?? 4) >= 6 && memory >= 4;
 }
 
-const MIN_PIXEL_RATIO = 0.75;
+/** Lower than this the outlines and the snow look pixelated on a phone (see watchPerf) */
+const MIN_PIXEL_RATIO = 1.25;
 
 /**
- * Starting resolution. Phones have 2-3x screens, but the toon scene with its
- * outlines looks the same at 1.5x and costs half as much as at 2x. Weak devices
- * (the simple light) start lower; the frame-rate watcher goes further down if needed.
+ * Starting resolution. Phones have 2-3x screens; the toon scene with its outlines
+ * looks sharp at 1.75x and costs much less than at 3x. Weak devices (the simple
+ * light) start at 1.5x; the frame-rate watcher goes down a little if needed.
  */
 function initialPixelRatio(strong: boolean): number {
-  return Math.min(devicePixelRatio || 1, strong ? 1.5 : 1.25);
+  return Math.min(devicePixelRatio || 1, strong ? 1.75 : 1.5);
 }
 
 /** Lets the browser draw a frame (the loading screen moves on) */

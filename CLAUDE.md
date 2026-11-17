@@ -395,6 +395,10 @@
 - **Установка** (`core/install.ts`, `components/install-card.ts`): с 2-го визита (на iPhone — с первого, ради уведомлений); Android/десктоп — системный диалог
   (`beforeinstallprompt`), iOS Safari — шаги «Поделиться → На экран „Домой“», в Telegram — ярлык Mini App
   (`addToHomeScreen`, Bot API 8.0). «Не сейчас» прячет на 10 дней.
+  `beforeinstallprompt` браузер шлёт один раз и рано — раньше старта приложения (оно ждёт скрипт Telegram и тексты),
+  поэтому его ловит `catchInstallPrompt()` в main.ts, а `Install.init` забирает пойманное (иначе предложение пропадало).
+  Свой мост Telegram (`tg-bridge.ts`, когда telegram.org заблокирован) тоже умеет ярлык: `isVersionAtLeast` по
+  `tgWebAppVersion`, `web_app_check_home_screen` → `home_screen_checked`, `web_app_add_to_home_screen` → `home_screen_added`.
 - **Иней на листе** (`frost()` в handmade.ts, рисуется вместе с рамкой `.page`): перистые узоры из углов и снежинки
   по краям; все иголки собраны в три `<path>` по толщине (дёшево), обрезаны по листу. Цвет — токен `--frost`.
 

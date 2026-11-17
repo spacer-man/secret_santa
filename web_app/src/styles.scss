@@ -3197,3 +3197,55 @@ svg.hm.hm-free {
 .session-meta > span {
   white-space: nowrap;
 }
+
+/* Inbox: several letters in one box; the creators' letter is a gold note on top */
+.letter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+}
+.creators-letter {
+  padding: 0.8rem 0.9rem;
+}
+.letter-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.letter-text {
+  white-space: pre-line;
+}
+/* The creators' signature: a rubber stamp (double red frame) with the seal of the site and the
+   name in two lines. Wishes are plain text: none of it can be repeated in them */
+.letter-sign {
+  margin: 0.3rem 0 0;
+  display: flex;
+  justify-content: flex-end;
+}
+.letter-stamp {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.85rem 0.55rem 0.6rem;
+  color: var(--stamp);
+  transform: rotate(-4deg);
+}
+.letter-stamp > svg.hm {
+  --hm: var(--stamp);
+}
+.letter-sign-name {
+  max-width: 12em;
+  font-family: var(--slab);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-align: center;
+  text-wrap: balance;
+}
+.letter-seal {
+  width: 2.9rem;
+  height: 2.9rem;
+}

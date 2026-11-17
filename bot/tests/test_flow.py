@@ -20,6 +20,7 @@ from api import auth
 from db.models import ValidStatus
 from helpers import TOKEN, init_data, run
 from repos.wish.sqlmodel import SQLModelWishRepository
+from services import creators
 from services.delivery import DeliveryService
 from services.mailer.service import MailerService
 
@@ -142,6 +143,8 @@ def test_full_new_year_flow():
     assert client.get(media_url, headers={"Range": "bytes=0-3"}).content == b"\x89PNG"
     assert client.get(media_url.replace("t=", "t=x")).status_code == 403
 
+    run(creators.seed(2027))  # the API does it at start
+
     # Before the New Year
     with patch("services.delivery.utc_now", return_value=datetime(2026, 12, 31, 9, tzinfo=UTC)):
         assert client.get("/api/gift", headers=h(1003)).json()["status"] == "waiting"
@@ -161,9 +164,12 @@ def test_full_new_year_flow():
         assert client.get("/api/gift", headers=h(1003)).json()["status"] == "ready"
         opened = client.post("/api/gift/open", headers=h(1003)).json()
         reopened = client.post("/api/gift/open", headers=h(1003)).json()
-    gift = opened["delivery"]
-    assert gift["wish"]["text"] in ("С Новым годом от Алисы!", "Happy New Year from Bob!")
-    assert reopened["delivery"]["wish"] == gift["wish"]  # same gift every time
+    # The creators' letter on top + 2 wishes for 3 people still waiting: one letter each
+    top, letter = opened["delivery"]["letters"]
+    assert top["creators"]["text"].startswith("Happy New Year!") and top["wish"] is None  # en
+    assert letter["wish"]["text"] in ("С Новым годом от Алисы!", "Happy New Year from Bob!")
+    assert reopened["delivery"]["letters"] == opened["delivery"]["letters"]  # same every time
+    gift = letter
 
     # Reaction + anonymous reply reach the author
     r = client.post(
@@ -190,6 +196,14 @@ def test_full_new_year_flow():
     assert feedback == {"recipients": 1, "reactions": {"🔥": 1}, "replies": ["Спасибо!"]}
     assert len(client.get("/api/inbox", headers=h(1003)).json()) == 1
 
+    # The creators' letter takes a reaction and a reply: nobody is notified, no mandarins
+    sent = len(Bot.messages)
+    r = client.post(
+        f"/api/inbox/{top['id']}/react", headers=h(1003), json={"reaction": "❤️", "reply": "Ура"}
+    )
+    assert r.json() == {"reaction": "❤️", "reply": "Ура"}
+    assert len(Bot.messages) == sent
+
     # Delivered wishes can't be deleted
     delivered_wish = alice_wish if author_tg == 1001 else bob_wish
     assert client.delete(f"/api/wishes/{delivered_wish}", headers=h(author_tg)).status_code == 409
@@ -200,7 +214,9 @@ def test_full_new_year_flow():
     assert bot.sent == [1003, 1002]
     with patch("services.delivery.utc_now", return_value=ny_india):
         bob_gift = client.post("/api/gift/open", headers=h(1002)).json()["delivery"]
-    assert bob_gift["wish"]["text"] == "С Новым годом от Алисы!"
+    assert [x["wish"]["text"] for x in bob_gift["letters"] if x["wish"]] == [
+        "С Новым годом от Алисы!"
+    ]
 
     stats = client.get("/api/stats").json()
     assert stats["participants"] == 3

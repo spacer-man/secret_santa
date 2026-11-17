@@ -26,6 +26,7 @@ from db import new_db_session
 from db.models import (
     Delivery,
     EmailCode,
+    Letter,
     MandarinTx,
     Media,
     PushSubscription,
@@ -224,7 +225,7 @@ async def restore_account(user_id: UUID) -> None:
 async def purge_account(user_id: UUID) -> None:
     """
     Erase an account and everything of it. Its wishes go too: a recipient's gift keeps the
-    reaction, the wish itself is marked erased (``Delivery.wish_erased``). Friends it invited
+    reaction, the wish itself is marked erased (``Letter.wish_erased``). Friends it invited
     stay, without a referrer.
     """
     async with new_db_session() as session:
@@ -236,12 +237,14 @@ async def purge_account(user_id: UUID) -> None:
         )
         if wish_ids:
             await session.execute(
-                update(Delivery)
-                .where(col(Delivery.wish_id).in_(wish_ids))
+                update(Letter)
+                .where(col(Letter.wish_id).in_(wish_ids))
                 .values(wish_id=None, wish_erased=True)
             )
             await session.execute(delete(Media).where(col(Media.wish_id).in_(wish_ids)))
             await session.execute(delete(Wish).where(col(Wish.id).in_(wish_ids)))
+        boxes = select(Delivery.id).where(col(Delivery.recipient_id) == user_id)
+        await session.execute(delete(Letter).where(col(Letter.delivery_id).in_(boxes)))
         for model, column in (
             (Delivery, Delivery.recipient_id),
             (MandarinTx, MandarinTx.user_id),
@@ -567,6 +570,8 @@ async def _merge_deliveries(
                 .where(col(MandarinTx.reason) == mandarins.Reason.GIFT_OPENED)
                 .where(col(MandarinTx.ref) == str(loser.id))
             )
+        if loser is not None:
+            await session.execute(delete(Letter).where(col(Letter.delivery_id) == loser.id))
         if loser is delivery:
             await session.delete(delivery)
             continue

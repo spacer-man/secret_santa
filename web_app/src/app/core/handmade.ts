@@ -36,7 +36,7 @@ type Kind =
 
 /** What is drawn where. Colours come from CSS (`--hm`, see styles.scss) */
 const RULES: [selector: string, kind: Kind][] = [
-  ['.festive, .gift-card', 'stamp'],
+  ['.festive, .gift-card, .letter-stamp', 'stamp'],
   // Filled buttons and marks: pencil hatching
   ['.btn-primary, .card-btn.price, .card-btn.primary, .shop-tab-mark, .toast', 'ink-block'],
   // Dashed-looking secondary actions: one light line

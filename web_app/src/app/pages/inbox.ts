@@ -28,9 +28,11 @@ import { MediaList } from '../components/media';
                 <h2 class="letter-title">✉️ {{ i18n.t('creatorsLetter') }}</h2>
                 <p class="wish-text letter-text">{{ c.text }}</p>
                 <p class="letter-sign">
-                  <span class="letter-sign-name">{{ c.signature }}</span>
-                  <!-- The seal of the site: a wish is plain text and can't draw one -->
-                  <span class="seal letter-seal" aria-hidden="true"><i>❄</i></span>
+                  <!-- A rubber stamp with the seal of the site: a wish is plain text, it can't have one -->
+                  <span class="letter-stamp">
+                    <span class="seal letter-seal" aria-hidden="true"><i>❄</i></span>
+                    <span class="letter-sign-name">{{ c.signature }}</span>
+                  </span>
                 </p>
               } @else if (l.wish; as wish) {
                 @if (wishCount(g) > 1) {

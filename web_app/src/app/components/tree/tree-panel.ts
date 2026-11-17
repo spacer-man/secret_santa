@@ -163,7 +163,7 @@ function readSeen(): Record<string, string> | null {
         class="sheet-backdrop"
         [class.clear]="s.kind === 'lights'"
         tabindex="-1"
-        (click)="closeSheet()"
+        (click)="backdropClick()"
         (keydown.escape)="closeSheet()"
       ></div>
       <div
@@ -733,7 +733,7 @@ export class TreePanel {
 
   async openBall(ball: TreeBall): Promise<void> {
     this.tg.haptic('light');
-    this.sheet.set({ kind: 'ball', ball });
+    this.openSheet({ kind: 'ball', ball });
     try {
       const wish = (await this.api.wishes()).find((w) => w.id === ball.id);
       const current = this.sheet();
@@ -744,6 +744,24 @@ export class TreePanel {
 
   ownsLights(key: string): boolean {
     return this.owned().has('lights-' + key);
+  }
+
+  /** When the current sheet was opened (see backdropClick) */
+  private sheetOpenedAt = 0;
+
+  /**
+   * A tap on the scene opens a sheet on pointerup; the browser then sends the `click` of
+   * the same tap, and it lands on the backdrop that has just appeared under the finger:
+   * the sheet (the cabin lights) closed at once. That click is not the user's.
+   */
+  private openSheet(sheet: NonNullable<Sheet>): void {
+    this.sheetOpenedAt = performance.now();
+    this.sheet.set(sheet);
+  }
+
+  protected backdropClick(): void {
+    if (performance.now() - this.sheetOpenedAt < 450) return;
+    this.closeSheet();
   }
 
   closeSheet(): void {
@@ -777,7 +795,7 @@ export class TreePanel {
     this.tg.haptic('light');
     this.scene3d()?.focusCabin();
     this.previewLights.set(undefined);
-    this.sheet.set({ kind: 'lights' });
+    this.openSheet({ kind: 'lights' });
   }
 
   pickLights(key: string | null): void {
@@ -804,7 +822,7 @@ export class TreePanel {
   openSnow(): void {
     this.tg.haptic('light');
     this.previewSnow.set(null);
-    this.sheet.set({ kind: 'snow' });
+    this.openSheet({ kind: 'snow' });
   }
 
   pickSnow(i: number): void {
@@ -828,7 +846,7 @@ export class TreePanel {
 
   openShop(): void {
     this.tg.haptic('light');
-    this.sheet.set({ kind: 'shop' });
+    this.openSheet({ kind: 'shop' });
   }
 
   /** From the shop: close it and let the user pick a yard place for the figure */
@@ -872,7 +890,7 @@ export class TreePanel {
     }
     this.padReplacing.set(false);
     // Let the camera fly first, then show the sheet
-    setTimeout(() => this.sheet.set({ kind: 'pad', ...e }), 650);
+    setTimeout(() => this.openSheet({ kind: 'pad', ...e }), 650);
   }
 
   /** The tried-on figure is put on its place for real; the decorate mode goes on */
@@ -927,7 +945,7 @@ export class TreePanel {
 
   async openWallet(): Promise<void> {
     this.tg.haptic('light');
-    this.sheet.set({ kind: 'wallet' });
+    this.openSheet({ kind: 'wallet' });
     try {
       const { history } = await this.api.mandarins();
       if (this.sheet()?.kind === 'wallet') this.sheet.set({ kind: 'wallet', history });

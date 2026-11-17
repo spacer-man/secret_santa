@@ -112,7 +112,8 @@ if [ "$TUNNEL" != cloudflared ]; then
 fi
 case "$TUNNEL" in
   cloudflared)
-    cloudflared tunnel --no-autoupdate --url "http://localhost:$WEB_PORT" >"$TUNNEL_LOG" 2>&1 &
+    # http2, not QUIC: QUIC (UDP 7844) is often blocked, and then the address answers "Error 1033"
+    cloudflared tunnel --no-autoupdate --protocol http2 --url "http://localhost:$WEB_PORT" >"$TUNNEL_LOG" 2>&1 &
     PATTERN='https://[a-z0-9]+(-[a-z0-9]+)+\.trycloudflare\.com' ;;  # не api.trycloudflare.com из лога
   ngrok)
     ngrok http "$WEB_PORT" --log stdout --log-format logfmt >"$TUNNEL_LOG" 2>&1 &
@@ -144,6 +145,20 @@ for _ in $(seq 60); do
   sleep 1
 done
 [ -n "$PUBLIC_URL" ] || { cat "$TUNNEL_LOG" >&2; die "Не дождался адреса туннеля"; }
+
+# cloudflared prints the address before it has connected: until then the address gives Error 1033
+if [ "$TUNNEL" = cloudflared ]; then
+  connected=""
+  for _ in $(seq 40); do
+    if grep -q "Registered tunnel connection" "$TUNNEL_LOG"; then connected=1; break; fi
+    kill -0 "$TUNNEL_PID" 2>/dev/null || { cat "$TUNNEL_LOG" >&2; die "cloudflared остановился"; }
+    sleep 1
+  done
+  if [ -z "$connected" ]; then
+    tail -n 20 "$TUNNEL_LOG" >&2
+    die "cloudflared не подключился к Cloudflare за 40 с (адрес отвечал бы Error 1033). Проверьте сеть/VPN"
+  fi
+fi
 
 export WEBAPP_URL="$PUBLIC_URL"
 export WEBHOOK_URL="$PUBLIC_URL/telegram/webhook"

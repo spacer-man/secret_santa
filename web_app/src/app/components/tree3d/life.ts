@@ -391,6 +391,8 @@ export function buildPuff(material: THREE.Material): THREE.Mesh {
   }
   const puff = withOutline(new THREE.Mesh(puffGeo, material), 0.0022);
   puff.visible = false;
+  // Moves every frame: never merged with the static meshes (bake.ts)
+  puff.userData['dynamic'] = true;
   return puff;
 }
 

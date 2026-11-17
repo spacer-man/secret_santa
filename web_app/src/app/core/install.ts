@@ -15,6 +15,22 @@ interface InstallPromptEvent extends Event {
  */
 export type InstallWay = 'prompt' | 'ios' | 'telegram';
 
+/**
+ * The browser says "installable" once, early — often before the app has started (it waits
+ * for Telegram's script and the texts). Caught right in main.ts, kept here until `init`.
+ */
+let early: InstallPromptEvent | undefined;
+const onEarly = (e: Event) => {
+  // Our own button shows the dialog (and the first visit gets no offer at all)
+  e.preventDefault();
+  early = e as InstallPromptEvent;
+};
+
+/** Called by main.ts before the app starts */
+export function catchInstallPrompt(): void {
+  addEventListener('beforeinstallprompt', onEarly);
+}
+
 const DISMISSED = 'santa.install.dismissed';
 const VISITS = 'santa.visits';
 /** "Not now" hides the offer for this long */
@@ -40,6 +56,7 @@ export class Install {
     const visits = this.countVisit();
     // On iPhone right away: without the Home Screen the gift can't be announced by a notification
     const from = this.iosBrowser ? 1 : FROM_VISIT;
+    removeEventListener('beforeinstallprompt', onEarly);
     if (this.standalone() || this.dismissedRecently() || visits < from) return;
 
     if (this.tg.isMiniApp) {
@@ -48,11 +65,14 @@ export class Install {
       });
       return;
     }
-    addEventListener('beforeinstallprompt', (e) => {
+    const offer = (e: Event) => {
       e.preventDefault();
       this.deferred = e as InstallPromptEvent;
       this.way.set('prompt');
-    });
+    };
+    // Already came before the app started, or comes later
+    if (early) offer(early);
+    addEventListener('beforeinstallprompt', offer);
     addEventListener('appinstalled', () => this.way.set(null));
     if (this.ios()) this.way.set('ios');
   }

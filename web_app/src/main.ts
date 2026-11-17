@@ -4,7 +4,10 @@ import { appConfig } from './app/app.config';
 import { App } from './app/app';
 import { loadTelegram } from './app/core/tg-bridge';
 import { loadLanguage, preloadLanguage } from './app/core/i18n';
+import { catchInstallPrompt } from './app/core/install';
 
+// "Installable" comes once and early: catch it before the app starts (see Install)
+catchInstallPrompt();
 // The texts of one language only: start downloading the browser's guess right away
 preloadLanguage();
 // Telegram's script must be in place before the app reads it (and before the router touches the hash);

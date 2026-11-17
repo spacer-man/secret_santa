@@ -13,6 +13,7 @@ const TIMEOUT_MS = 3000;
 const STORE = 'santa.tgLaunch';
 
 type Listener = () => void;
+type HomeScreenStatus = 'unsupported' | 'unknown' | 'added' | 'missed';
 
 /** Launch parameters Telegram puts into the URL hash (#tgWebAppData=…&tgWebAppPlatform=…) */
 function launchParams(): URLSearchParams {
@@ -89,6 +90,17 @@ function installBridge(params: URLSearchParams): void {
     listeners.get(event)!.add(cb);
   };
   const emit = (event: string) => listeners.get(event)?.forEach((cb) => cb());
+  // Version of the Bot API the client speaks: features like the home screen shortcut need 8.0
+  const version = params.get('tgWebAppVersion') ?? '6.0';
+  const atLeast = (want: string) => {
+    const [a, b] = [version, want].map((v) => v.split('.').map(Number));
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+    }
+    return true;
+  };
+  /** Answers to "is the app on the home screen?" (one question at a time is enough) */
+  let homeScreenAnswer: ((status: HomeScreenStatus) => void) | undefined;
 
   const scheme = (theme: string | null): 'light' | 'dark' | undefined => {
     try {
@@ -123,6 +135,13 @@ function installBridge(params: URLSearchParams): void {
       notificationOccurred: (notification_type) =>
         postEvent('web_app_trigger_haptic_feedback', { type: 'notification', notification_type }),
     },
+    isVersionAtLeast: atLeast,
+    // The shortcut to the Mini App on the home screen (Santa offers it, see Install)
+    checkHomeScreenStatus: (cb) => {
+      homeScreenAnswer = cb;
+      postEvent('web_app_check_home_screen');
+    },
+    addToHomeScreen: () => postEvent('web_app_add_to_home_screen'),
     BackButton: {
       show: () => postEvent('web_app_setup_back_button', { is_visible: true }),
       hide: () => postEvent('web_app_setup_back_button', { is_visible: false }),
@@ -132,8 +151,16 @@ function installBridge(params: URLSearchParams): void {
   };
 
   // Events from Telegram: native clients call WebView.receiveEvent, web clients post a message
-  const receive = (eventType: string, eventData: { theme_params?: object } | undefined) => {
+  const receive = (
+    eventType: string,
+    eventData: { theme_params?: object; status?: HomeScreenStatus } | undefined,
+  ) => {
     if (eventType === 'back_button_pressed') emit('backButtonClicked');
+    if (eventType === 'home_screen_added') emit('homeScreenAdded');
+    if (eventType === 'home_screen_checked') {
+      homeScreenAnswer?.(eventData?.status ?? 'unknown');
+      homeScreenAnswer = undefined;
+    }
     if (eventType === 'theme_changed') {
       app.colorScheme = scheme(JSON.stringify(eventData?.theme_params ?? {})) ?? app.colorScheme;
       emit('themeChanged');

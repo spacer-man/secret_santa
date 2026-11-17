@@ -1,74 +1,133 @@
-import { Component, ElementRef, OnDestroy, afterNextRender, viewChild } from '@angular/core';
+import { Component, ElementRef, OnDestroy, afterNextRender, viewChildren } from '@angular/core';
 
-/** Light falling snow on a fixed canvas behind the content */
+/** Two depths of snow: small and slow far away, bigger and faster near */
+const LAYERS = [
+  { density: 1 / 16000, r: [0.6, 1.6], speed: 22, sway: 6, swayS: 7, alpha: 0.6 },
+  { density: 1 / 26000, r: [1.3, 2.6], speed: 42, sway: 10, swayS: 5, alpha: 0.85 },
+];
+
+/**
+ * Light falling snow behind the content.
+ *
+ * Drawn once, moved by the compositor: every layer is a tile of flakes painted
+ * on a canvas (twice, one under the other) that slides down by one tile height
+ * in an endless CSS animation, swaying a little. Nothing runs on the main
+ * thread per frame. (It used to redraw a canvas 60 times a second: every frame
+ * the page had to commit all its layers — most of the work on a phone.)
+ */
 @Component({
   selector: 'snow',
-  template: `<canvas #canvas aria-hidden="true"></canvas>`,
+  template: `
+    <div class="snow" aria-hidden="true">
+      @for (layer of layers; track $index) {
+        <div class="sway" [style.--sway.px]="layer.sway" [style.--sway-s.s]="layer.swayS">
+          <canvas #tile></canvas>
+        </div>
+      }
+    </div>
+  `,
   styles: `
-    canvas {
+    .snow {
       position: fixed;
       inset: 0;
-      width: 100%;
-      height: 100%;
+      overflow: hidden;
       pointer-events: none;
       z-index: 0;
+    }
+    .sway {
+      position: absolute;
+      inset: 0;
+      animation: snow-sway var(--sway-s) ease-in-out infinite alternate;
+      will-change: transform;
+    }
+    canvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      /* Two tiles: the animation slides by one, and the picture repeats seamlessly */
+      height: 200%;
+      animation: snow-fall var(--fall-s, 30s) linear infinite;
+      will-change: transform;
+    }
+    @keyframes snow-fall {
+      from {
+        transform: translateY(-50%);
+      }
+      to {
+        transform: translateY(0);
+      }
+    }
+    @keyframes snow-sway {
+      from {
+        transform: translateX(calc(var(--sway) * -1));
+      }
+      to {
+        transform: translateX(var(--sway));
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .snow {
+        display: none;
+      }
     }
   `,
 })
 export class Snow implements OnDestroy {
-  private readonly canvas = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
-  private frame = 0;
+  protected readonly layers = LAYERS;
+  private readonly tiles = viewChildren<ElementRef<HTMLCanvasElement>>('tile');
+  private size = '';
+  private timer?: ReturnType<typeof setTimeout>;
+  private readonly onResize = () => {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.paint(), 250);
+  };
 
   constructor() {
     afterNextRender(() => {
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-      this.start(this.canvas().nativeElement);
+      this.paint();
+      addEventListener('resize', this.onResize);
     });
   }
 
-  private start(canvas: HTMLCanvasElement): void {
-    const ctx = canvas.getContext('2d')!;
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    let w = 0;
-    let h = 0;
-    const resize = () => {
-      w = canvas.clientWidth;
-      h = canvas.clientHeight;
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-    resize();
-    addEventListener('resize', resize);
-
-    const flakes = Array.from({ length: Math.min(90, Math.round((w * h) / 9000)) }, () => ({
-      x: Math.random() * w,
-      y: Math.random() * h,
-      r: Math.random() * 2 + 0.6,
-      vy: Math.random() * 0.6 + 0.3,
-      phase: Math.random() * Math.PI * 2,
-    }));
-
-    const tick = (t: number) => {
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      for (const f of flakes) {
-        f.y += f.vy;
-        f.x += Math.sin(t / 1500 + f.phase) * 0.3;
-        if (f.y > h + 5) {
-          f.y = -5;
-          f.x = Math.random() * w;
+  /** Paints the tiles for the current screen size (once, and again after a resize) */
+  private paint(): void {
+    const w = innerWidth;
+    // Keyboard and browser bars change the height a little: only real changes repaint
+    const h = Math.round(innerHeight / 40) * 40;
+    const size = `${w}x${h}`;
+    if (size === this.size) return;
+    this.size = size;
+    // Soft dots: no need for the full retina resolution
+    const dpr = Math.min(devicePixelRatio || 1, 1.5);
+    this.tiles().forEach(({ nativeElement: canvas }, i) => {
+      const layer = LAYERS[i];
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr) * 2;
+      const ctx = canvas.getContext('2d')!;
+      ctx.scale(dpr, dpr);
+      ctx.fillStyle = `rgba(255,255,255,${layer.alpha})`;
+      ctx.beginPath();
+      const count = Math.round(w * h * layer.density);
+      for (let k = 0; k < count; k++) {
+        const x = Math.random() * w;
+        const y = Math.random() * h;
+        const r = layer.r[0] + Math.random() * (layer.r[1] - layer.r[0]);
+        // The same flake in both tiles, and over the seam where it is cut
+        for (const dy of [-h, 0, h, 2 * h]) {
+          if (y + dy < -r || y + dy > 2 * h + r) continue;
+          ctx.moveTo(x + r, y + dy);
+          ctx.arc(x, y + dy, r, 0, Math.PI * 2);
         }
-        ctx.beginPath();
-        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
-        ctx.fill();
       }
-      this.frame = requestAnimationFrame(tick);
-    };
-    this.frame = requestAnimationFrame(tick);
+      ctx.fill();
+      canvas.style.setProperty('--fall-s', `${(h / layer.speed).toFixed(1)}s`);
+    });
   }
 
   ngOnDestroy(): void {
-    cancelAnimationFrame(this.frame);
+    clearTimeout(this.timer);
+    removeEventListener('resize', this.onResize);
   }
 }

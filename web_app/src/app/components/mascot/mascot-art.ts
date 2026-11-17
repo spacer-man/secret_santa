@@ -9,6 +9,7 @@ import {
   input,
   signal,
 } from '@angular/core';
+import { steppedMotion } from '../../core/stepped-motion';
 import type { Hero, Mood } from '../../core/mascot';
 
 /** What each character does now and then, on his own */
@@ -433,6 +434,8 @@ export class MascotArt {
       this.draw();
       if (this.calm) return;
       destroy.onDestroy(boil(() => this.draw()));
+      // Breathing, swaying, blinking: stepped like drawn animation, not 60 repaints a second
+      destroy.onDestroy(steppedMotion(this.host.nativeElement));
       if (this.hello()) this.later(() => this.play('wave'), 500);
       this.idle();
     });

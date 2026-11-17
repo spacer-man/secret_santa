@@ -85,10 +85,11 @@ const STATES = ['selected', 'active', 'done', 'mine', 'locked'];
 /** What "boils": a few variants of the drawing are shown in turn, as in drawn animation */
 const BOILING = '.seal, .btn-primary, .doodle, .load-bar, .load-bar > span';
 /**
- * Boiling that must not stop while the page is busy (the loading screen of the scene):
- * every variant is its own layer and CSS switches them (the compositor does it, not a timer)
+ * Every boiling drawing is "free": each variant is its own layer and CSS switches them
+ * (the compositor does it, not a timer). It goes on while the page is busy (the loading
+ * screen of the scene), and the page itself doesn't redraw anything a few times a second.
  */
-const FREE_BOIL = '.doodle, .load-bar, .load-bar > span';
+const FREE_BOIL = BOILING;
 const BOIL_VARIANTS = 4;
 const BOIL_FPS = 6;
 
@@ -951,7 +952,24 @@ interface Drawing {
   spent: boolean;
   /** Timer that ends the redraw animation */
   settle?: number;
+  /** Drawings made ahead of time or already shown (see `render`), the last few */
+  cache?: Map<string, Rendered>;
+  scribbles?: Map<string, string[]>;
 }
+
+interface Rendered {
+  markups: string[];
+  pieces: number;
+}
+
+/** How many drawings of one element are kept: the current one and the next few */
+const CACHE_SIZE = 6;
+
+/** Runs when the main thread has nothing to do (Safari has no requestIdleCallback) */
+const whenIdle: (fn: (deadline: { timeRemaining(): number }) => void) => void =
+  typeof requestIdleCallback === 'function'
+    ? (fn) => requestIdleCallback(fn, { timeout: 1500 })
+    : (fn) => setTimeout(() => fn({ timeRemaining: () => 8 }), 120);
 
 /**
  * A careless pencil outline around a button, drawn in one go without lifting
@@ -1090,7 +1108,6 @@ export class Handmade {
   );
   private counter = 0;
   private queued = false;
-  private boilFrame = 0;
 
   start(): void {
     // Texture of pencil on paper: masks made once from one noise field and tiled (much
@@ -1105,7 +1122,11 @@ export class Handmade {
     toothMask('--m-grain', tooth, 0.56);
     toothMask('--m-grain-dark', tooth, 0.76);
     this.listen();
-    new MutationObserver(() => this.schedule()).observe(document.body, {
+    // Changes inside drawings (our own redraws, the boiling mascot, the scene) can't move
+    // anything we draw around: only the rest of the page is a reason to look again
+    new MutationObserver((records) => {
+      if (records.some((r) => !(r.target instanceof SVGElement))) this.schedule();
+    }).observe(document.body, {
       childList: true,
       subtree: true,
       characterData: true,
@@ -1115,8 +1136,6 @@ export class Handmade {
     });
     document.fonts?.ready.then(() => this.drawings.forEach((_, el) => this.redraw(el, true)));
     this.schedule();
-
-    if (!CALM) setInterval(() => this.boil(), 1000 / BOIL_FPS);
   }
 
   private schedule(): void {
@@ -1202,21 +1221,15 @@ export class Handmade {
     d.svg.setAttribute('width', String(w + PAD * 2));
     d.svg.setAttribute('height', String(h + PAD * 2));
     d.svg.setAttribute('viewBox', `${-PAD} ${-PAD} ${w + PAD * 2} ${h + PAD * 2}`);
-    const seed = d.seed + d.nonce * 7.7;
     let html = '';
-    let pieces = 1;
-    const variants = d.boils && !d.press ? BOIL_VARIANTS : 1;
+    const { markups, pieces } = this.render(el, d, w, h, d.nonce, d.press);
     const free = d.free && !CALM;
-    const markups: string[] = [];
-    for (let v = 0; v < variants; v++) {
-      seq = 0;
-      markups.push(draw(d.kind, el, w, h, seed + v * 101, d.press));
-      pieces = Math.max(pieces, seq);
-    }
     if (free) {
       // The first variant stays in the drawing, the others go to their own layers
       html = `<g class="hm-v">${markups[0]}</g>`;
       this.freeLayers(d, markups.slice(1));
+      // Pressed, hovered or being drawn anew: it stands still (only the first layer is seen)
+      this.freeShow(d, !animate && !d.hover && !d.press);
     } else
       markups.forEach(
         (markup, v) => (html += `<g class="hm-v"${v ? ' style="display:none"' : ''}>${markup}</g>`),
@@ -1231,24 +1244,112 @@ export class Handmade {
       d.settle = window.setTimeout(() => {
         d.svg.querySelector(':scope > .hm-old')?.remove();
         d.svg.classList.remove('hm-anim');
+        if (free) this.freeShow(d, !d.hover && !d.press);
       }, animate + 80);
     } else {
       d.svg.classList.remove('hm-anim');
       d.svg.innerHTML = html;
     }
+    if (el.classList.contains('hm-btn')) this.ahead(el);
+  }
+
+  /**
+   * The drawing of an element (all its boil variants), from the cache when it was
+   * made before. The same size, state and seed always give the same drawing.
+   */
+  private render(
+    el: HTMLElement,
+    d: Drawing,
+    w: number,
+    h: number,
+    nonce: number,
+    press: boolean,
+  ): Rendered {
+    const variants = d.boils && !press ? BOIL_VARIANTS : 1;
+    const seed = d.seed + nonce * 7.7;
+    const key = `${d.size}|${seed}|${press ? 1 : 0}|${variants}`;
+    const cache = (d.cache ??= new Map());
+    let hit = cache.get(key);
+    if (hit) {
+      // Most recently used goes last: the oldest one leaves first
+      cache.delete(key);
+    } else {
+      hit = { markups: [], pieces: 1 };
+      for (let v = 0; v < variants; v++) {
+        seq = 0;
+        hit.markups.push(draw(d.kind, el, w, h, seed + v * 101, press));
+        hit.pieces = Math.max(hit.pieces, seq);
+      }
+    }
+    cache.set(key, hit);
+    while (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value!);
+    return hit;
+  }
+
+  private readonly pending = new Set<HTMLElement>();
+  private idleQueued = false;
+
+  /**
+   * Buttons are drawn anew under the finger (press, release) and on hover. Making a
+   * hatching is a lot of path maths: done on the spot it delayed the answer to a tap by
+   * tens of milliseconds on a phone. So the next two or three drawings of every button
+   * (pressed, released, the next one on hover, the outline) are made ahead of time,
+   * when the main thread is idle; the pointer only swaps them in.
+   */
+  private ahead(el: HTMLElement): void {
+    this.pending.add(el);
+    if (this.idleQueued) return;
+    this.idleQueued = true;
+    const work = (deadline: { timeRemaining(): number }) => {
+      for (const target of this.pending) {
+        if (deadline.timeRemaining() < 3) break;
+        this.pending.delete(target);
+        const d = this.drawings.get(target);
+        const w = target.offsetWidth;
+        const h = target.offsetHeight;
+        if (!d || !w || !h || !target.isConnected) continue;
+        // Pressed now / released now, and for a still button the next hover drawing
+        this.render(target, d, w, h, d.nonce, !d.press);
+        this.render(target, d, w, h, d.nonce, d.press);
+        if (!d.boils) {
+          this.render(target, d, w, h, d.nonce + 1, false);
+          this.render(target, d, w, h, d.nonce + 1, true);
+        }
+        if (!d.quiet) {
+          this.scribble(target, d, w, h, d.nonce);
+          if (!d.boils) this.scribble(target, d, w, h, d.nonce + 1);
+        }
+      }
+      if (this.pending.size) whenIdle(work);
+      else this.idleQueued = false;
+    };
+    whenIdle(work);
+  }
+
+  /** Pieces of the pencil outline around a button (cached like the drawings) */
+  private scribble(el: HTMLElement, d: Drawing, w: number, h: number, nonce: number): string[] {
+    const round = d.kind === 'tag-round';
+    const key = `${w}x${h}|${nonce}`;
+    const cache = (d.scribbles ??= new Map());
+    let hit = cache.get(key);
+    if (!hit) {
+      hit = scribble(w, h, round, d.seed + nonce * 3.3);
+      cache.set(key, hit);
+      while (cache.size > 3) cache.delete(cache.keys().next().value!);
+    }
+    return hit;
   }
 
   /** Variants of a free-boiling drawing as sibling layers, shown in turn by CSS (`hm-free` in styles.scss) */
   private freeLayers(d: Drawing, rest: string[]): void {
     const period = (BOIL_VARIANTS * 1000) / BOIL_FPS;
     const all = [d.svg, ...(d.layers ??= [])];
-    d.svg.classList.add('hm-free');
     d.svg.style.animationDelay = '0ms';
     rest.forEach((markup, i) => {
       let layer = d.layers![i];
       if (!layer) {
         layer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        layer.setAttribute('class', `${d.svg.getAttribute('class')}`);
+        layer.setAttribute('class', `hm hm-${d.kind} hm-free`);
         layer.setAttribute('aria-hidden', 'true');
         all[i].after(layer);
         d.layers!.push(layer);
@@ -1259,6 +1360,15 @@ export class Handmade {
       layer.style.animationDelay = `${(-(i + 1) * period) / BOIL_VARIANTS}ms`;
       layer.innerHTML = markup;
     });
+  }
+
+  /**
+   * Boiling on (the layers take turns) or off (the drawing itself alone, still). Showing
+   * the layers again restarts all their animations together, so they stay in step.
+   */
+  private freeShow(d: Drawing, on: boolean): void {
+    d.svg.classList.toggle('hm-free', on);
+    d.layers?.forEach((layer) => (layer.style.display = on ? '' : 'none'));
   }
 
   /** Scribbles the pencil outline around a hovered or pressed button, wipes it afterwards */
@@ -1285,11 +1395,10 @@ export class Handmade {
     svg.setAttribute('height', String(h + pad * 2));
     svg.setAttribute('viewBox', `${-pad} ${-pad} ${w + pad * 2} ${h + pad * 2}`);
     svg.style.left = svg.style.top = `${-pad}px`;
-    const round = d.kind === 'tag-round';
     // pathLength = 1: the line is "drawn" by moving one dash along it (see styles.scss)
     // A very thick soft pencil; on small buttons a thinner one, or the ring becomes a blot
     const width = Math.min(8, Math.max(4.5, h * 0.13));
-    const pieces = scribble(w, h, round, d.seed + d.nonce * 3.3);
+    const pieces = this.scribble(el, d, w, h, d.nonce);
     // The pieces are drawn one after another (pathLength = 1: one dash moves along each, see styles.scss)
     const each = TUNING.scribbleMs / pieces.length;
     svg.innerHTML = pieces
@@ -1325,6 +1434,9 @@ export class Handmade {
       if (state === 'hover' && on && !d.boils) d.nonce++;
       if (state === 'press') this.redraw(el, true, TUNING.pressRedrawMs);
       else if (on && !d.boils) this.redraw(el, true, TUNING.hoverRedrawMs);
+      // A boiling drawing stands still under the pointer
+      else if (d.free && !CALM && !d.svg.classList.contains('hm-anim'))
+        this.freeShow(d, !d.hover && !d.press);
       this.outline(el, d);
     };
     document.addEventListener('pointerover', (e) => {
@@ -1347,18 +1459,5 @@ export class Handmade {
       });
     document.addEventListener('pointerup', release);
     document.addEventListener('pointercancel', release);
-  }
-
-  /** Line boil: the drawings that "live" switch to their next variant */
-  private boil(): void {
-    if (document.hidden) return;
-    this.boilFrame++;
-    this.drawings.forEach((d) => {
-      // A boiling drawing stands still under the pointer and while it is being redrawn
-      if (!d.boils || d.free || d.hover || d.press || d.svg.classList.contains('hm-anim')) return;
-      const groups = d.svg.querySelectorAll<SVGElement>(':scope > g.hm-v');
-      for (let i = 0; i < groups.length; i++)
-        groups[i].style.display = i === this.boilFrame % groups.length ? '' : 'none';
-    });
   }
 }

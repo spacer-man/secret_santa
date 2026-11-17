@@ -105,6 +105,11 @@ if [ "$TUNNEL" = auto ]; then
 fi
 
 say "Поднимаю туннель ($TUNNEL) → localhost:$WEB_PORT"
+if [ "$TUNNEL" != cloudflared ]; then
+  say "Внимание: через $TUNNEL телефон не установит PWA (бесплатный ngrok отдаёт браузеру страницу-предупреждение"
+  say "вместо манифеста и иконок — Chrome предлагает только ярлык). Для проверки установки нужен cloudflared:"
+  say "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+fi
 case "$TUNNEL" in
   cloudflared)
     cloudflared tunnel --no-autoupdate --url "http://localhost:$WEB_PORT" >"$TUNNEL_LOG" 2>&1 &

@@ -220,8 +220,11 @@ p {
   display: inline-block;
   color: var(--light-color);
 }
-.btn:hover {
-  transform: scale(1.02);
+/* Hover only where there is a real pointer: on a phone :hover sticks after a tap */
+@media (hover: hover) {
+  .btn:hover {
+    transform: scale(1.02);
+  }
 }
 .btn:active {
   transform: scale(0.97);
@@ -264,9 +267,11 @@ p {
   filter: blur(1.2rem);
   animation: 10s spin linear infinite;
 }
-.btn-primary:hover:not(:disabled) {
-  color: var(--light-color);
-  background-color: var(--primary-color-hovered);
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled) {
+    color: var(--light-color);
+    background-color: var(--primary-color-hovered);
+  }
 }
 .btn-primary:active:not(:disabled) {
   color: var(--light-color);
@@ -2946,25 +2951,11 @@ svg.hm-field {
   mask-image: none;
 }
 
-/* Free boiling (handmade.ts, FREE_BOIL): the variants are layers shown in turn by the compositor,
-   so the drawings keep boiling while the page is busy building the scene */
+/* Free boiling (handmade.ts, FREE_BOIL): the variants are layers whose opacity the compositor
+   switches (Web Animations on one clock, see freeShow), so nothing is redrawn and the drawings
+   keep boiling while the page is busy building the scene */
 svg.hm.hm-free {
-  animation: hm-boil 0.667s steps(1, end) infinite;
   will-change: opacity;
-}
-@keyframes hm-boil {
-  0% {
-    opacity: 1;
-  }
-  25%,
-  100% {
-    opacity: 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  svg.hm.hm-free {
-    animation: none;
-  }
 }
 
 /* Time of day: where the sun is counted for */

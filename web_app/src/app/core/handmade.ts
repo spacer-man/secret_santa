@@ -946,6 +946,8 @@ interface Drawing {
   /** Boils by CSS layers (see FREE_BOIL), `layers` hold the variants after the first */
   free: boolean;
   layers?: SVGSVGElement[];
+  /** The opacity animations that switch the variants (see freeShow) */
+  boiling?: Animation[];
   /** No outline for this button (in the shop): only the redraw answers to the pointer */
   quiet: boolean;
   /** The button has been released: the outline is gone until the pointer comes again */
@@ -1016,6 +1018,8 @@ function scribble(w: number, h: number, round: boolean, seed: number): string[] 
 
 /** The user asked the system for less motion: no drawing animations, no boiling */
 const CALM = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+/** A real pointer (mouse): only then is there a hover to answer (a phone has none) */
+const HOVER = !!window.matchMedia?.('(hover: hover)').matches;
 
 /** Elements that answer to the pointer */
 const BUTTONS =
@@ -1311,13 +1315,13 @@ export class Handmade {
         // Pressed now / released now, and for a still button the next hover drawing
         this.render(target, d, w, h, d.nonce, !d.press);
         this.render(target, d, w, h, d.nonce, d.press);
-        if (!d.boils) {
+        if (!d.boils && HOVER) {
           this.render(target, d, w, h, d.nonce + 1, false);
           this.render(target, d, w, h, d.nonce + 1, true);
         }
         if (!d.quiet) {
           this.scribble(target, d, w, h, d.nonce);
-          if (!d.boils) this.scribble(target, d, w, h, d.nonce + 1);
+          if (!d.boils && HOVER) this.scribble(target, d, w, h, d.nonce + 1);
         }
       }
       if (this.pending.size) whenIdle(work);
@@ -1342,33 +1346,59 @@ export class Handmade {
 
   /** Variants of a free-boiling drawing as sibling layers, shown in turn by CSS (`hm-free` in styles.scss) */
   private freeLayers(d: Drawing, rest: string[]): void {
-    const period = (BOIL_VARIANTS * 1000) / BOIL_FPS;
     const all = [d.svg, ...(d.layers ??= [])];
-    d.svg.style.animationDelay = '0ms';
     rest.forEach((markup, i) => {
       let layer = d.layers![i];
       if (!layer) {
         layer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         layer.setAttribute('class', `hm hm-${d.kind} hm-free`);
         layer.setAttribute('aria-hidden', 'true');
+        // Hidden until freeShow starts the boiling
+        layer.style.visibility = 'hidden';
         all[i].after(layer);
         d.layers!.push(layer);
         all.push(layer);
       }
       for (const a of ['width', 'height', 'viewBox']) layer.setAttribute(a, d.svg.getAttribute(a)!);
-      // Each layer is seen during its own quarter of the cycle
-      layer.style.animationDelay = `${(-(i + 1) * period) / BOIL_VARIANTS}ms`;
       layer.innerHTML = markup;
     });
   }
 
   /**
-   * Boiling on (the layers take turns) or off (the drawing itself alone, still). Showing
-   * the layers again restarts all their animations together, so they stay in step.
+   * Boiling on (the drawing and its layers take turns) or off (the drawing alone, still).
+   *
+   * Every variant is shown by its own opacity animation, but all of them run on one clock:
+   * started at the zero of the document timeline, each shifted by its share of the cycle.
+   * Separate CSS animations drifted apart by a frame now and then, and in that frame no
+   * variant was seen — the hatching of the main button blinked. A variant also stays a
+   * little longer than its share, so the next one is always there before it goes.
    */
   private freeShow(d: Drawing, on: boolean): void {
+    d.boiling?.forEach((a) => a.cancel());
+    d.boiling = undefined;
+    const layers = d.layers ?? [];
     d.svg.classList.toggle('hm-free', on);
-    d.layers?.forEach((layer) => (layer.style.display = on ? '' : 'none'));
+    layers.forEach((layer) => (layer.style.visibility = on ? '' : 'hidden'));
+    if (!on || !layers.length) return;
+    const all = [d.svg, ...layers];
+    const share = 1 / all.length;
+    const frames: Keyframe[] = [
+      { opacity: 1, offset: 0 },
+      { opacity: 1, offset: share + 0.012 },
+      { opacity: 0, offset: share + 0.0121 },
+      { opacity: 0, offset: 1 },
+    ];
+    const duration = (all.length * 1000) / BOIL_FPS;
+    d.boiling = all.map((el, i) => {
+      // Variant i is seen during its own share of the cycle
+      const a = el.animate(frames, {
+        duration,
+        iterations: Infinity,
+        iterationStart: 1 - i * share,
+      });
+      a.startTime = 0;
+      return a;
+    });
   }
 
   /** Scribbles the pencil outline around a hovered or pressed button, wipes it afterwards */

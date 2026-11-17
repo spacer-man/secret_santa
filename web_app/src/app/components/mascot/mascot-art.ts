@@ -433,7 +433,13 @@ export class MascotArt {
       this.calm = !!matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       this.draw();
       if (this.calm) return;
-      destroy.onDestroy(boil(() => this.draw()));
+      // Off the screen (scrolled down to the scene) or in a hidden tab he doesn't boil:
+      // every boil step repaints the whole drawing
+      let seen = true;
+      const io = new IntersectionObserver(([e]) => (seen = e.isIntersecting));
+      io.observe(this.host.nativeElement);
+      destroy.onDestroy(() => io.disconnect());
+      destroy.onDestroy(boil(() => seen && !document.hidden && this.draw()));
       // Breathing, swaying, blinking: stepped like drawn animation, not 60 repaints a second
       destroy.onDestroy(steppedMotion(this.host.nativeElement));
       if (this.hello()) this.later(() => this.play('wave'), 500);

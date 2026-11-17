@@ -1,5 +1,6 @@
 """Signed media URLs"""
 
+import json
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -17,3 +18,22 @@ def test_media_url_is_stable_across_seconds():
         second = media_url(media_id, TOKEN)
     assert first == second
     assert check_media_token(media_id, first.split("t=")[1], TOKEN)
+
+
+def test_csp_report_is_logged(caplog):
+    from fastapi.testclient import TestClient
+
+    from api import app as api_module
+
+    client = TestClient(api_module.app)
+    report = {
+        "csp-report": {"violated-directive": "script-src", "blocked-uri": "https://evil.example"}
+    }
+    r = client.post(
+        "/api/csp-report",
+        content=json.dumps(report),
+        headers={"Content-Type": "application/csp-report"},
+    )
+    assert r.status_code == 204
+    assert "evil.example" in caplog.text
+    assert client.post("/api/csp-report", content=b"not json").status_code == 204

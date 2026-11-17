@@ -56,6 +56,10 @@
 
 - Мобильные приложения = **PWA** (без App Store/Google Play). Позже можно TWA в Google Play ($25).
 - Caddy вместо nginx+certbot. Вебхук вместо polling на проде.
+- **CSP** (решено с владельцем): заголовок в `web_app/Caddyfile`, пока `Report-Only` — нарушения шлются в
+  `POST /api/csp-report` и пишутся в лог API («CSP report», не больше 30 в минуту); после недели без нарушений —
+  включить по-настоящему (docs/DEPLOY.md). Новый внешний источник (скрипт, iframe, картинка) — добавить в политику.
+  Хеш в `script-src` — для инлайнового `onload="this.media='all'"`, который Angular ставит на ссылку стилей.
 - Анимации/вид в стиле «уюта» как в новогоднем событии World of Tanks (механики, а не их арт).
 - 3D: three.js, мультяшный cel/toon shading с контуром (outline). Облако точек / Gaussian splatting — нет.
 - Модели: Kenney (CC0). Unity Asset Store — нет (лицензия). Всё, что берём, — только CC0/проверенная лицензия.

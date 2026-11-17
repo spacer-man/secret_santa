@@ -2,7 +2,9 @@
 HTTP API for the Telegram Mini App and the website.
 """
 
+import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -97,6 +99,33 @@ app.include_router(accounts_api.router)
 
 
 # ====== Public ====== #
+CSP_REPORTS_PER_MINUTE = 30
+_csp_reports: list[float] = []
+
+
+@app.post("/api/csp-report", status_code=204)
+async def csp_report(request: Request) -> None:
+    """
+    What the Content-Security-Policy (Caddyfile, report-only for now) would block: logged,
+    a few a minute at most (anyone can post here)
+    """
+    now = time.monotonic()
+    _csp_reports[:] = [t for t in _csp_reports if now - t < 60]
+    if len(_csp_reports) >= CSP_REPORTS_PER_MINUTE:
+        return None
+    _csp_reports.append(now)
+    body = (await request.body())[:2048]
+    try:
+        report = json.loads(body).get("csp-report", {})
+        summary = {
+            key: str(report.get(key, ""))[:300]
+            for key in ("violated-directive", "blocked-uri", "source-file", "line-number")
+        }
+    except (ValueError, AttributeError):
+        summary = {"raw": body[:300].decode(errors="replace")}
+    log.warning("CSP report: %s", summary)
+
+
 @app.get("/api/config")
 async def config() -> dict:
     return {

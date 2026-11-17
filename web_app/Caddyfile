@@ -5,6 +5,10 @@
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
+		# Where the page may load things from. Report-only for now: nothing is blocked, the
+		# browser reports what would be (to the API log, "CSP report"). See docs/DEPLOY.md.
+		# The hash is of the inline `this.media='all'` Angular puts on the stylesheet link.
+		Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://telegram.org https://accounts.google.com/gsi/client 'unsafe-hashes' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc='; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: blob: https://*.googleusercontent.com https://telegram.org https://t.me; media-src 'self' blob:; font-src 'self'; connect-src 'self' https://accounts.google.com/gsi/; frame-src https://oauth.telegram.org https://accounts.google.com/gsi/; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; report-uri /api/csp-report"
 		-Server
 	}
 

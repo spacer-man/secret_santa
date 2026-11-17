@@ -201,7 +201,8 @@ class DeliveryService:
         """
         Letters for the box. Every wish of the season should reach someone, so the box gets
         a share of the undelivered ones: undelivered / participants who haven't opened yet
-        (at least one, at most :data:`MAX_LETTERS`; the user's own ones count too). Wishes written later go to those who
+        (at least one, at most :data:`MAX_LETTERS`; the user's own ones count too), or more
+        when an author's wishes have few people left to go to. Wishes written later go to those who
         open later. Fewer wishes than people: a wish goes to several of them. Never the
         user's own wish, never one wish twice in a box; least delivered ones first.
         """
@@ -232,11 +233,33 @@ class DeliveryService:
             .where(col(User.deleted_at).is_(None))
             .where(col(User.id).not_in(opened))
         )
-        share = math.ceil(undelivered / max(waiting or 0, 1))
+        waiting = max(waiting or 0, 1)
+        share = math.ceil(undelivered / waiting)
+
+        # An author's undelivered wishes can go to everyone waiting but the author: when few
+        # such people are left, each of them takes more (otherwise the last ones get stuck)
+        pending = Counter(w.author_id for w in wishes if w.recipients_count == 0)
+        authors_waiting = set(
+            (
+                await session.scalars(
+                    select(User.id)
+                    .where(col(User.id).in_(list(pending)))
+                    .where(col(User.id).not_in(opened))
+                )
+            ).all()
+        )
+        pressure = {
+            author: count / max(waiting - (author in authors_waiting), 1)
+            for author, count in pending.items()
+        }
+        share = max(share, *(math.ceil(p) for p in pressure.values()), 0)
         count = min(MAX_LETTERS, max(1, share))
 
-        # Least delivered first, random among equals
-        chosen = sorted(wishes, key=lambda w: (w.recipients_count, random.random()))[:count]
+        # Least delivered first; among them the hardest to place; random among equals
+        chosen = sorted(
+            wishes,
+            key=lambda w: (w.recipients_count, -pressure.get(w.author_id, 0), random.random()),
+        )[:count]
         for position, wish in enumerate(chosen, start=1):
             session.add(Letter(delivery_id=delivery.id, position=position, wish_id=wish.id))
             await session.execute(

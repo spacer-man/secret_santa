@@ -3215,8 +3215,23 @@ svg.hm.hm-free {
 .letter-text {
   white-space: pre-line;
 }
+/* The creators' signature: the red seal of the site next to the name, in the stamp colour.
+   Wishes are plain text: neither can be repeated in them */
 .letter-sign {
   margin: 0;
-  text-align: right;
-  font-style: italic;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+.letter-sign-name {
+  font-family: var(--slab);
+  font-weight: 600;
+  color: var(--stamp);
+  white-space: nowrap;
+  transform: rotate(-2deg);
+}
+.letter-seal {
+  width: 3.2rem;
+  height: 3.2rem;
 }

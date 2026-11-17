@@ -25,9 +25,14 @@ log = logging.getLogger(__name__)
 wish_open_router = Router(name="wish.open")
 
 REACT_PREFIX = "w.react_"
+# The creators' signature is a button on their letter: a wish is sent without buttons,
+# so it can't be repeated in one
+SIGNATURE = "w.creators"
 
 
-def reactions_keyboard(letter_id: UUID, selected: str | None = None) -> InlineKeyboardMarkup:
+def reactions_keyboard(
+    letter_id: UUID, selected: str | None = None, signature: str | None = None
+) -> InlineKeyboardMarkup:
     reactions_row = [
         InlineKeyboardButton(
             text=f"[{emoji}]" if emoji == selected else emoji,
@@ -36,6 +41,8 @@ def reactions_keyboard(letter_id: UUID, selected: str | None = None) -> InlineKe
         for index, emoji in enumerate(REACTIONS)
     ]
     rows = [reactions_row]
+    if signature:
+        rows.insert(0, [InlineKeyboardButton(text=f"✒️ {signature}", callback_data=SIGNATURE)])
     if reply_row := common_keyboards.open_app(path="inbox", text=buttons.REPLY_IN_APP):
         rows.append(reply_row)
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -70,20 +77,34 @@ async def open_wish(call: CallbackQuery) -> None:
     for letter in delivery.letters:
         if letter.creators_text:
             await message.answer(
-                text=f"{letter.creators_text.text}\n\n— {letter.creators_text.signature}",
+                text=letter.creators_text.text,
                 parse_mode=None,
+                reply_markup=reactions_keyboard(
+                    letter.id, letter.reaction, signature=letter.creators_text.signature
+                ),
             )
-            offer = messages.REACT_OFFER_CREATORS
-        elif letter.wish:
-            await wish_utils.send_wish(chat_id=chat_id, bot=bot, wish=letter.wish)
-            offer = messages.REACT_OFFER
-        else:
             continue
-        await message.answer(
-            text=offer, reply_markup=reactions_keyboard(letter.id, letter.reaction)
-        )
+        if letter.wish:
+            await wish_utils.send_wish(chat_id=chat_id, bot=bot, wish=letter.wish)
+            await message.answer(
+                text=messages.REACT_OFFER,
+                reply_markup=reactions_keyboard(letter.id, letter.reaction),
+            )
     if not wishes:
         await message.answer(text=messages.HAVE_NO_WISH)
+
+
+@wish_open_router.callback_query(F.data == SIGNATURE)
+async def signature(call: CallbackQuery) -> None:
+    await call.answer(text=messages.CREATORS_SIGNATURE, show_alert=True)
+
+
+def signature_of(message: Message) -> str | None:
+    """The creators' signature on the message's keyboard (their letter), if any"""
+    rows = message.reply_markup.inline_keyboard if message.reply_markup else []
+    if rows and rows[0] and rows[0][0].callback_data == SIGNATURE:
+        return rows[0][0].text.removeprefix("✒️ ")
+    return None
 
 
 @wish_open_router.callback_query(F.data.startswith(REACT_PREFIX))
@@ -107,5 +128,7 @@ async def react(call: CallbackQuery) -> None:
     sent = messages.REACTION_SENT if result.author_id else messages.REACTION_SENT_CREATORS
     await call.answer(text=sent % reaction)
     with contextlib.suppress(Exception):  # Same markup: nothing changed
-        await message.edit_reply_markup(reply_markup=reactions_keyboard(letter_id, reaction))
+        await message.edit_reply_markup(
+            reply_markup=reactions_keyboard(letter_id, reaction, signature=signature_of(message))
+        )
     await notify_author(bot=bot, result=result)

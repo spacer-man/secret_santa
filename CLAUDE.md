@@ -43,7 +43,9 @@
     - `models.ts` — модели **Kenney Holiday Kit (CC0)** из `public/models/holiday/` (лицензия лежит рядом), toon-материал + контур.
     - `layout.ts` — анти-пересечения: «следы» объектов из кругов (длинные модели = ряд кругов), resolve.
     - `?debug` в URL выставляет `window.santaTree` (для скриншотов).
-- Локально через туннель: `./scripts/dev-tunnel.sh` (настройки `.env.dev`, см. `.env.dev.example`): cloudflared/ngrok/ssh →
+- Локально через туннель: `./scripts/dev-tunnel.sh` (настройки `.env.dev`, см. `.env.dev.example`): пробует по очереди
+  cloudflared (по http2; у части провайдеров Cloudflare-туннели заблокированы) → ssh на localhost.run → ngrok (бесплатный
+  отдаёт страницу-предупреждение: Mini App работает, PWA не ставится), берёт первый подключившийся; `TUNNEL=ssh` — только его →
   `ng serve :4200` (прокси `/api`→8000, `/telegram/webhook`→8080), бот на вебхуке, SQLite в `.dev/`; по Ctrl+C снимает вебхук и кнопку.
 - Деплой: `docker-compose.yaml` (db, state_storage, bot, api, web=Caddy с авто-HTTPS), `.env.example`,
   инструкция `docs/DEPLOY.md`. PWA: `public/manifest.webmanifest`, `public/sw.js`, иконки.

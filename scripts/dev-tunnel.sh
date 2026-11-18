@@ -2,8 +2,8 @@
 # Локальная разработка через туннель: одной командой поднимает API, бота (на вебхуке),
 # фронт (ng serve) и публичный HTTPS-адрес, чтобы открывать Mini App в Telegram без деплоя.
 #
-#   ./scripts/dev-tunnel.sh            # туннель выбирается сам: cloudflared → ngrok → ssh (localhost.run)
-#   TUNNEL=ngrok ./scripts/dev-tunnel.sh
+#   ./scripts/dev-tunnel.sh            # туннель выбирается сам: cloudflared → ssh (localhost.run) → ngrok
+#   TUNNEL=ssh ./scripts/dev-tunnel.sh   # только этот
 #
 # Настройки — в .env.dev в корне (образец: .env.dev.example). Нужен ОТДЕЛЬНЫЙ тестовый бот:
 # скрипт переставляет ему вебхук и кнопку меню на адрес туннеля.
@@ -93,71 +93,82 @@ run() {
 }
 
 # --- Туннель -----------------------------------------------------------------
+# Каждый вид пробуется по очереди, берётся первый, который реально подключился:
+# cloudflared (у части провайдеров заблокирован: TCP/UDP 7844 к Cloudflare) →
+# ssh на localhost.run (порт 22, без страницы-предупреждения — PWA ставится) →
+# ngrok (бесплатный отдаёт браузеру страницу-предупреждение: Mini App работает,
+# а PWA с телефона не установить — Chrome видит её вместо манифеста).
 TUNNEL_LOG="$DEV/logs/tunnel.log"
-: > "$TUNNEL_LOG"
+PUBLIC_URL=""
+TUNNEL_PID=""
+
+# start_tunnel <вид>: запускает, ждёт адрес и подключение; при неудаче гасит процесс
+start_tunnel() {
+  local kind="$1" pattern="" ready="" waited=0
+  : > "$TUNNEL_LOG"
+  case "$kind" in
+    cloudflared)
+      # http2, не QUIC: UDP часто режут
+      cloudflared tunnel --no-autoupdate --protocol http2 --url "http://localhost:$WEB_PORT" >"$TUNNEL_LOG" 2>&1 &
+      pattern='https://[a-z0-9]+(-[a-z0-9]+)+\.trycloudflare\.com'  # не api.trycloudflare.com из лога
+      # Адрес печатается раньше подключения: до него адрес отвечает «Error 1033»
+      ready='Registered tunnel connection' ;;
+    ngrok)
+      ngrok http "$WEB_PORT" --log stdout --log-format logfmt >"$TUNNEL_LOG" 2>&1 &
+      # бесплатные адреса: *.ngrok-free.app, с 2025 — *.ngrok-free.dev; свой домен берём из API ngrok
+      pattern='https://[a-z0-9.-]+\.ngrok(-free)?\.(app|dev|io)' ;;
+    ssh)
+      ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes \
+        -o ConnectTimeout=15 -R "80:localhost:$WEB_PORT" nokey@localhost.run >"$TUNNEL_LOG" 2>&1 &
+      pattern='https://[a-z0-9]+\.lhr\.life' ;;
+    *) die "Неизвестный TUNNEL=$kind (cloudflared | ssh | ngrok)" ;;
+  esac
+  TUNNEL_PID=$!
+  PUBLIC_URL=""
+  while [ "$waited" -lt 45 ]; do
+    [ -z "$PUBLIC_URL" ] && PUBLIC_URL="$(grep -oE "$pattern" "$TUNNEL_LOG" | head -1 || true)"
+    # ngrok: адрес надёжнее спросить у его локального API (порт 4040, если занят — 4041…)
+    if [ -z "$PUBLIC_URL" ] && [ "$kind" = ngrok ]; then
+      for api in 4040 4041 4042; do
+        PUBLIC_URL="$(curl -fsS "http://127.0.0.1:$api/api/tunnels" 2>/dev/null \
+          | grep -oE '"public_url":"https://[^"]+' | head -1 | cut -d'"' -f4 || true)"
+        [ -n "$PUBLIC_URL" ] && break
+      done
+    fi
+    if [ -n "$PUBLIC_URL" ] && { [ -z "$ready" ] || grep -q "$ready" "$TUNNEL_LOG"; }; then
+      PIDS+=("$TUNNEL_PID")
+      NAMES+=(tunnel)
+      return 0
+    fi
+    kill -0 "$TUNNEL_PID" 2>/dev/null || break
+    sleep 1
+    waited=$((waited + 1))
+  done
+  warn "$kind не подключился. Последние строки лога:"
+  tail -n 8 "$TUNNEL_LOG" >&2
+  killtree "$TUNNEL_PID"
+  PUBLIC_URL=""
+  return 1
+}
+
 TUNNEL="${TUNNEL:-auto}"
 if [ "$TUNNEL" = auto ]; then
-  if command -v cloudflared >/dev/null; then TUNNEL=cloudflared
-  elif command -v ngrok >/dev/null; then TUNNEL=ngrok
-  elif command -v ssh >/dev/null; then TUNNEL=ssh
-  else die "Нет ни cloudflared, ни ngrok, ни ssh. Поставьте cloudflared: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
-  fi
-fi
-
-say "Поднимаю туннель ($TUNNEL) → localhost:$WEB_PORT"
-if [ "$TUNNEL" != cloudflared ]; then
-  say "Внимание: через $TUNNEL телефон не установит PWA (бесплатный ngrok отдаёт браузеру страницу-предупреждение"
-  say "вместо манифеста и иконок — Chrome предлагает только ярлык). Для проверки установки нужен cloudflared:"
-  say "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
-fi
-case "$TUNNEL" in
-  cloudflared)
-    # http2, not QUIC: QUIC (UDP 7844) is often blocked, and then the address answers "Error 1033"
-    cloudflared tunnel --no-autoupdate --protocol http2 --url "http://localhost:$WEB_PORT" >"$TUNNEL_LOG" 2>&1 &
-    PATTERN='https://[a-z0-9]+(-[a-z0-9]+)+\.trycloudflare\.com' ;;  # не api.trycloudflare.com из лога
-  ngrok)
-    ngrok http "$WEB_PORT" --log stdout --log-format logfmt >"$TUNNEL_LOG" 2>&1 &
-    # бесплатные адреса: *.ngrok-free.app, с 2025 — *.ngrok-free.dev; свой домен берём из API ngrok ниже
-    PATTERN='https://[a-z0-9.-]+\.ngrok(-free)?\.(app|dev|io)' ;;
-  ssh)
-    ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes \
-      -R "80:localhost:$WEB_PORT" nokey@localhost.run >"$TUNNEL_LOG" 2>&1 &
-    PATTERN='https://[a-z0-9]+\.lhr\.life' ;;
-  *) die "Неизвестный TUNNEL=$TUNNEL (cloudflared | ngrok | ssh)" ;;
-esac
-PIDS+=($!)
-NAMES+=(tunnel)
-TUNNEL_PID=$!
-
-PUBLIC_URL=""
-for _ in $(seq 60); do
-  PUBLIC_URL="$(grep -oE "$PATTERN" "$TUNNEL_LOG" | head -1 || true)"
-  # ngrok: адрес надёжнее спросить у его локального API (порт 4040, если занят — 4041…)
-  if [ -z "$PUBLIC_URL" ] && [ "$TUNNEL" = ngrok ]; then
-    for api in 4040 4041 4042; do
-      PUBLIC_URL="$(curl -fsS "http://127.0.0.1:$api/api/tunnels" 2>/dev/null \
-        | grep -oE '"public_url":"https://[^"]+' | head -1 | cut -d'"' -f4 || true)"
-      [ -n "$PUBLIC_URL" ] && break
-    done
-  fi
-  [ -n "$PUBLIC_URL" ] && break
-  kill -0 "$TUNNEL_PID" 2>/dev/null || { cat "$TUNNEL_LOG" >&2; die "Туннель не запустился"; }
-  sleep 1
-done
-[ -n "$PUBLIC_URL" ] || { cat "$TUNNEL_LOG" >&2; die "Не дождался адреса туннеля"; }
-
-# cloudflared prints the address before it has connected: until then the address gives Error 1033
-if [ "$TUNNEL" = cloudflared ]; then
-  connected=""
-  for _ in $(seq 40); do
-    if grep -q "Registered tunnel connection" "$TUNNEL_LOG"; then connected=1; break; fi
-    kill -0 "$TUNNEL_PID" 2>/dev/null || { cat "$TUNNEL_LOG" >&2; die "cloudflared остановился"; }
-    sleep 1
+  CANDIDATES=()
+  for kind in cloudflared ssh ngrok; do
+    command -v "$kind" >/dev/null && CANDIDATES+=("$kind")
   done
-  if [ -z "$connected" ]; then
-    tail -n 20 "$TUNNEL_LOG" >&2
-    die "cloudflared не подключился к Cloudflare за 40 с (адрес отвечал бы Error 1033). Проверьте сеть/VPN"
-  fi
+  [ "${#CANDIDATES[@]}" -gt 0 ] || die "Нет ни cloudflared, ни ssh, ни ngrok. Поставьте cloudflared: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+else
+  CANDIDATES=("$TUNNEL")
+fi
+
+for kind in "${CANDIDATES[@]}"; do
+  say "Поднимаю туннель ($kind) → localhost:$WEB_PORT"
+  if start_tunnel "$kind"; then TUNNEL="$kind"; break; fi
+done
+[ -n "$PUBLIC_URL" ] || die "Ни один туннель не подключился (${CANDIDATES[*]}). Проверьте сеть или включите VPN"
+if [ "$TUNNEL" = ngrok ]; then
+  warn "Через бесплатный ngrok телефон не установит PWA (страница-предупреждение вместо манифеста) — Mini App работает"
 fi
 
 export WEBAPP_URL="$PUBLIC_URL"

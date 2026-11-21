@@ -15,6 +15,7 @@
 - `bot/` — Python 3.13, aiogram 3 (бот) + FastAPI (API) из одного образа.
   - `src/main.py` — бот: вебхук (aiohttp, `/telegram/webhook`, порт 8080) если задан `WEBHOOK_URL`,
     иначе polling (локальная разработка). Ставит кнопку меню на Mini App (`WEBAPP_URL`).
+    В главном меню бота ещё «🌐 Открыть в браузере» — url-кнопка на сайт (`open_in_browser`, вход там свой).
   - `src/api_main.py`, `src/api/` — API `/api/*` (порт 8000). Авторизация: `Authorization: tma <initData>`
     (Mini App, HMAC по токену бота) или `Bearer <token>` (сайт/PWA: Telegram Login Widget, код на почту или Google →
     наш подписанный токен). Вход, привязка, слияние, уведомления — `api/accounts.py`, зависимости — `api/deps.py`.

@@ -21,6 +21,8 @@ def main_menu(invite_link: str | None = None) -> InlineKeyboardMarkup:
             {"url": invite_link, "text": buttons.INVITE_TEXT}
         )
         rows.append([InlineKeyboardButton(text=buttons.INVITE, url=share_url)])
+    if browser := common_keyboards.open_in_browser():
+        rows.append([browser])
     if app_row := common_keyboards.open_app():
         rows.insert(0, app_row)
     return InlineKeyboardMarkup(inline_keyboard=rows)

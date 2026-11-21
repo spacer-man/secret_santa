@@ -1,6 +1,7 @@
 import {
   Component,
   ElementRef,
+  computed,
   inject,
   OnDestroy,
   afterNextRender,
@@ -187,7 +188,11 @@ export class Tree3d implements OnDestroy {
   readonly focusLost = output<void>();
   readonly focused = output<number>();
 
-  protected readonly fallback = signal(new URLSearchParams(location.search).get('scene') === '2d');
+  /** Debug: the flat 2D tree instead of the scene (the parent re-creates this component) */
+  readonly force2d = input(false);
+  /** No WebGL or the scene failed */
+  private readonly failed = signal(new URLSearchParams(location.search).get('scene') === '2d');
+  protected readonly fallback = computed(() => this.failed() || this.force2d());
   protected readonly ready = signal(false);
   protected readonly i18n = inject(I18n);
   /** Loading progress, % */
@@ -203,7 +208,7 @@ export class Tree3d implements OnDestroy {
     { kind: 'snowflake', x: 33, y: 76, size: 1.6 },
   ];
   /** The flat 2D tree is shown (no WebGL or ?scene=2d): no courtyard there */
-  readonly is2d = this.fallback.asReadonly();
+  readonly is2d = this.fallback;
   private readonly canvas = viewChild<ElementRef<HTMLCanvasElement>>('canvas');
   private world?: TreeWorld;
   /** The world being built (not yet given the inputs) */
@@ -281,7 +286,7 @@ export class Tree3d implements OnDestroy {
       this.ready.set(true);
     } catch (err) {
       console.warn('3D tree is unavailable, using 2D', err);
-      this.fallback.set(true);
+      this.failed.set(true);
     }
   }
 

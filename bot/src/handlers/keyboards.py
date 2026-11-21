@@ -71,3 +71,10 @@ def open_app(path: str = "", text: str = buttons.OPEN_APP) -> list[InlineKeyboar
     if url := WebAppConfig().url_for(path):
         return [InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))]
     return []
+
+
+def open_in_browser(path: str = "") -> InlineKeyboardButton | None:
+    """The same app as a website, in the browser (sign-in there is separate); None if not configured"""
+    if url := WebAppConfig().url_for(path):
+        return InlineKeyboardButton(text=buttons.OPEN_IN_BROWSER, url=url)
+    return None

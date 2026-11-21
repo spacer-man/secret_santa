@@ -12,6 +12,7 @@ import { Tree3d } from '../tree3d/tree-3d';
 import { LIGHT_SKINS } from '../tree3d/skins';
 import { ShopSheet } from './shop-sheet';
 import { DebugPanel } from './debug-panel';
+import { SceneSwitch } from '../../core/scene-switch';
 import { City, DAYTIME_MODES, Daytime, DaytimeMode, PHASE_ICONS, Place } from '../../core/daytime';
 
 const SEEN_KEY = 'santa.tree.seen';
@@ -82,24 +83,32 @@ function readSeen(): Record<string, string> | null {
           </div>
         </div>
         <div class="scene-wrap">
-          <tree-3d
-            #scene3d
-            [tree]="t"
-            [decorMode]="decorMode()"
-            [preview]="preview()"
-            [snowfall]="shownSnow()"
-            [daytime]="daytime.sun()"
-            [cabinLights]="shownLights()"
-            (cabinClick)="openLights()"
-            (padClick)="openPad($event)"
-            (focused)="cornerFocused.set(true)"
-            (focusLost)="cornerFocused.set(false)"
-            [newHung]="newHung()"
-            [newLit]="newLit()"
-            (ballClick)="openBall($event)"
-            (addBall)="router.navigateByUrl('/new')"
-            (starClick)="sheet.set({ kind: 'star' })"
-          />
+          @for (mode of [sceneMode()]; track mode) {
+            @if (mode === 'off') {
+              <!-- Debug: no scene at all, to see whether the lag comes from it -->
+              <div class="scene-off">Сцена выключена (🐞)</div>
+            } @else {
+              <tree-3d
+                #scene3d
+                [force2d]="mode === '2d'"
+                [tree]="t"
+                [decorMode]="decorMode()"
+                [preview]="preview()"
+                [snowfall]="shownSnow()"
+                [daytime]="daytime.sun()"
+                [cabinLights]="shownLights()"
+                (cabinClick)="openLights()"
+                (padClick)="openPad($event)"
+                (focused)="cornerFocused.set(true)"
+                (focusLost)="cornerFocused.set(false)"
+                [newHung]="newHung()"
+                [newLit]="newLit()"
+                (ballClick)="openBall($event)"
+                (addBall)="router.navigateByUrl('/new')"
+                (starClick)="sheet.set({ kind: 'star' })"
+              />
+            }
+          }
           @if (decorMode()) {
             <p class="drag-hint decor-hint">
               ✨
@@ -486,6 +495,13 @@ export class TreePanel {
   protected readonly sheet = signal<Sheet>(null);
   /** Development only: the server allows the debug panel (admins with DEBUG_TOOLS=1) */
   protected readonly debugTools = computed(() => !!this.store.me()?.debug);
+  private readonly sceneSwitch = inject(SceneSwitch);
+  /** Debug: 3D / 2D / no scene; `?scene=` works for everybody, the stored choice only for admins */
+  protected readonly sceneMode = computed(() => {
+    const mode = this.sceneSwitch.mode();
+    const url = new URLSearchParams(location.search).get('scene');
+    return url || this.debugTools() ? mode : '3d';
+  });
   protected readonly decorMode = signal(false);
   protected readonly cornerFocused = signal(false);
 

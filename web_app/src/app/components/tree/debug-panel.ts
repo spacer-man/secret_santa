@@ -1,5 +1,6 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { Api, TreeData } from '../../core/api';
+import { SceneMode, SceneSwitch } from '../../core/scene-switch';
 
 /**
  * Development only (the server has DEBUG_TOOLS=1): the festive level and the
@@ -11,6 +12,18 @@ import { Api, TreeData } from '../../core/api';
     <button class="tag debug-toggle" (click)="open.set(!open())" aria-label="Debug">🐞</button>
     @if (open()) {
       <div class="debug-card">
+        <span>Сцена (проверить лаги)</span>
+        <div class="debug-row">
+          @for (m of sceneModes; track m.key) {
+            <button
+              class="debug-btn"
+              [class.on]="scene.mode() === m.key"
+              (click)="scene.set(m.key)"
+            >
+              {{ m.label }}
+            </button>
+          }
+        </div>
         <label>
           <span
             >Уровень: <b>{{ level() ?? 'авто' }}</b></span
@@ -100,6 +113,11 @@ import { Api, TreeData } from '../../core/api';
       color: var(--ink);
       cursor: pointer;
     }
+    .debug-btn.on {
+      border-color: var(--stamp);
+      color: var(--stamp);
+      font-weight: 700;
+    }
     .debug-error {
       color: var(--stamp);
     }
@@ -107,6 +125,12 @@ import { Api, TreeData } from '../../core/api';
 })
 export class DebugPanel {
   private readonly api = inject(Api);
+  protected readonly scene = inject(SceneSwitch);
+  protected readonly sceneModes: { key: SceneMode; label: string }[] = [
+    { key: '3d', label: '3D' },
+    { key: '2d', label: '2D' },
+    { key: 'off', label: 'Выкл' },
+  ];
   readonly tree = input.required<TreeData>();
   /** The server answered with the new tree */
   readonly changed = output<TreeData>();

@@ -1036,6 +1036,15 @@ blockquote {
 .scene-wrap {
   position: relative;
 }
+.scene-off {
+  /* Debug: the scene is switched off, the place keeps its size */
+  display: grid;
+  place-items: center;
+  aspect-ratio: 360 / 470;
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-size: 0.9rem;
+}
 .scene-wrap .drag-hint {
   bottom: 0.7rem;
   margin: 0;
